@@ -1,0 +1,72 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><title>Heartbeat — локальное сравнение</title>
+<style>body{margin:24px;background:#131318;color:#eee;font:16px system-ui}main{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}video{width:100%;height:62vh;background:black;object-fit:contain}button,select{font:inherit;padding:8px;margin:8px}output{display:block;white-space:pre-wrap;font:13px monospace}h2{font-size:17px}</style>
+<h1>Heartbeat: референс / прежний / текущий</h1><p>Только локальные файлы. Содержит вспышки. Звук воспроизводится лишь из выбранного ролика. Три плеера имеют независимые часы: сверяйте время, прежде чем оценивать попадание в бит.</p>
+<button id="play">С начала, 1×</button><button id="pause">Пауза</button><button id="subject">Силуэт с 5,90 с</button><button id="echo">Шлейф с 11,75 с</button>
+<button class="seek" data-time="3.733">3,733 с</button><button class="seek" data-time="5.950">5,950 с</button><button class="seek" data-time="6.167">6,167 с</button><button class="seek" data-time="6.717">6,717 с</button>
+<button class="seek" data-time="6.533">6,533 с</button><button class="seek" data-time="6.850">6,850 с</button><button class="seek" data-time="6.900">6,900 с</button>
+<button class="seek" data-time="7.500">7,500 с</button><button class="seek" data-time="12.500">12,500 с</button><button class="seek" data-time="15.600">15,600 с</button><button class="seek" data-time="18.900">18,900 с</button><button class="seek" data-time="19.500">19,500 с</button>
+<button class="seek" data-time="8.033">8,033 с</button><button class="seek" data-time="8.500">8,500 с</button><button class="seek" data-time="9.167">9,167 с</button><button class="seek" data-time="10.133">10,133 с</button>
+<button class="seek" data-time="4.955">src 4,955</button><button class="seek" data-time="7.783">src 7,783</button><button class="seek" data-time="14.987">src 14,987</button><button class="seek" data-time="15.867">src 15,867</button><button class="seek" data-time="18.965">src 18,965</button><button class="seek" data-time="20.266">src 20,266</button><button class="seek" data-time="21.766">src 21,766</button><button class="seek" data-time="23.253">src 23,253</button>
+<button class="seek" data-time="0.500">src 0,500</button><button class="seek" data-time="1.499">src 1,499</button><button class="seek" data-time="2.766">src 2,766</button><button class="seek" data-time="4.138">src 4,138</button><button class="seek" data-time="11.239">src 11,239</button><button class="seek" data-time="12.539">src 12,539</button><button class="seek" data-time="13.705">src 13,705</button>
+<label>Звук <select id="sound"><option value="2">Текущий MP4</option><option value="0">Референс</option><option value="1">Прежний MP4</option></select></label>
+<main><section><h2>Авторский референс</h2><video controls preload="auto" src="/reference.mp4"></video></section><section><h2>Предыдущий рендер</h2><video controls preload="auto" src="/before.mp4"></video></section><section><h2>Текущий рендер</h2><video controls preload="auto" src="/candidate.mp4"></video></section></main>
+<output id="status" aria-live="polite"></output>
+<script>
+const videos=[...document.querySelectorAll('video')];
+const lumaCanvas=document.createElement('canvas');lumaCanvas.width=96;lumaCanvas.height=96;
+const lumaContext=lumaCanvas.getContext('2d',{willReadFrequently:true});
+function meanLuma(video){
+  if(video.readyState<2)return 'n/a';
+  lumaContext.drawImage(video,0,0,96,96);
+  const pixels=lumaContext.getImageData(0,0,96,96).data;
+  let total=0;for(let i=0;i<pixels.length;i+=4)total+=(.299*pixels[i]+.587*pixels[i+1]+.114*pixels[i+2])/255;
+  return (total/(pixels.length/4)).toFixed(4);
+}
+function exposureLuma(video,exposure){
+  if(video.readyState<2)return 'n/a';
+  lumaContext.drawImage(video,0,0,96,96);
+  const pixels=lumaContext.getImageData(0,0,96,96).data;
+  let total=0;
+  for(let i=0;i<pixels.length;i+=4){
+    let r=Math.min(1,pixels[i]/255*(1+exposure));
+    let g=Math.min(1,pixels[i+1]/255*(1+exposure));
+    let b=Math.min(1,pixels[i+2]/255*(1+exposure));
+    const y=.299*r+.587*g+.114*b;
+    r=Math.min(1,Math.max(0,((y+(r-y)*1.055)-.5)*1.035+.5));
+    g=Math.min(1,Math.max(0,((y+(g-y)*1.055)-.5)*1.035+.5));
+    b=Math.min(1,Math.max(0,((y+(b-y)*1.055)-.5)*1.035+.5));
+    total+=(.299*r+.587*g+.114*b);
+  }
+  return (total/(pixels.length/4)).toFixed(4);
+}
+function croppedExposureLuma(video,exposure){
+  if(video.readyState<2)return 'n/a';
+  const scale=2.2,translateX=-.158,translateY=-.2925;
+  const width=video.videoWidth/scale,height=video.videoHeight/scale;
+  const centreX=video.videoWidth*(.5-translateX/scale);
+  const centreY=video.videoHeight*(.5+translateY/scale);
+  lumaContext.drawImage(video,centreX-width/2,centreY-height/2,width,height,0,0,96,96);
+  const pixels=lumaContext.getImageData(0,0,96,96).data;
+  let total=0;
+  for(let i=0;i<pixels.length;i+=4){
+    let r=Math.min(1,pixels[i]/255*(1+exposure));
+    let g=Math.min(1,pixels[i+1]/255*(1+exposure));
+    let b=Math.min(1,pixels[i+2]/255*(1+exposure));
+    const y=.299*r+.587*g+.114*b;
+    r=Math.min(1,Math.max(0,((y+(r-y)*1.055)-.5)*1.035+.5));
+    g=Math.min(1,Math.max(0,((y+(g-y)*1.055)-.5)*1.035+.5));
+    b=Math.min(1,Math.max(0,((y+(b-y)*1.055)-.5)*1.035+.5));
+    total+=(.299*r+.587*g+.114*b);
+  }
+  return (total/(pixels.length/4)).toFixed(4);
+}
+function audio(){videos.forEach((v,i)=>v.muted=i!==Number(document.querySelector('#sound').value))}
+audio();document.querySelector('#sound').onchange=audio;
+async function start(t){try{videos.forEach(v=>{v.pause();v.playbackRate=1;v.currentTime=t});await Promise.all(videos.map(v=>v.play()))}catch(e){document.querySelector('#status').textContent=String(e)}}
+document.querySelector('#play').onclick=()=>start(0);document.querySelector('#subject').onclick=()=>start(5.9);document.querySelector('#echo').onclick=()=>start(11.75);
+document.querySelector('#pause').onclick=()=>videos.forEach(v=>v.pause());
+document.querySelectorAll('.seek').forEach(button=>button.onclick=()=>{
+  videos.forEach(v=>{v.pause();v.currentTime=Number(button.dataset.time)})
+});
+setInterval(()=>{document.querySelector('#status').textContent=videos.map((v,i)=>{const q=v.getVideoPlaybackQuality();return `${i}: t=${v.currentTime.toFixed(3)} / ${v.duration.toFixed(3)} luma=${meanLuma(v)} exp3=${exposureLuma(v,3)} exp8=${exposureLuma(v,8)} cropExp3=${croppedExposureLuma(v,3)} cropExp4=${croppedExposureLuma(v,4)} cropExp5=${croppedExposureLuma(v,5)} cropExp8=${croppedExposureLuma(v,8)} rate=${v.playbackRate} paused=${v.paused} ended=${v.ended} muted=${v.muted} ready=${v.readyState} frames=${q.totalVideoFrames} dropped=${q.droppedVideoFrames} error=${v.error?.message??'none'}`}).join('\n')},250);
+</script></html>

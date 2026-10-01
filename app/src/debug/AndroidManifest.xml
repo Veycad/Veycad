@@ -1,0 +1,27 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".FramingProbeActivity" android:exported="true" />
+        <activity android:name=".SaveLifecycleProbeActivity" android:exported="true" />
+        <provider android:name=".SaveLifecycleProbeActivity$SlowDestination"
+            android:authorities="${applicationId}.save_probe" android:exported="false" />
+        <activity
+            android:name=".FearReviewActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AutoEdit" />
+        <activity android:name=".StylePickerPreviewActivity" android:exported="true"
+            android:theme="@style/Theme.AutoEdit" />
+        <activity
+            android:name=".GoldenRenderActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AutoEdit" />
+        <activity
+            android:name=".ReferenceAnalysisActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AutoEdit" />
+        <activity
+            android:name=".IsolatedMatteProbeActivity"
+            android:exported="true"
+            android:process=":matte_probe"
+            android:theme="@style/Theme.AutoEdit" />
+    </application>
+</manifest>

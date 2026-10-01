@@ -1,0 +1,721 @@
+{
+  "schema_version": 1,
+  "state": "candidate_not_release_ready",
+  "created_on": "2026-09-25",
+  "updated_on": "2026-09-27",
+  "media_root": "artifacts/quality/holdout",
+  "policy": "Only role=holdout sources may enter a sealed blind run. A viewed pilot or any parent source used to change the product stays role=pilot and must be replaced by unseen footage before release acceptance.",
+  "required_tags": [
+    "portrait",
+    "full_body",
+    "multiple_people",
+    "no_people",
+    "dark",
+    "backlit",
+    "low_quality",
+    "static_camera",
+    "intense_motion"
+  ],
+  "required_single_source_fps": [
+    24,
+    25,
+    30,
+    60
+  ],
+  "required_containers": [
+    "mp4",
+    "webm",
+    "mov"
+  ],
+  "required_frame_rate_modes": [
+    "cfr",
+    "vfr"
+  ],
+  "minimum_verified_camera_models": 2,
+  "media": [
+    {
+      "id": "fbi_debra_24s",
+      "role": "pilot",
+      "pilot_note": "Sigma render inspected on 2026-09-25; never count this parent source as sealed holdout evidence.",
+      "file": "fbi_debra_24s_h264.mp4",
+      "sha256": "865687877e10b17629388e825f4b09046a4fa1c4a60631bb47d4abaf56eccfbf",
+      "bytes": 2410563,
+      "duration_s": 24.02,
+      "fps_bucket": 24,
+      "frame_rate_mode": "cfr",
+      "container": "mp4",
+      "video_codec": "h264",
+      "camera_model": null,
+      "tags": [
+        "portrait",
+        "dark",
+        "static_camera"
+      ],
+      "parent_source": "FBI interview 2012",
+      "parent_sha256": "707b5962e7bd3d8e6912d9434936853c466740ee4270568a8f8489357c43ed07",
+      "derivation": "20–44 s from the public-domain original; FFmpeg libx264 CRF 20, yuv420p, no source audio",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Interview_with_Special_Agent_Debra_S._of_the_FBI_(2012).webm",
+      "license": "US federal government public domain"
+    },
+    {
+      "id": "coconut_dancers",
+      "role": "pilot",
+      "file": "coconut_dancers.webm",
+      "sha256": "ac54e7a8a6ede438cd08e0ff0b6c5cce6fc556af62ecace9747b142bbb5190cb",
+      "bytes": 57857720,
+      "duration_s": 30.27,
+      "fps_bucket": 30,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp9",
+      "camera_model": null,
+      "tags": [
+        "full_body",
+        "multiple_people",
+        "intense_motion"
+      ],
+      "parent_source": "Britannia Coconut Dancers 2023",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Britannia_Coconut_Dancers_performing_at_the_Whitworth_Rushcart_celebration,_Sep_2023.webm",
+      "license": "CC0 1.0",
+      "pilot_note": "Retired from the next blind cohort: shared parent with prior pilots coconut_dancers. See cohort_retirement evidence."
+    },
+    {
+      "id": "dallas_night",
+      "role": "holdout",
+      "file": "dallas_night.webm",
+      "sha256": "e7cec8f29f18e9240f39370952721a1a0130ed21e36a3e89e9d046e2a5cbaa66",
+      "bytes": 3337319,
+      "duration_s": 30,
+      "fps_bucket": 30,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp8",
+      "camera_model": null,
+      "tags": [
+        "no_people",
+        "dark",
+        "low_quality",
+        "static_camera"
+      ],
+      "parent_source": "Earth Hour Dallas 2009",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Earth_Hour_Dallas_2009.webm",
+      "license": "CC BY 2.0; Charlie McRae; local QA only, attribution required for redistribution",
+      "tag_note": "Low-quality stress is the original 720p video at about 0.89 Mb/s; this is not proof of coverage for noisy phone footage."
+    },
+    {
+      "id": "rush_hour_25",
+      "role": "holdout",
+      "file": "rush_hour_25.webm",
+      "sha256": "bb587147edb58630b0025b1e86cc2bdfe85fc7caf1f2c8f179e4226749963e76",
+      "bytes": 14122530,
+      "duration_s": 20.11,
+      "fps_bucket": 25,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp8",
+      "camera_model": null,
+      "tags": [
+        "no_people",
+        "static_camera"
+      ],
+      "parent_source": "Xiph rush hour 1080p25",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Video_Codec_Test_rush_hour_1080p25.y4m.webm",
+      "license": "CC0 1.0"
+    },
+    {
+      "id": "twilight_silhouette",
+      "role": "pilot",
+      "file": "twilight_silhouette.webm",
+      "sha256": "8cf5f8173e97598fb711a112622728c39436b28ec7c59b43209c374249c57922",
+      "bytes": 1628784,
+      "duration_s": 17.63,
+      "fps_bucket": 21,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp9",
+      "camera_model": null,
+      "tags": [
+        "full_body",
+        "backlit",
+        "static_camera"
+      ],
+      "parent_source": "Twilight Silhouette of Her",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Twilight_Silhouette_of_Her.webm",
+      "license": "CC BY-SA 4.0; Nerissa Lyra; local QA only, attribution/share-alike obligations for redistribution",
+      "pilot_note": "Retired from the next blind cohort: shared parent with prior pilots twilight_silhouette. See cohort_retirement evidence."
+    },
+    {
+      "id": "v10_vertical",
+      "role": "holdout",
+      "file": "v10_vertical.webm",
+      "sha256": "20871a21d66171e117644576caeb4d66d77b9a25c846e3c9c2d8800b00301d6f",
+      "bytes": 14203404,
+      "duration_s": 19.2,
+      "fps_bucket": 30,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp8",
+      "camera_model": null,
+      "tags": [
+        "no_people"
+      ],
+      "parent_source": "V10 hippo path 2024",
+      "source_page": "https://commons.wikimedia.org/wiki/File:V10.webm",
+      "license": "CC0 1.0",
+      "tag_note": "Vertical scene; sampled frames show a path, not a clearly visible hippo."
+    },
+    {
+      "id": "minsk_metro_60",
+      "role": "holdout",
+      "file": "minsk_metro_26s_60fps.mp4",
+      "sha256": "7759b71121d4dcf46457bb79a2c19b9eae762c9b7adefb751726e557b393baa1",
+      "bytes": 24144033,
+      "duration_s": 25.99,
+      "fps_bucket": 60,
+      "frame_rate_mode": "cfr",
+      "container": "mp4",
+      "video_codec": "h264",
+      "camera_model": null,
+      "tags": [
+        "multiple_people",
+        "static_camera",
+        "intense_motion"
+      ],
+      "parent_source": "Minsk metro 2018 60fps",
+      "parent_sha256": "8f5ea32da4f2a770597233e37046d830bde2d135df5f39423c41d84a362ec04b",
+      "derivation": "First 26 s from CC BY original; FFmpeg libx264 CRF 21, yuv420p, 59.94 fps, no source audio; source video starts at about 16 ms",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Minsk_metro_2018_60fps.webm",
+      "license": "CC BY 3.0; trolleway; local QA only, attribution required for redistribution"
+    },
+    {
+      "id": "four_people",
+      "role": "pilot",
+      "file": "four_people.webm",
+      "sha256": "1e4a5df7e67ae985370321cc2c91b8595f7e3433ad8ee1e84da7a26ff5254deb",
+      "bytes": 8616489,
+      "duration_s": 10.02,
+      "fps_bucket": 60,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp9",
+      "camera_model": null,
+      "tags": [
+        "multiple_people",
+        "static_camera"
+      ],
+      "parent_source": "Xiph Derf FourPeople",
+      "source_page": "https://media.xiph.org/video/derf/",
+      "download_url": "https://media.xiph.org/video/derf/webm/FourPeople_1280x720_60.webm",
+      "license": "public domain",
+      "note": "10 s: eligible only as a DUALITY input, not a single-source style input.",
+      "pilot_note": "Retired from the next blind cohort: shared parent with prior pilots four_people. See cohort_retirement evidence."
+    },
+    {
+      "id": "johnny",
+      "role": "holdout",
+      "file": "johnny.webm",
+      "sha256": "58e58fb9d7f980b241123b04146058b12f386f59a6a56db6f293199824772ace",
+      "bytes": 6654698,
+      "duration_s": 10.02,
+      "fps_bucket": 60,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp9",
+      "camera_model": null,
+      "tags": [
+        "portrait",
+        "static_camera"
+      ],
+      "parent_source": "Xiph Derf Johnny",
+      "source_page": "https://media.xiph.org/video/derf/",
+      "download_url": "https://media.xiph.org/video/derf/webm/Johnny_1280x720_60.webm",
+      "license": "public domain",
+      "note": "10 s: eligible only as a DUALITY input, not a single-source style input."
+    },
+    {
+      "id": "vidyo4",
+      "role": "holdout",
+      "file": "vidyo4.webm",
+      "sha256": "f27f1b8f5b817a98669b812376b9c08d987f5e7404fc4bab7b0ae27d60db8393",
+      "bytes": 8037978,
+      "duration_s": 10.02,
+      "fps_bucket": 60,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp9",
+      "camera_model": null,
+      "tags": [
+        "portrait",
+        "static_camera"
+      ],
+      "parent_source": "Xiph Derf vidyo4",
+      "source_page": "https://media.xiph.org/video/derf/",
+      "download_url": "https://media.xiph.org/video/derf/webm/vidyo4_720p_60fps.webm",
+      "license": "public domain",
+      "note": "10 s: eligible only as a DUALITY input, not a single-source style input."
+    },
+    {
+      "id": "openspeaks_achhai",
+      "role": "pilot",
+      "file": "openspeaks_achhai.webm",
+      "sha256": "ae4f522a21aacba9f0e92d42743aeff0a6ea8b044364171cfaea0fb80f62e853",
+      "bytes": 101474511,
+      "duration_s": 78.12,
+      "fps_bucket": 24,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "av1",
+      "camera_model": null,
+      "tags": [
+        "portrait",
+        "backlit",
+        "static_camera"
+      ],
+      "parent_source": "OpenSpeaks Eastern Tharu Achhai Chaudhary medicinal plants interview part 1",
+      "source_page": "https://commons.wikimedia.org/wiki/File:OpenSpeaks-thq-Eastern_Tharu-Achhai_Chaudhary-SC-Medicinal_Plants_01.webm",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/3/3d/OpenSpeaks-thq-Eastern_Tharu-Achhai_Chaudhary-SC-Medicinal_Plants_01.webm",
+      "license": "CC BY-SA 4.0; Sanjib Chaudhary, OpenSpeaks Archives; local QA only, attribution/share-alike obligations for redistribution; depicted person's rights remain separate",
+      "metadata_evidence": "Local FFmpeg 7.1: WebM AV1 1920x1080, 23.976 fps, duration 78.120 s. Stream-copy framecrc with -copyts -copytb 1 preserves the 1/1000 timebase: 1873 video packets, PTS 0–78078 ms; 546 deltas of 41 ms and 1326 of 42 ms. These are consistent with CFR 24000/1001 plus 1 ms rounding, not genuine VFR.",
+      "tag_note": "Pre-sealing contact sheet at source frames 80/560/1040 shows one seated speaker in a medium/close portrait with bright windows behind him and a stable viewpoint. No generated edit has been viewed or used for tuning.",
+      "note": "This is the publisher's edited WebM derivative, downloaded without local transcoding. The page describes a MOV master and a smartphone but does not provide a downloadable MOV or a verified camera model. Do not count this as original MOV/camera/VFR coverage or proof of positive suitability for any style. AV1 decoder support must be checked on the actual Android device.",
+      "pilot_note": "Retired from the next blind cohort: shared parent with prior pilots openspeaks_achhai. See cohort_retirement evidence."
+    },
+    {
+      "id": "osprey_canon",
+      "role": "holdout",
+      "file": "osprey_canon.webm",
+      "sha256": "91760ce7294542c67cd1351f94d85545e495e1addfa928ca18d70fedbc7beae1",
+      "bytes": 11296000,
+      "duration_s": 41.778,
+      "fps_bucket": 30,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp8",
+      "camera_model": "Canon EOS 7D Mark II",
+      "camera_evidence": "Commons file history revision 225773260 (2016-12-10): uploader and own-work author מינוזיג added Videos taken with Canon EOS 7D Mark II. Author-declared capture model, not recovered camera metadata. https://commons.wikimedia.org/w/index.php?title=File:Osprey_video.webm&oldid=225773260",
+      "tags": [
+        "no_people"
+      ],
+      "parent_source": "MinoZig Osprey Israel 2015-03-13",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Osprey_video.webm",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/e/e3/Osprey_video.webm",
+      "license": "CC BY-SA 4.0; מינוזיג (MinoZig); attribution/share-alike obligations for redistribution",
+      "metadata_evidence": "FFmpeg 7.1 full video decode: VP8 1920x1080, 1252 frames, PTS deltas 33 ms (792) and 34 ms (459), consistent with 30000/1001 CFR rounded to a 1 ms timebase, not VFR.",
+      "tag_note": "Pre-sealing source contact sheet at six-second intervals shows an osprey on a post, no people. Animal subject is a human-detector negative challenge, not a positive portrait. No edit rendered or inspected.",
+      "note": "Downloaded publisher WebM without local transcoding. Camera declaration covers capture provenance only, not original camera container/codec/timing behaviour. No claim of raw MOV coverage. Source camera motion is not classified from sparse stills."
+    },
+    {
+      "id": "vuelta_nikon",
+      "role": "holdout",
+      "file": "vuelta_nikon.webm",
+      "sha256": "787a6d377e1624a4d987fbdb4ba585629762f169d8bbfa1b914dea75c0753eff",
+      "bytes": 70324894,
+      "duration_s": 36.048,
+      "fps_bucket": 24,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp8",
+      "camera_model": "Nikon D3100",
+      "camera_evidence": "Commons original page revision 257289073 (2017-09-02), own-work uploader Emijrp, contains Videos taken with Nikon D3100. Author-declared capture model, not recovered camera metadata. https://commons.wikimedia.org/w/index.php?title=File:Vuelta_ciclista_a_España_2014_a_su_paso_por_El_Puerto_De_Santa_María.webm&oldid=257289073",
+      "tags": [
+        "multiple_people",
+        "full_body",
+        "intense_motion"
+      ],
+      "parent_source": "Emilio J. Rodríguez Posada Vuelta El Puerto De Santa María 2014-08-24",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Vuelta_ciclista_a_España_2014_a_su_paso_por_El_Puerto_De_Santa_María.webm",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/8/88/Vuelta_ciclista_a_Espa%C3%B1a_2014_a_su_paso_por_El_Puerto_De_Santa_Mar%C3%ADa.webm",
+      "license": "CC BY-SA 3.0; Emilio J. Rodríguez Posada (Emijrp); attribution/share-alike obligations for redistribution; depicted persons' rights remain separate",
+      "metadata_evidence": "FFmpeg 7.1 full video decode: VP8 1920x1080, 864 frames, PTS deltas 41 ms (252) and 42 ms (611), consistent with 24000/1001 CFR rounded to a 1 ms timebase, not VFR.",
+      "tag_note": "Pre-sealing source contact sheet at six-second intervals shows groups of cyclists passing spectators, visible full bodies, fast subject displacement and foreground occlusions. No edit rendered or inspected; this is not proof of positive suitability for every style.",
+      "note": "Publisher WebM is a videoconvert derivative, downloaded unchanged. Capture-model provenance does not prove original camera container/codec/timing behaviour. No raw MOV or VFR coverage claimed."
+    },
+    {
+      "id": "prnu_img0078",
+      "role": "holdout",
+      "file": "prnu_img0078.mov",
+      "sha256": "7a0581c62f8c6702578e5a4fe93ab15359692f4e988843b28bd6fcb7bfc544a5",
+      "bytes": 60014934,
+      "duration_s": 30.62,
+      "fps_bucket": 30,
+      "frame_rate_mode": "cfr",
+      "container": "mov",
+      "video_codec": "h264",
+      "camera_model": "Apple iPhone 6",
+      "camera_evidence": "Unchanged publisher MOV retains com.apple.quicktime.make=Apple, model=iPhone 6, software=10.0.2, creation_time=2016-11-08T14:17:41Z. File hash matches Mendeley API SHA-256. Metadata is consistent with camera capture, not cryptographic proof of authenticity.",
+      "tags": [
+        "no_people"
+      ],
+      "parent_source": "Zeno Geradts PRNU iPhone 6 flatfield session 2016-11-08",
+      "source_page": "https://data.mendeley.com/datasets/y8kgbn3nck/1",
+      "download_url": "https://data.mendeley.com/public-files/datasets/y8kgbn3nck/files/26b8fcd8-8561-440f-b501-71b446f87fba/file_downloaded",
+      "license": "CC BY 4.0; Zeno Geradts, PRNU database for video of smartphones, Mendeley Data v1, DOI 10.17632/y8kgbn3nck.1; attribution required for redistribution",
+      "metadata_evidence": "Unchanged IMG_0078.MOV: QuickTime qt brand, H.264 High 1920x1080, rotation -90 degrees, AAC 44.1 kHz mono, 30.62 s. Full video decode completed without errors. Original packet PTS timebase 1/600: 918 packets, PTS 0–18350; 907 deltas of 20 ticks, 10 of 21. All timestamp pairs fit constant period 20.011111 ticks with <=1 tick rounding error. Timing report: artifacts/quality/holdout/prnu_img0078.timing-v2.json.",
+      "tag_note": "Pre-sealing contact sheet shows an almost uniform light surface, no people. Do not label this as a positive portrait, low-quality human scene or proof of static camera; flatfield texture cannot establish camera motion.",
+      "note": "Original published MOV bytes downloaded without remux/transcode, SHA matches publisher. Useful for original container/rotation/negative human-evidence tests, not artistic quality. Same parent capture session as IMG_0079; do not treat these as independent positive parents. No montage rendered or used for tuning."
+    },
+    {
+      "id": "prnu_img0079",
+      "role": "holdout",
+      "file": "prnu_img0079.mov",
+      "sha256": "a50cc7cfc8ab6eb8b31692734255cc27a185ced96ddeba13aa937961d2a8f9c9",
+      "bytes": 87402795,
+      "duration_s": 30.52,
+      "fps_bucket": 60,
+      "frame_rate_mode": "unknown",
+      "container": "mov",
+      "video_codec": "h264",
+      "camera_model": "Apple iPhone 6",
+      "camera_evidence": "Unchanged publisher MOV retains Apple iPhone 6 QuickTime camera metadata and Core Media Video handler. SHA-256 matches Mendeley API. Metadata-consistent provenance, not cryptographic authenticity.",
+      "tags": [
+        "no_people"
+      ],
+      "parent_source": "Zeno Geradts PRNU iPhone 6 flatfield session 2016-11-08",
+      "source_page": "https://data.mendeley.com/datasets/y8kgbn3nck/1",
+      "download_url": "https://data.mendeley.com/public-files/datasets/y8kgbn3nck/files/a00278e4-d616-4104-bb81-d38503d48e5a/file_downloaded",
+      "license": "CC BY 4.0; Zeno Geradts, PRNU database for video of smartphones, Mendeley Data v1, DOI 10.17632/y8kgbn3nck.1; attribution required for redistribution",
+      "metadata_evidence": "QuickTime H.264 High 1920x1080, mean packet presentation FPS 59.986888, duration 30.52 s. Full video decode completed without errors. Original 1/600 packet timebase, 1831 packets, PTS 0–18304, 1826 deltas of 10 ticks and 4 of 11. Strict constant-period rounding model does not fit, but interval spread is only one tick: cannot distinguish tiny clock irregularity from a meaningful VFR stress case. Timing report artifacts/quality/holdout/prnu_img0079.timing-v2.json says unknown, not VFR coverage.",
+      "tag_note": "Pre-sealing contact sheet shows an almost uniform light surface, no people; same parent session as IMG_0078. It does not prove camera stability or positive suitability for any style.",
+      "note": "Unchanged publisher MOV, no local frame-rate conversion. First exploratory timing report .timing.json labelled every non-CFR fit VFR; that rule was rejected as too weak and superseded by .timing-v2.json. Neither file was rendered as a montage or used for engine tuning."
+    },
+    {
+      "id": "prnu_20121231_163957",
+      "role": "pilot",
+      "file": "prnu_20121231_163957.mp4",
+      "sha256": "9d4bb5a2ac35a5c0f76b5e6e8941fb3c0a4fd5a2bf0961b78e94117745c58850",
+      "bytes": 49610455,
+      "duration_s": 32.66,
+      "fps_bucket": 30,
+      "frame_rate_mode": "vfr",
+      "container": "mp4",
+      "video_codec": "h264",
+      "camera_model": null,
+      "tags": [
+        "no_people"
+      ],
+      "parent_source": "Zeno Geradts PRNU flatfield camera session 2012-12-31",
+      "source_page": "https://data.mendeley.com/datasets/y8kgbn3nck/1",
+      "download_url": "https://data.mendeley.com/public-files/datasets/y8kgbn3nck/files/d5d77584-27d7-41ec-8848-9c5d1688fbc8/file_downloaded",
+      "license": "CC BY 4.0; Zeno Geradts, PRNU database for video of smartphones, Mendeley Data v1, DOI 10.17632/y8kgbn3nck.1; attribution required for redistribution",
+      "vfr_evidence": "Original packet PTS in 1/90000 timebase: 970 packets, PTS 0–2910570; 49 distinct positive intervals ranging 2961–3463 ticks (32.900–38.478 ms), versus tick precision 0.011111 ms. Pairwise constant-period model with one-tick rounding is infeasible. Real publisher capture timestamps retained without local FPS manipulation. Modest variability, not coverage of severe cadence switching/frame-drop storms.",
+      "timing_report_file": "artifacts/quality/holdout/prnu_20121231_163957.timing.json",
+      "timing_report_sha256": "a65dfd5b6824fa99e218324c12d92ffb8602fd6daf41e10db31a3109ba261005",
+      "metadata_evidence": "Publisher SHA matches local bytes. MP4 mp42 H.264 Baseline 1280x720, rotation -90 degrees, AAC 48 kHz stereo, duration 32.66 s. Full video decode completed without errors. Camera model is not present and is not inferred from filename.",
+      "tag_note": "Pre-sealing contact sheet at five-second intervals shows an almost uniform surface, no people. Useful negative/source timing case; not a positive portrait, motion or low-quality human scene. No montage rendered or used for tuning.",
+      "pilot_note": "Retired from the next blind cohort: shared parent with prior pilots prnu_20121231_163957. See cohort_retirement evidence."
+    },
+    {
+      "id": "lakhan_interview_2023",
+      "role": "holdout",
+      "file": "lakhan_interview_2023.webm",
+      "sha256": "8ffede53eb44c4711c6f318d871085e0261b94893615e0c7dd9c0b5e8af15ec0",
+      "bytes": 54074210,
+      "duration_s": 53.803,
+      "fps_bucket": 25,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp8",
+      "camera_model": null,
+      "tags": [
+        "portrait",
+        "static_camera"
+      ],
+      "parent_source": "Suyash Dwivedi interview with Lakhan Lal, 2023-07-22",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Interview_of_a_Baiga_tribe_named_Lakhan_Lal_in_Hindi_Language_by_Suyash_Dwivedi.webm",
+      "source_revision": "https://commons.wikimedia.org/w/index.php?oldid=1178339444",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/8/89/Interview_of_a_Baiga_tribe_named_Lakhan_Lal_in_Hindi_Language_by_Suyash_Dwivedi.webm",
+      "publisher_sha1": "d29a2a4a5edfe3527242fa816f702c262751ea70",
+      "license": "CC BY-SA 4.0; Suyash Dwivedi; author-declared own work; attribution and share-alike required for distributed derivatives",
+      "timing_report_file": "artifacts/quality/holdout/lakhan_interview_2023.timing.json",
+      "timing_report_sha256": "6b2ecf5c6133e82be90b56b98cb37e473fbdf94fa748a0d60a3a181d395dce67",
+      "verification_note": "Unchanged published WebM, SHA1/size match Commons. Full video decode passed, 1345 packets at exactly40ms. Source-only preview: single upper-body interview, authored pillarboxing and sparse motion. No montage run, no tuning. Not guaranteed positive material for any product, not camera raw or authenticated model."
+    },
+    {
+      "id": "circe_interview_2024",
+      "role": "holdout",
+      "file": "circe_interview_2024.webm",
+      "sha256": "b93225fd2dbdf21ea1b1ea787bcb736bce111f3c84dbb32dcb0e46bda9f6eb72",
+      "bytes": 154525951,
+      "duration_s": 416.868,
+      "fps_bucket": 30,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "av1",
+      "camera_model": null,
+      "tags": [
+        "portrait",
+        "backlit",
+        "static_camera"
+      ],
+      "parent_source": "Owoimsad Circe Esmeralda Rosales Portugal interview, Polytechnic University of Gomez Palacio, May2024",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Excerpt_of_interview_to_Circe_Esmeralda_Rosales_Portugal,_Professor_at_the_Polytechnic_University_of_Gom%C3%A9z_Palacio.webm",
+      "source_revision": "https://commons.wikimedia.org/w/index.php?oldid=1214617482",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/b/bc/Excerpt_of_interview_to_Circe_Esmeralda_Rosales_Portugal%2C_Professor_at_the_Polytechnic_University_of_Gom%C3%A9z_Palacio.webm",
+      "publisher_sha1": "221c1b26c6704d4fb5aa2a3c0a15e79c77e8704a",
+      "license": "CC BY-SA 4.0; Owoimsad; author-declared own work; attribution and share-alike required for distributed derivatives",
+      "timing_report_file": "artifacts/quality/holdout/circe_interview_2024.timing.json",
+      "timing_report_sha256": "7b21309c4d99da852607f4996705b2153d652dcc2778e4ed6b6ab959442d17ae",
+      "verification_note": "Unchanged publisher-edited interview excerpt, introductory black title card and embedded subtitles, not camera raw. Commons SHA1/size match. Full AV1 video decode passed. 12506 packets,33/34ms fit rounded30fps CFR, not VFR. Source preview confirms seated upper-body person with hand gestures, bright window/blinds behind shaded face. No montage/tuning; style suitability and Android compatibility not proved. Author's description says May24; date field says June10; do not infer exact filming date from one field."
+    },
+    {
+      "id": "tao_interview_2018",
+      "role": "holdout",
+      "file": "tao_interview_2018.webm",
+      "sha256": "190036ad53a695417e590b4ceacd3758299d2c6b5c5de688724bd0b9f89531ea",
+      "bytes": 14105595,
+      "duration_s": 128.207,
+      "fps_bucket": 25,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp8",
+      "camera_model": null,
+      "tags": [
+        "portrait",
+        "dark",
+        "static_camera"
+      ],
+      "parent_source": "Wikitongues Teddy Nee recording Tao in Taiwan, 2018-03-27",
+      "source_page": "https://commons.wikimedia.org/wiki/File:WIKITONGUES-_Tao_speaking_Yunnan_Mandarin_with_Thai_and_Taiwanese_accent.webm",
+      "source_revision": "https://commons.wikimedia.org/w/index.php?oldid=1251157347",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/9/9d/WIKITONGUES-_Tao_speaking_Yunnan_Mandarin_with_Thai_and_Taiwanese_accent.webm",
+      "publisher_sha1": "d004b2d94668033ed961d940d2a262177609aa54",
+      "license": "CC BY-SA 4.0; Wikitongues and Teddy Nee; attribution and share-alike required for distributed derivatives",
+      "timing_report_file": "artifacts/quality/holdout/tao_interview_2018.timing.json",
+      "timing_report_sha256": "bc642906c1aa80f190586fbecc0359cc90d57799490d1e4c7ed29993d49cef32",
+      "verification_note": "Unchanged published WebM; Commons SHA1/size match.3179 packets at40ms, full video decode passed. Video about127.16s; container/audio128.207s. Static dim indoor upper-body interview, face/hand/pose changes; bright background lamp alone not labelled strong backlight. Not raw camera, model unknown. Source-only labelling, no montage or tuning; not guaranteed positive for all styles."
+    },
+    {
+      "id": "prnu_20130105_131053",
+      "role": "holdout",
+      "file": "prnu_20130105_131053.mp4",
+      "sha256": "afa7c47f73f43d647449d225ed683722054233fe37b337ec16a1774ac2fac1ec",
+      "bytes": 49307971,
+      "duration_s": 32.32,
+      "fps_bucket": 30,
+      "frame_rate_mode": "vfr",
+      "container": "mp4",
+      "video_codec": "h264",
+      "camera_model": null,
+      "tags": [
+        "no_people"
+      ],
+      "parent_source": "Zeno Geradts PRNU natural lab recording2013-01-05 (session inferred from container date and distinct scene)",
+      "source_page": "https://data.mendeley.com/datasets/y8kgbn3nck/1",
+      "download_url": "https://data.mendeley.com/public-files/datasets/y8kgbn3nck/files/6157dcc2-f245-41bc-bc5e-741b68df60c0/file_downloaded",
+      "license": "CC BY 4.0; Zeno Geradts, PRNU database for video of smartphones, Mendeley Data v1, DOI10.17632/y8kgbn3nck.1; attribution required for redistribution",
+      "vfr_evidence": "964 original video packet PTS,1/90000 timebase,43 different deltas2981..3026 ticks (33.1222..33.6222ms), incompatible with constant period rounded to one tick. Mild presentation-time variation, not proof of intentional exposure/FPS switching or severe dropped-frame stress.",
+      "timing_report_file": "artifacts/quality/holdout/prnu_20130105_131053.timing.json",
+      "timing_report_sha256": "08445f5d7a9a56b2a848949c1ac778c4d0f25867a1c4d3a9d827d2d25a7b7a33",
+      "verification_note": "Unchanged original published MP4; exact publisher SHA256/byte size match. Full964-frame video decode passed;1280x720 H264 Baseline,AAC48kHz stereo,rotation-90,creation_time2013-01-05T12:11:26Z. Different file/date/visible moving laboratory scene from retired20121231 flatfield source (creation_time2012-12-31T15:40:31Z). Same dataset/device family not counted as a new verified camera model. Session relation still requires human provenance review; no crypto authentication. No people in source preview, no montage/tuning; negative human/timing candidate only."
+    },
+    {
+      "id": "seagulls_ontario_02",
+      "role": "holdout",
+      "file": "seagulls_ontario_02.webm",
+      "sha256": "b836fab5aecc49ed3d130c56b8c1f749e279f26040dd63112bd92becddfb90ca",
+      "bytes": 11649147,
+      "duration_s": 3.741,
+      "fps_bucket": 25,
+      "frame_rate_mode": "cfr",
+      "container": "webm",
+      "video_codec": "vp9",
+      "camera_model": null,
+      "tags": [],
+      "parent_source": "Fabian Roudra Baroi Ontario Lake seagulls recording2022-05-09",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Seagulls_on_Ontario_Lake_02.webm",
+      "source_revision": "https://commons.wikimedia.org/w/index.php?oldid=1251935322",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/8/80/Seagulls_on_Ontario_Lake_02.webm",
+      "publisher_sha1": "1d91d1b32092382850426f86ad1751716a9b697f",
+      "license": "CC BY-SA 4.0; Fabian Roudra Baroi; author-declared own work; attribution and share-alike required for distributed derivatives",
+      "timing_report_file": "artifacts/quality/holdout/seagulls_ontario_02.timing.json",
+      "timing_report_sha256": "f2efceea2112d1b61b64afb76c50ee3519310d3140605da1afaf0b7a72c7d4ba",
+      "verification_note": "Original published WebM unchanged; Commons SHA1/size rechecked.93 packets40ms, video3.727s/container3.741s,1920x1080VP9/Opus; prior full local video decode passed. Independent candidate for <6s DUALITY negative, neither long-single-source nor positive DUALITY coverage. No montage/tuning; no people tags needed for duration failure. Filming date from author, camera model/raw origin unknown."
+    }
+  ],
+  "cohort_retirement": [
+    {
+      "media_ids": [
+        "fbi_debra_24s"
+      ],
+      "prior_pilot_ids": [
+        "fbi_debra_24s"
+      ],
+      "exposed_media_ids": [],
+      "result_evidence": []
+    },
+    {
+      "media_ids": [
+        "coconut_dancers"
+      ],
+      "prior_pilot_ids": [],
+      "exposed_media_ids": [
+        "coconut_dancers"
+      ],
+      "result_evidence": [
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_duality_fullbody_portrait_20260926.mp4.result",
+          "result_sha256": "c29b1e26f5dc342e47042b3277adda72393fbc5c28803246feb7857eb0a42a5a"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_duality_portrait_fullbody_20260926.mp4.result",
+          "result_sha256": "a4f4b19d455715ce9da9d434af9c969d37564fdc4684c0d7571d3c9592870807"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_fear_fullbody_20260926.mp4.result",
+          "result_sha256": "6732eb528cb1467b754c28aaa066e07bfa256d4bda3b3f81d333c86cc23777f3"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v10_fear_fov_20260926.mp4.result",
+          "result_sha256": "dfb3ac73830d812a40cb40e3377c435d6332f62396bd3c70552a7639b29d2e75"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v11_fear_query_footprint_20260926.mp4.result",
+          "result_sha256": "3709c66b00be6eaa1512d6d847e5e021735d798720955928b81ca88108aea279"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v12_fear_local_affine_20260926.mp4.result",
+          "result_sha256": "4cb63a91c406b23003ecf2cdb7c352d68b319078be53f6f6c26bfbf7063984ca"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v3_fear_motion_20260926.mp4.result",
+          "result_sha256": "b5983c01635d726baba48e0643324f2e664340a5e763fa7f9fc87e5d35313404"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v4_fear_correspondence_20260926.mp4.result",
+          "result_sha256": "c491b05fae3ce30ccd52f7a1363291a1cadd10e87b5f9d858225d5eab495aee8"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v6_fear_unique_centers_20260926.mp4.result",
+          "result_sha256": "91ec96a6000880f997dfa3830b12a17438916eecbf1eb81c0bc40a95c79e4896"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v7_fear_subpixel_20260926.mp4.result",
+          "result_sha256": "458ad532ccaf6852dd9fecd2cfd37e716e6926a042904983867a144daa854db0"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v8_fear_area_20260926.mp4.result",
+          "result_sha256": "5a07093be18018e8f8c90b5e3a24b1cdbc60ae275a2af32bc8422e51036ed1b1"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v9_fear_mask_center_20260926.mp4.result",
+          "result_sha256": "423b8cf99d9d75d8ea34a4865df13ead64fa39e51f1f41f4084d022e75ed0b10"
+        }
+      ]
+    },
+    {
+      "media_ids": [
+        "twilight_silhouette"
+      ],
+      "prior_pilot_ids": [],
+      "exposed_media_ids": [
+        "twilight_silhouette"
+      ],
+      "result_evidence": [
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_sigma_fullbody_backlit_20260926.mp4.result",
+          "result_sha256": "49518b54bfcb3fc6036a73946e5bb8c12379966ff6ec385bd0896fd994dff4b3"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v2_sigma_fullbody_backlit_20260926.mp4.result",
+          "result_sha256": "5cc6034a117ed87d61424a5584aac17b020f39cd961d9a2ed2ff05dce4b04add"
+        },
+        {
+          "result_file": "artifacts/quality/runs/calibration_v3_sigma_mask_evidence_20260926.mp4.result",
+          "result_sha256": "34a30c7a2c7e0e4c6a936fc515be4fa07739b1508986488e36c030ea96898a3a"
+        }
+      ]
+    },
+    {
+      "media_ids": [
+        "four_people"
+      ],
+      "prior_pilot_ids": [],
+      "exposed_media_ids": [
+        "four_people"
+      ],
+      "result_evidence": [
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_fear_short_20260926.mp4.result",
+          "result_sha256": "85bb75e1d660e057948092e2be9654815c55af9b576bae46da0bd2305853d34d"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_heartbeat_short_20260926.mp4.result",
+          "result_sha256": "6331ef7dba4465125403ed801c75bfcd823bf861cedb187fa41cd569165910cf"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_sigma_short_20260926.mp4.result",
+          "result_sha256": "53f4ed8a01f29f44da16d0ffeb7b26a9d479705bf7da55e941af8636985eff9b"
+        }
+      ]
+    },
+    {
+      "media_ids": [
+        "openspeaks_achhai"
+      ],
+      "prior_pilot_ids": [],
+      "exposed_media_ids": [
+        "openspeaks_achhai"
+      ],
+      "result_evidence": [
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_duality_fullbody_portrait_20260926.mp4.result",
+          "result_sha256": "c29b1e26f5dc342e47042b3277adda72393fbc5c28803246feb7857eb0a42a5a"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_duality_portrait_fullbody_20260926.mp4.result",
+          "result_sha256": "a4f4b19d455715ce9da9d434af9c969d37564fdc4684c0d7571d3c9592870807"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_heartbeat_portrait_20260926.mp4.result",
+          "result_sha256": "46f7932d1a0dd4856fb6aee861a2d8d2b0c319d7e90e878c81c3b96734f0806b"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_sigma_portrait_20260926.mp4.result",
+          "result_sha256": "9f40c6487f654c70e9c9a15459565d246313087310db9dbf957720b3a57dc75d"
+        }
+      ]
+    },
+    {
+      "media_ids": [
+        "prnu_20121231_163957"
+      ],
+      "prior_pilot_ids": [],
+      "exposed_media_ids": [
+        "prnu_20121231_163957"
+      ],
+      "result_evidence": [
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_fear_vfr_negative_20260926.mp4.result",
+          "result_sha256": "540301147af90da38752933618068012b5e5944bdecdbdaaa9458bc787ef4e03"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_heartbeat_vfr_negative_20260926.mp4.result",
+          "result_sha256": "dd47f036293066b4c574951222ba21ec17c5438b328bac9e0ce32a23165de161"
+        },
+        {
+          "result_file": "artifacts/quality/runs/blind_v1_sigma_vfr_negative_20260926.mp4.result",
+          "result_sha256": "6957c376bed5371a459d4dd20ae87f435457c6b0c57e5b29870767a8ce76dc69"
+        }
+      ]
+    }
+  ],
+  "next_cohort_preparation": {
+    "prepared_at": "2026-09-26T18:48:51.964164+00:00",
+    "retired_media_ids": [
+      "coconut_dancers",
+      "fbi_debra_24s",
+      "four_people",
+      "openspeaks_achhai",
+      "prnu_20121231_163957",
+      "twilight_silhouette"
+    ],
+    "scope": "Known local runner source identities and parent links, not proof of no prior exposure",
+    "release_ready": false,
+    "remaining_review": "Provenance/near-duplicate/exposure review, coverage, new engine seal, all product machine and human acceptance",
+    "source_manifest_sha256": "330b471cd758bb4614ad9524c4235468ab9c7bcbe6c4a0af047b2c1f29337765",
+    "expanded_at": "2026-09-26T19:15:33Z",
+    "previous_candidate_file": "docs/quality/holdout-manifest-v2-candidate.json",
+    "previous_candidate_sha256": "c90edcf5e7802010df48be4ebac78f04ab5dcd191cf56d48c7991ecc35e588a7",
+    "expansion_scope": "Source metadata/rights/PTS/full local decode and source-only contact-sheet labelling; no montage or algorithm tuning on new footage. Candidate, not sealed or product acceptance."
+  }
+}

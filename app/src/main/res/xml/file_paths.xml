@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="pending_renders" path="pending-renders/" />
+    <files-path name="my_edits" path="my-edits/" />
+    <files-path name="completed_renders" path="completed-renders/" />
+</paths>

@@ -1,0 +1,8 @@
+{
+  "id": "directional-whip",
+  "shader": "directional_whip.frag",
+  "minimumGles": 3,
+  "durationMs": 250,
+  "parameters": { "intensity": 0.16, "direction": "alternating" },
+  "fallback": "kinetic-cut"
+}

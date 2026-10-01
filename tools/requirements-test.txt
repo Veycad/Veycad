@@ -1,0 +1,3 @@
+# Required by the synthetic alpha/image unit tests; no model downloads or device needed.
+numpy>=1.26,<3
+Pillow>=10,<13
