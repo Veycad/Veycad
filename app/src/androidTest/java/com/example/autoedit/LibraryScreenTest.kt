@@ -57,7 +57,7 @@ class LibraryScreenTest {
         assertEquals(listOf(label), libraryRows())
         onView(withText(label)).perform(scrollTo(), click())
         ui.awaitDisplayed(R.id.resultContent)
-        onView(withId(R.id.saveButton)).check(matches(isDisplayed()))
+        onView(withId(R.id.saveButton)).perform(scrollTo()).check(matches(isDisplayed()))
         assertArrayEquals(bytes, file.readBytes())
         assertTrue(File(ui.context.filesDir, "my-edits").listFiles().orEmpty().isEmpty())
     }
