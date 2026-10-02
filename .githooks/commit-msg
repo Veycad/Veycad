@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+    printf '%s\n' 'Usage: commit-msg <message-file>' >&2
+    exit 1
+fi
+
+# Git calls this hook before removing comments from the commit template.
+subject=$(git stripspace --strip-comments < "$1" | sed -n '1p' | tr -d '\r')
+
+# Only actual Git merges may use the generated merge heading.
+if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+    case "$subject" in
+        'Merge '*) exit 0 ;;
+    esac
+fi
+
+if printf '%s\n' "$subject" | LC_ALL=C grep -Eq \
+    '^(feat|fix|refactor|perf|test|docs|style|build|ci|chore|revert)(\([a-z][a-z0-9-]*\))?!?: [^[:space:]].*$'; then
+    exit 0
+fi
+
+printf '%s\n' \
+    'Commit message must use: type(scope): description' \
+    'Example: fix(render): correct audio synchronization' \
+    'Scope is optional. See CONTRIBUTING.md for allowed types and examples.' >&2
+exit 1
