@@ -1,0 +1,47 @@
+{
+  "serial": "emulator-5558",
+  "avd": "AutoCamera_API36",
+  "package": "com.example.autoedit.uitest",
+  "run_id": "20261002-083055-154",
+  "run": 60.0,
+  "passed": true,
+  "error": null,
+  "phases": [
+    {
+      "name": "permissions",
+      "expected": 2,
+      "run": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duplicates": 0,
+      "missing": [],
+      "unexpected": [],
+      "instrumentation_exit_code": 0,
+      "executed": 2,
+      "instrumentation_finished": true,
+      "report_totals_match": true,
+      "xml_reports": 1,
+      "report_directory": "C:\\Users\\rexar\\.codex\\worktrees\\auto-camera-pr\\AutoEdit\\build\\reports\\ui-tests\\runs\\20261002-083055-154\\permissions",
+      "passed": true
+    },
+    {
+      "name": "screens",
+      "expected": 58,
+      "run": 58,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duplicates": 0,
+      "missing": [],
+      "unexpected": [],
+      "instrumentation_exit_code": 0,
+      "executed": 58,
+      "instrumentation_finished": true,
+      "report_totals_match": true,
+      "xml_reports": 1,
+      "report_directory": "C:\\Users\\rexar\\.codex\\worktrees\\auto-camera-pr\\AutoEdit\\build\\reports\\ui-tests\\runs\\20261002-083055-154\\screens",
+      "passed": true
+    }
+  ]
+}

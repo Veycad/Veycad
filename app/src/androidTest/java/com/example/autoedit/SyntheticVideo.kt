@@ -10,12 +10,13 @@ import java.io.File
 
 /** A real, decodable AVC clip generated on-device, independent of user footage. */
 internal object SyntheticVideo {
-    fun create(target: File): File {
+    fun create(target: File, durationMs: Long = 3_000): File {
+        require(durationMs in 1_000..180_000)
         if (target.isFile && target.length() > 0) {
             val valid = runCatching {
                 MediaMetadataRetriever().use { metadata ->
                     metadata.setDataSource(target.path)
-                    metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() > 0
+                    kotlin.math.abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - durationMs) <= 100
                 }
             }.getOrDefault(false)
             if (valid) return target
@@ -51,7 +52,7 @@ internal object SyntheticVideo {
                 if (!inputEnded) {
                     val index = codec.dequeueInputBuffer(10_000)
                     if (index >= 0) {
-                        if (frame == 90) {
+                        if (frame == (durationMs * 30 / 1_000).toInt()) {
                             codec.queueInputBuffer(index, 0, 0, frame * 1_000_000L / 30,
                                 MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputEnded = true

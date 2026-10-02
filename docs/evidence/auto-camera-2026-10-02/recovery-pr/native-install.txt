@@ -1,0 +1,9 @@
+Performing Streamed Install
+Success
+Starting: Intent { cmp=com.example.autoedit.camera/com.example.autoedit.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.example.autoedit.camera/com.example.autoedit.MainActivity
+TotalTime: 1357
+WaitTime: 1360
+Complete

@@ -30,6 +30,9 @@ object LocalDiagnostics {
                 put("session_id", sessionId(context))
                 put("android", Build.VERSION.SDK_INT)
                 put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
+                put("package", context.packageName)
+                put("version_name", BuildConfig.VERSION_NAME)
+                put("version_code", BuildConfig.VERSION_CODE)
                 details.forEach { (key, value) -> put(key, value) }
             }
             file.appendText(row.toString() + "\n")

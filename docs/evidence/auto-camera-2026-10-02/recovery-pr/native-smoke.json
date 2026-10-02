@@ -1,0 +1,12 @@
+{
+  "installed_sha256": "FCABDF396A029E45199D409499EACBFBC7E93E5A272D15B01C3ECDB0D03AF136",
+  "built_sha256": "FCABDF396A029E45199D409499EACBFBC7E93E5A272D15B01C3ECDB0D03AF136",
+  "equal": true,
+  "serial": "emulator-5558",
+  "avd": "AutoCamera_API36",
+  "native_activity": "com.example.autoedit.CaptureActivity",
+  "style": "heartbeat",
+  "mode": "MUSIC",
+  "recording_performed": false,
+  "render_performed": false
+}

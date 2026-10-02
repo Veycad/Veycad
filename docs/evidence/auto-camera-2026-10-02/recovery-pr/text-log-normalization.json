@@ -1,0 +1,52 @@
+[
+  {
+    "file": "apk-arm64-v8a-signature.txt",
+    "original_sha256": "b9c6879e48d25a9786d2beb8a15738c06edce7d06f2722dd860894618592bd09",
+    "committed_sha256": "b0a1af67205efcd284e5bbae691ebf4a0d296b4fcae02cd28e7e0509d0e0efbc"
+  },
+  {
+    "file": "apk-badging.txt",
+    "original_sha256": "364de720e55a22b5f46878e5cc0a453fe467e4ba80e7b6f996c370577caeb114",
+    "committed_sha256": "61d645d6c8c3cc88b9d1376b6967cf24dd2eae9e5df3a58ce25d7de5feeba180"
+  },
+  {
+    "file": "apk-universal-signature.txt",
+    "original_sha256": "b9c6879e48d25a9786d2beb8a15738c06edce7d06f2722dd860894618592bd09",
+    "committed_sha256": "b0a1af67205efcd284e5bbae691ebf4a0d296b4fcae02cd28e7e0509d0e0efbc"
+  },
+  {
+    "file": "baseline-checks.txt",
+    "original_sha256": "c3fa502cfece1680845356f69c21fa2e32497f41cb79fc9fc8ea06274e67c41d",
+    "committed_sha256": "cad1c5c2ae484fca5c9abeaf91c4031e176bed82bd372dfd12cd623e55aee3cf"
+  },
+  {
+    "file": "native-install.txt",
+    "original_sha256": "68a12b14dabf3af94768c58b7870ad7fe2623240d88eac9ab6f19e75f84c0e04",
+    "committed_sha256": "f3530df193eccb057e540612caff4e9db706a29054c83de61354de94aa9eb95f"
+  },
+  {
+    "file": "native-installed-version.txt",
+    "original_sha256": "8b9fad440eda246a5080c9314a66633cd1662b71d2279931e2eb5c40865c8175",
+    "committed_sha256": "7a063ed16496899bb934a3c9c309548c391b899b8d6cabbcdaf6e2117adc2690"
+  },
+  {
+    "file": "regressions-before.txt",
+    "original_sha256": "e3a4a24324c2c4c3520059421d33b0ba65a17ad3e99eb615767fdab03bfeb985",
+    "committed_sha256": "11ffc7249995dfdc634509d33041093ff8c1a78fd3fde24042a7b2a80b5b514c"
+  },
+  {
+    "file": "screenshot-regressions-after.txt",
+    "original_sha256": "018641c170a243a94fbe720e4ca4552b4c8accf4a391b1db81d3e8a10c027ac0",
+    "committed_sha256": "f254346b3f2b6bde4b870af7dfc2d9559e313feedfdd95c3a42daf8ed4bef8f0"
+  },
+  {
+    "file": "targeted-regressions-after.txt",
+    "original_sha256": "914dd41d2a9a5b74acde0dce9bc7a65cfa76cfa5fa986333e56ceccfba71b308",
+    "committed_sha256": "24b4012b2196a8649e7dea7b635b361c7a0d9c6fdd8688b3ae5ac5caee851dc0"
+  },
+  {
+    "file": "ui-checks.txt",
+    "original_sha256": "559bcadf71e9ff6cc2f64ee9940e4e1b85cbf2956685cda399d90eb79ddb85c7",
+    "committed_sha256": "884c6e98a09e75979007236bee1e45001327d41126b8275c58fa476c62155832"
+  }
+]

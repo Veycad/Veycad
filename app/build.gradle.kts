@@ -10,12 +10,18 @@ android {
         applicationId = "com.example.autoedit"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.1.8"
+        versionCode = 13
+        versionName = "0.1.12"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        create("cameraPilot") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".camera"
+            versionNameSuffix = "-auto-camera-pilot"
+            matchingFallbacks += "debug"
+        }
         create("uiTest") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".uitest"
@@ -75,6 +81,11 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+    val cameraVersion = "1.6.2"
+    implementation("androidx.camera:camera-camera2:$cameraVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraVersion")
+    implementation("androidx.camera:camera-video:$cameraVersion")
+    implementation("androidx.camera:camera-view:$cameraVersion")
     // Bundled, on-device perception. No footage or biometric template leaves the phone.
     implementation("com.google.mlkit:face-detection:16.1.7")
     implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
