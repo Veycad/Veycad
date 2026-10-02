@@ -31,6 +31,7 @@ import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -205,6 +206,7 @@ class MainActivity : AppCompatActivity() {
                 if (musicSelection == null) refreshMusicForStyle()
                 updateReadyState()
             }
+            val progressWasVisible = progressPanel.visibility == View.VISIBLE
             if (importing) {
                 progressPanel.visibility = View.VISIBLE
                 progressBar.isIndeterminate = true
@@ -227,6 +229,12 @@ class MainActivity : AppCompatActivity() {
                     progressDetail.text = state.operationDetail
                 } else state.progress?.let(::showProgress)
             } else progressPanel.visibility = View.GONE
+            // Reveal a new job once; updates preserve the user's reading position.
+            if (rendering && !progressWasVisible) progressPanel.doOnLayout { panel ->
+                if (directorContent.isShown && panel.isShown && session.state.value?.busy == true) {
+                    panel.requestRectangleOnScreen(android.graphics.Rect(0, 0, panel.width, panel.height), true)
+                }
+            }
             if (state.entry != null && observedEntry != state.entry.file && !state.busy) {
                 observedEntry = state.entry.file
                 showCompletedResult(state.entry)

@@ -2,6 +2,7 @@ package com.example.autoedit
 
 import android.content.Context
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.action.ViewActions.scrollTo
@@ -21,6 +22,30 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class RenderProgressScreenTest {
     @get:Rule val ui = UiTestFixtureRule()
+
+    @Test fun new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position() {
+        ui.launch()
+        ui.importVideos("visible-progress.mp4")
+        var activity: MainActivity? = null
+        ui.scenario.onActivity { activity = it }
+        ui.startRender()
+        ui.waitUntil("new operation brings progress into the viewport") {
+            isCompletelyDisplayed().matches(requireNotNull(activity).findViewById<android.view.View>(R.id.progressTitle))
+        }
+        onView(withId(R.id.progressTitle)).check(matches(isCompletelyDisplayed()))
+        onView(withId(R.id.progressDetail)).check(matches(isCompletelyDisplayed()))
+        ui.scenario.onActivity { it.findViewById<ScrollView>(R.id.directorContent).scrollTo(0, 0) }
+        onView(withId(R.id.progressTitle)).check(matches(not(isDisplayed())))
+        ui.renderer.progress(VeycadAutomaticEditor.Stage.DIRECTING, 0, 4)
+        ui.awaitText(R.id.progressTitle, "Строю режиссуру")
+        ui.scenario.onActivity {
+            assertEquals("Progress updates must preserve the user's scroll position", 0,
+                it.findViewById<ScrollView>(R.id.directorContent).scrollY)
+        }
+        ui.renderer.complete()
+        ui.awaitIdle()
+        ui.awaitDisplayed(R.id.resultContent)
+    }
 
     @Test fun every_render_stage_has_its_copy_and_indeterminate_or_exact_candidate_percentage() {
         ui.launch()

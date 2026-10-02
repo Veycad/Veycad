@@ -1,0 +1,119 @@
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.RenderProgressScreenTest:
+INSTRUMENTATION_STATUS: test=new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stack=androidx.test.espresso.base.AssertionErrorHandler$AssertionFailedWithCauseError: Timed out: new operation brings progress into the viewport
+	at dalvik.system.VMStack.getThreadStackTrace(Native Method)
+	at java.lang.Thread.getStackTrace(Thread.java:1960)
+	at androidx.test.espresso.base.AssertionErrorHandler.handleSafely(AssertionErrorHandler.java:35)
+	at androidx.test.espresso.base.AssertionErrorHandler.handleSafely(AssertionErrorHandler.java:26)
+	at androidx.test.espresso.base.DefaultFailureHandler$TypedFailureHandler.handle(DefaultFailureHandler.java:158)
+	at androidx.test.espresso.base.DefaultFailureHandler.handle(DefaultFailureHandler.java:120)
+	at androidx.test.espresso.ViewInteraction.waitForAndHandleInteractionResults(ViewInteraction.java:387)
+	at androidx.test.espresso.ViewInteraction.desugaredPerform(ViewInteraction.java:212)
+	at androidx.test.espresso.ViewInteraction.perform(ViewInteraction.java:140)
+	at com.example.autoedit.UiTestFixtureRule.waitUntil(UiTestFixtureRule.kt:133)
+	at com.example.autoedit.UiTestFixtureRule.waitUntil$default(UiTestFixtureRule.kt:131)
+	at com.example.autoedit.RenderProgressScreenTest.new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position(RenderProgressScreenTest.kt:32)
+	... 33 trimmed
+Caused by: java.lang.AssertionError: Timed out: new operation brings progress into the viewport
+	at com.example.autoedit.UiTestFixtureRule$waitUntil$1.perform(UiTestFixtureRule.kt:139)
+	at androidx.test.espresso.ViewInteraction$SingleExecutionViewAction.perform(ViewInteraction.java:429)
+	at androidx.test.espresso.ViewInteraction.doPerform(ViewInteraction.java:297)
+	at androidx.test.espresso.ViewInteraction.-$$Nest$mdoPerform(Unknown Source:0)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:193)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:182)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:248)
+	at android.os.Looper.loop(Looper.java:338)
+	at android.app.ActivityThread.main(ActivityThread.java:9067)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+
+INSTRUMENTATION_STATUS: stream=
+Error in new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position(com.example.autoedit.RenderProgressScreenTest):
+androidx.test.espresso.base.AssertionErrorHandler$AssertionFailedWithCauseError: Timed out: new operation brings progress into the viewport
+	at dalvik.system.VMStack.getThreadStackTrace(Native Method)
+	at java.lang.Thread.getStackTrace(Thread.java:1960)
+	at androidx.test.espresso.base.AssertionErrorHandler.handleSafely(AssertionErrorHandler.java:35)
+	at androidx.test.espresso.base.AssertionErrorHandler.handleSafely(AssertionErrorHandler.java:26)
+	at androidx.test.espresso.base.DefaultFailureHandler$TypedFailureHandler.handle(DefaultFailureHandler.java:158)
+	at androidx.test.espresso.base.DefaultFailureHandler.handle(DefaultFailureHandler.java:120)
+	at androidx.test.espresso.ViewInteraction.waitForAndHandleInteractionResults(ViewInteraction.java:387)
+	at androidx.test.espresso.ViewInteraction.desugaredPerform(ViewInteraction.java:212)
+	at androidx.test.espresso.ViewInteraction.perform(ViewInteraction.java:140)
+	at com.example.autoedit.UiTestFixtureRule.waitUntil(UiTestFixtureRule.kt:133)
+	at com.example.autoedit.UiTestFixtureRule.waitUntil$default(UiTestFixtureRule.kt:131)
+	at com.example.autoedit.RenderProgressScreenTest.new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position(RenderProgressScreenTest.kt:32)
+	... 33 trimmed
+Caused by: java.lang.AssertionError: Timed out: new operation brings progress into the viewport
+	at com.example.autoedit.UiTestFixtureRule$waitUntil$1.perform(UiTestFixtureRule.kt:139)
+	at androidx.test.espresso.ViewInteraction$SingleExecutionViewAction.perform(ViewInteraction.java:429)
+	at androidx.test.espresso.ViewInteraction.doPerform(ViewInteraction.java:297)
+	at androidx.test.espresso.ViewInteraction.-$$Nest$mdoPerform(Unknown Source:0)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:193)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:182)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:248)
+	at android.os.Looper.loop(Looper.java:338)
+	at android.app.ActivityThread.main(ActivityThread.java:9067)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+
+INSTRUMENTATION_STATUS: test=new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 19.32
+There was 1 failure:
+1) new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position(com.example.autoedit.RenderProgressScreenTest)
+androidx.test.espresso.base.AssertionErrorHandler$AssertionFailedWithCauseError: Timed out: new operation brings progress into the viewport
+	at dalvik.system.VMStack.getThreadStackTrace(Native Method)
+	at java.lang.Thread.getStackTrace(Thread.java:1960)
+	at androidx.test.espresso.base.AssertionErrorHandler.handleSafely(AssertionErrorHandler.java:35)
+	at androidx.test.espresso.base.AssertionErrorHandler.handleSafely(AssertionErrorHandler.java:26)
+	at androidx.test.espresso.base.DefaultFailureHandler$TypedFailureHandler.handle(DefaultFailureHandler.java:158)
+	at androidx.test.espresso.base.DefaultFailureHandler.handle(DefaultFailureHandler.java:120)
+	at androidx.test.espresso.ViewInteraction.waitForAndHandleInteractionResults(ViewInteraction.java:387)
+	at androidx.test.espresso.ViewInteraction.desugaredPerform(ViewInteraction.java:212)
+	at androidx.test.espresso.ViewInteraction.perform(ViewInteraction.java:140)
+	at com.example.autoedit.UiTestFixtureRule.waitUntil(UiTestFixtureRule.kt:133)
+	at com.example.autoedit.UiTestFixtureRule.waitUntil$default(UiTestFixtureRule.kt:131)
+	at com.example.autoedit.RenderProgressScreenTest.new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position(RenderProgressScreenTest.kt:32)
+	... 33 trimmed
+Caused by: java.lang.AssertionError: Timed out: new operation brings progress into the viewport
+	at com.example.autoedit.UiTestFixtureRule$waitUntil$1.perform(UiTestFixtureRule.kt:139)
+	at androidx.test.espresso.ViewInteraction$SingleExecutionViewAction.perform(ViewInteraction.java:429)
+	at androidx.test.espresso.ViewInteraction.doPerform(ViewInteraction.java:297)
+	at androidx.test.espresso.ViewInteraction.-$$Nest$mdoPerform(Unknown Source:0)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:193)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:182)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:248)
+	at android.os.Looper.loop(Looper.java:338)
+	at android.app.ActivityThread.main(ActivityThread.java:9067)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1
