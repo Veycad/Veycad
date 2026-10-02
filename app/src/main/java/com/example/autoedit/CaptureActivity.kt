@@ -101,7 +101,16 @@ class CaptureActivity : AppCompatActivity() {
         preview.previewStreamState.observe(this) { state ->
             previewStreaming = state == PreviewView.StreamState.STREAMING
             if (previewStreaming) updateFrameAspect()
-            if (foreground && review == null && owner.state.value?.busy != true) {
+            val captureState = owner.state.value
+            // The provider binding distinguishes a lost source from a preview reconfiguration.
+            if (foreground && review == null && !previewStreaming &&
+                captureState?.phase == CaptureRecordingSession.Phase.PREPARING &&
+                video?.let { provider?.isBound(it) } == false) {
+                LocalDiagnostics.record(this, "capture_camera_lost_before_start", mapOf(
+                    "phase" to captureState.phase.name, "style" to script.styleId,
+                    "mode" to mode.name, "front" to front.toString()))
+                owner.stop(getString(R.string.capture_camera_lost_while_preparing))
+            } else if (foreground && review == null && captureState?.busy != true) {
                 if (!previewStreaming && countdown > 0) cameraLostBeforeRecording()
                 else if (preparationVisible && countdown == 0) updateCameraReadiness()
             }
@@ -158,10 +167,13 @@ class CaptureActivity : AppCompatActivity() {
                 else if (state.session.id != review?.id) showReview(state.session)
             } else if (waitingForRecording && state.phase == CaptureRecordingSession.Phase.FAILED) {
                 waitingForRecording = false
-                showFailure(state.error ?: getString(R.string.capture_empty))
+                showFailure(listOfNotNull(state.session?.stopReason, state.error)
+                    .distinct().joinToString("\n").ifBlank { getString(R.string.capture_empty) })
             } else if (waitingForRecording && state.phase == CaptureRecordingSession.Phase.IDLE) {
                 waitingForRecording = false
-                if (finishingAfterSave) finish() else showPreparation()
+                if (finishingAfterSave) finish()
+                else if (state.error != null) showFailure(state.error)
+                else showPreparation()
             }
         }
     }

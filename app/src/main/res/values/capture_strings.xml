@@ -12,6 +12,7 @@
     <string name="capture_start">Начать съёмку</string>
     <string name="capture_camera_loading">Камера запускается…</string>
     <string name="capture_camera_lost_before_record">Камера отключилась во время отсчёта. Съёмка не началась. Нажми «Попробовать снова», чтобы подключить камеру.</string>
+    <string name="capture_camera_lost_while_preparing">Камера отключилась во время подготовки съёмки. Можно попробовать снова.</string>
     <string name="capture_stop">Завершить запись</string>
     <string name="capture_stopping">Сохраняю запись…</string>
     <string name="capture_preparing">Подготавливаю съёмку…</string>

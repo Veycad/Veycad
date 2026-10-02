@@ -92,6 +92,8 @@ internal class CaptureRecordingSession private constructor(context: Context) {
                         session = store.create(script, mode, takes, front, rotation)
                         val started = requireNotNull(session)
                         mutable.value = State(Phase.PREPARING, started)
+                        // LiveData observers can cancel preparation before the recorder is assigned.
+                        if (token != generation || state.value?.phase != Phase.PREPARING) return@runCatching
                         val options = FileOutputOptions.Builder(store.staging(started.id))
                             .setFileSizeLimit(512_000_000L)
                             .setDurationLimitMillis(CaptureTakeTimeline.totalDurationMs(script,
@@ -238,15 +240,18 @@ internal class CaptureRecordingSession private constructor(context: Context) {
     fun stop(reason: String? = null) {
         check(Looper.myLooper() == Looper.getMainLooper())
         val current = state.value ?: return
-        if (current.phase == Phase.PREPARING && recording == null) {
-            generation++
-            releaseAudio()
-            mutable.value = State()
-            return
-        }
         if (current.phase !in setOf(Phase.PREPARING, Phase.RECORDING)) return
         LocalDiagnostics.record(app, "capture_stop_requested", mapOf("phase" to current.phase.name,
             "video_ms" to lastGuidanceMs.toString(), "has_stop_reason" to (reason != null).toString()))
+        if (current.phase == Phase.PREPARING && recording == null) {
+            generation++
+            releaseAudio()
+            val interrupted = current.session?.copy(status = CaptureSessionStore.Status.INTERRUPTED,
+                stopReason = reason, error = reason)
+            interrupted?.let(::persist)
+            mutable.value = State(session = interrupted, error = reason)
+            return
+        }
         main.removeCallbacksAndMessages(TICK_TOKEN)
         releaseAudio()
         val session = current.session?.copy(status = CaptureSessionStore.Status.FINALIZING, stopReason = reason)

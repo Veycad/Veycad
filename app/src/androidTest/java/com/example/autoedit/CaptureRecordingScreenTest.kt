@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.view.View
 import android.widget.TextView
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.Observer
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -140,6 +141,47 @@ class CaptureRecordingScreenTest {
             screen.recreate()
             await("camera loss reason after recreation") { reasonShown() }
             assertTrue(owner.store.recording(saved.id).isFile)
+        }
+    }
+
+    @Test fun cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords() {
+        open().use { screen ->
+            ready(screen)
+            var disconnected = false
+            val disconnect = Observer<CaptureRecordingSession.State> { state ->
+                if (!disconnected && state.phase == CaptureRecordingSession.Phase.PREPARING) {
+                    disconnected = true
+                    ProcessCameraProvider.getInstance(context).get().unbindAll()
+                }
+            }
+            screen.onActivity { owner.state.observe(it, disconnect) }
+            try {
+                tap(R.id.capturePrimary)
+                await("disconnect after countdown", 15_000) { disconnected }
+                await("preparing capture terminates after camera loss", 15_000) { owner.state.value?.busy != true }
+                var reasonVisible = false
+                await("camera interruption remains visible") {
+                    screen.onActivity {
+                        reasonVisible = it.findViewById<TextView>(R.id.captureDetail).text.contains("Камера отключилась")
+                    }
+                    reasonVisible
+                }
+                val interrupted = owner.state.value?.session
+                interrupted?.let {
+                    assertFalse("Interrupted session must leave PREPARED", it.status == CaptureSessionStore.Status.PREPARED)
+                    if (it.status == CaptureSessionStore.Status.READY) checkVideo(it)
+                }
+                var retry = false
+                screen.onActivity { retry = it.findViewById<TextView>(R.id.capturePrimary).text == context.getString(R.string.capture_retry) }
+                tap(if (retry) R.id.capturePrimary else R.id.captureSecondary)
+                ready(screen)
+                start(screen)
+                await("encoded frames after preparing-stage retry") { owner.state.value!!.elapsedMs >= 3_500 }
+                tap(R.id.capturePrimary)
+                checkVideo(awaitSaved())
+            } finally {
+                instrumentation.runOnMainSync { owner.state.removeObserver(disconnect) }
+            }
         }
     }
 
