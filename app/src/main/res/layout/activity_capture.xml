@@ -28,7 +28,8 @@
         <FrameLayout android:id="@+id/capturePreviewFrame" android:layout_width="match_parent" android:layout_height="370dp"
             android:layout_marginTop="20dp" android:background="@drawable/video_preview_surface" android:clipToOutline="true">
             <androidx.camera.view.PreviewView android:id="@+id/capturePreview" android:layout_width="match_parent" android:layout_height="match_parent" />
-            <VideoView android:id="@+id/capturePlayback" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" />
+            <VideoView android:id="@+id/capturePlayback" android:layout_width="match_parent" android:layout_height="match_parent"
+                android:layout_gravity="center" android:visibility="gone" />
             <com.example.autoedit.CaptureFrameOverlay android:id="@+id/captureFrameOverlay" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
             <TextView android:id="@+id/captureClock" android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_gravity="top|start" android:layout_margin="12dp" android:padding="10dp" android:background="@drawable/panel_surface"

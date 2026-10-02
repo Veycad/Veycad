@@ -2,7 +2,9 @@ package com.example.autoedit
 
 import android.content.Intent
 import android.os.SystemClock
+import android.view.View
 import android.widget.TextView
+import android.widget.VideoView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -30,6 +32,41 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class CaptureReviewScreenTest {
     @get:Rule val ui = UiTestFixtureRule()
+
+    @Test fun savedPortraitPreviewIsCenteredBeforeAndAfterRecreation() {
+        val store = CaptureSessionStore(ui.context.filesDir)
+        val draft = store.create(CaptureScript.fear, CaptureMode.MUSIC, 1, true, 0)
+        SyntheticVideo.create(store.staging(draft.id), 3_000)
+        val saved = store.markReady(draft.copy(status = CaptureSessionStore.Status.FINALIZING),
+            CaptureRecordingSession.readableVideoDurationMs(store.staging(draft.id)))
+        val bytes = store.recording(saved.id).readBytes()
+        openSession(saved).use { screen ->
+            fun assertCentered() {
+                awaitReview(screen)
+                awaitCondition(screen, "native portrait video has its decoded aspect ratio") {
+                    val video = it.findViewById<VideoView>(R.id.capturePlayback)
+                    video.width > 0 && video.height > 0 &&
+                        kotlin.math.abs(video.width * 3 - video.height * 2) <= 3
+                }
+                screenshot("camera-portrait-review.png")
+                screen.onActivity {
+                    val frame = it.findViewById<View>(R.id.capturePreviewFrame)
+                    val video = it.findViewById<VideoView>(R.id.capturePlayback)
+                    assertTrue("Portrait video must leave room at both sides", video.width < frame.width)
+                    assertTrue("Horizontal centre must match: left=${video.left}, width=${video.width}, frame=${frame.width}",
+                        kotlin.math.abs(video.left * 2 + video.width - frame.width) <= 1)
+                    assertTrue("Vertical centre must match",
+                        kotlin.math.abs(video.top * 2 + video.height - frame.height) <= 1)
+                    assertTrue(video.left >= 0 && video.top >= 0 &&
+                        video.right <= frame.width && video.bottom <= frame.height)
+                }
+            }
+            assertCentered()
+            screen.recreate()
+            assertCentered()
+            assertArrayEquals(bytes, store.recording(saved.id).readBytes())
+        }
+    }
 
     @Test fun automaticChoiceSurvivesRecreationAfterOpeningSpecificResultTake() {
         val store = CaptureSessionStore(ui.context.filesDir)
