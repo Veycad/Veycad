@@ -66,7 +66,9 @@
     <string name="capture_reason_too_short">Дубль короче 15 секунд</string>
     <string name="capture_recommendation_reason">Подходит для %1$s. Рекомендация по видимости человека, качеству кадра и композиции</string>
     <string name="capture_selection_required">Есть пригодные дубли, но сравнить их уверенно не удалось. Записи сохранены: открой съёмку в «Эдитах» и выбери дубль сам.</string>
-    <string name="capture_no_eligible_take">Не удалось подобрать дубль для %1$s. Записи сохранены: посмотри причины в «Эдитах» или сними ещё раз.</string>
+    <string name="capture_no_eligible_take">Не удалось подобрать дубль для %1$s.</string>
+    <string name="capture_rejected_take_reason">Дубль %1$d: %2$s</string>
+    <string name="capture_rejected_recording_saved">Запись сохранена. Открой её в «Эдитах», чтобы посмотреть дубли, или сними ещё раз.</string>
     <string name="capture_auto_select">Выбрать автоматически</string>
     <string name="capture_add_take">Добавить ещё попытку</string>
     <string name="capture_recommended_take">Дубль %1$d · %2$s · выбран приложением</string>

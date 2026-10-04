@@ -83,7 +83,16 @@ internal object CaptureTakePreparation {
             throw MaterialRejectedException("capture_selection_required",
                 context.getString(R.string.capture_selection_required))
         else throw MaterialRejectedException("capture_no_eligible_take",
-            context.getString(R.string.capture_no_eligible_take, style.title))
+            buildString {
+                append(context.getString(R.string.capture_no_eligible_take, style.title))
+                assessments.filter { !it.eligible && it.reason.isNotBlank() }.forEach { assessment ->
+                    append("\n\n")
+                    append(context.getString(R.string.capture_rejected_take_reason,
+                        assessment.ordinal, assessment.reason))
+                }
+                append("\n\n")
+                append(context.getString(R.string.capture_rejected_recording_saved))
+            })
         val updated = session.copy(selectedTake = selected.ordinal)
         LocalDiagnostics.record(context, "capture_take_selected", mapOf("style" to style.id,
             "selected_take" to selected.ordinal.toString()))

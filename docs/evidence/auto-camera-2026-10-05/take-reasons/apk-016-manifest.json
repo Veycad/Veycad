@@ -1,0 +1,30 @@
+{
+  "artifacts": [
+    {
+      "abi": "universal",
+      "file": "Veykad-Camera-0.1.16-universal-pilot.apk",
+      "bytes": 199009751,
+      "sha256": "95868dd808f0c6e8acbbfd1d682d6da1956d0ca0a0243bc2b14706193d366c1b",
+      "package": "com.example.autoedit.camera",
+      "versionName": "0.1.16-auto-camera-pilot",
+      "versionCode": 17,
+      "signatureVerified": true,
+      "cameraActivityPresent": true,
+      "uiTestApplicationAbsent": true,
+      "mp4Entries": []
+    },
+    {
+      "abi": "arm64",
+      "file": "Veykad-Camera-0.1.16-arm64-pilot.apk",
+      "bytes": 81216515,
+      "sha256": "13fedc2567fbfd7915db80bd56edbc76a14b615e0c9a06fbd28524007cb9344f",
+      "package": "com.example.autoedit.camera",
+      "versionName": "0.1.16-auto-camera-pilot",
+      "versionCode": 17,
+      "signatureVerified": true,
+      "cameraActivityPresent": true,
+      "uiTestApplicationAbsent": true,
+      "mp4Entries": []
+    }
+  ]
+}

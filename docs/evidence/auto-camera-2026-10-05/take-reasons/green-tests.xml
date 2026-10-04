@@ -1,0 +1,1 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><testsuite name="AutoEdit UI" tests="1" failures="0" errors="0" skipped="0" time="32.591" executed="1"><testcase classname="com.example.autoedit.CaptureModeScreenTest" name="failedFullCaptureShowsItsTakeReasonWithoutOpeningLibraryAgain" time="32.583" /></testsuite>
