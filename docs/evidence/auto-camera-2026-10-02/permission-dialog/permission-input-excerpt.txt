@@ -1,0 +1,13 @@
+30056: 10-02 09:07:30.717  2550  2566 D UiDevice: Waiting 15000ms for SearchCondition[findObject=BySelector [RES='\Qcom.android.permissioncontroller:id/permission_deny_button\E']].
+30062: 10-02 09:07:31.706  2550  2566 D UiObject2: Clicking on (160, 399).
+30095: 10-02 09:07:31.777  2550  2566 D UiDevice: Waiting 15000ms for SearchCondition[gone=BySelector [RES='\Qcom.android.permissioncontroller:id/permission_deny_button\E']].
+30187: 10-02 09:07:32.829  2550  2566 D UiDevice: Waiting 15000ms for SearchCondition[findObject=BySelector [RES='\Qcom.android.permissioncontroller:id/permission_allow_button\E']].
+30189: 10-02 09:07:33.268  2550  2566 D UiObject2: Clicking on (160, 339).
+30196: 10-02 09:07:33.300  2550  2566 D UiDevice: Waiting 15000ms for SearchCondition[gone=BySelector [RES='\Qcom.android.permissioncontroller:id/permission_allow_button\E']].
+30465: 10-02 09:07:35.218  2550  2566 I TestRunner: started: denied_video_permission_keeps_render_disabled_and_retry_imports_after_full_access(com.example.autoedit.RuntimePermissionsTest)
+30630: 10-02 09:07:36.824  2550  2566 D UiDevice: Waiting 15000ms for SearchCondition[findObject=BySelector [RES='\Qcom.android.permissioncontroller:id/permission_deny_button\E']].
+30634: 10-02 09:07:37.274  2550  2566 D UiObject2: Clicking on (160, 441).
+30635: 10-02 09:07:37.463   644   754 W InputDispatcher: Not sending touch gesture to ae3f19e ActivityRecordInputSink com.android.permissioncontroller/.permission.ui.GrantPermissionsActivity because it has config NO_INPUT_CHANNEL
+30636: 10-02 09:07:37.463   644   754 I InputDispatcher: Dropping event because all windows would just receive ACTION_OUTSIDE: MotionEvent(deviceId=-1, eventTime=418933000000, source=TOUCHSCREEN, displayId=0, action=DOWN, actionButton=0x00000000, flags=0x00000000, metaState=0x00000000, buttonState=0x00000000, classification=NONE, edgeFlags=0x00000000, xPrecision=1.0, yPrecision=1.0, xCursorPosition=nan, yCursorPosition=nan, pointers=[0: (160.0, 441.0)]), policyFlags=0x6b000000
+30641: 10-02 09:07:37.501  2550  2566 D UiDevice: Waiting 15000ms for SearchCondition[gone=BySelector [RES='\Qcom.android.permissioncontroller:id/permission_deny_button\E']].
+31009: 10-02 09:07:53.045  2550  2566 E TestRunner: java.lang.AssertionError: OS permission dialog must dismiss after permission_deny_button

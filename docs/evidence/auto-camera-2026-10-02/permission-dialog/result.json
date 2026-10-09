@@ -1,0 +1,36 @@
+{
+  "headSha": "8d96d42ce66ccd046aaa9eb9cdaddcab2f2a474c",
+  "runId": 36987207586,
+  "jobId": 110774848468,
+  "conclusion": "failure",
+  "artifactId": 11218114810,
+  "artifactSha256": "a3a2c67c9fff2291b7cb1ac383e2337c982f11a5f5b29da21313b89f6af4ee28",
+  "permissions": {
+    "name": "AutoEdit UI",
+    "tests": "2",
+    "failures": "1",
+    "errors": "0",
+    "skipped": "0",
+    "time": "28.035",
+    "executed": "2"
+  },
+  "screens": {
+    "name": "AutoEdit UI",
+    "tests": "58",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0",
+    "time": "472.09",
+    "executed": "58"
+  },
+  "localPermissionPhase": {
+    "runId": "20261002-095051-785",
+    "name": "AutoEdit UI",
+    "tests": "2",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0",
+    "time": "10.96",
+    "executed": "2"
+  }
+}

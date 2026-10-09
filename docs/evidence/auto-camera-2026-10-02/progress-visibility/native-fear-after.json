@@ -1,0 +1,84 @@
+{
+  "sourceParentSha": "5dcd9583c37337f72bc42ea81aedf351969bc98b",
+  "sourceState": "0.1.14 UI fix; build-inputs.json records compiled source hashes",
+  "package": "com.example.autoedit.camera",
+  "versionName": "0.1.14-auto-camera-pilot",
+  "versionCode": 15,
+  "installedApkSha256": "c2cc4739b91d8e190dc052bfb74f2ee93f425ba42b2030c4983a2202b6f168ec",
+  "serial": "emulator-5558",
+  "style": "fear_strobe",
+  "mode": "MUSIC",
+  "sessionId": "b7a4fa0e-0027-4b19-9dfb-8a92a144c684",
+  "status": "READY",
+  "durationMs": 26976,
+  "bytes": 1803510,
+  "sourceSha256": "726b4d550c2e196ac106ae5d0c779a9de91d183ff28f358ba35b767beee5af07",
+  "analysis": {
+    "time": "2026-10-02T11:09:10",
+    "event": "video_analysis_complete",
+    "session_id": "b10073f1-7e9a-445b-a959-fa67e5651e72",
+    "android": 36,
+    "device": "unknown Android SDK built for x86_64",
+    "package": "com.example.autoedit.camera",
+    "version_name": "0.1.14-auto-camera-pilot",
+    "version_code": 15,
+    "elapsed_ms": "20485",
+    "semantic_elapsed_ms": "5509",
+    "motion_elapsed_ms": "9",
+    "observations": "108",
+    "semantic_frames": "108",
+    "model_successes": "108",
+    "source_analysis_profile": "editorial-correspondence-v1",
+    "correspondence_state": "ASSESSED",
+    "correspondence_assessments_completed": "108",
+    "motion_measured_samples": "0",
+    "motion_unknown_samples": "108",
+    "camera_measured_samples": "0",
+    "camera_only_measured_samples": "0"
+  },
+  "eligible": false,
+  "materialCodes": [
+    "insufficient_human_evidence",
+    "capture_no_eligible_take"
+  ],
+  "savedResults": "",
+  "progressVisibleDuringSelection": true,
+  "viewport": [
+    0,
+    48,
+    720,
+    1184
+  ],
+  "visibleProgress": {
+    "progressTitle": {
+      "text": "Подбираю подходящий дубль…",
+      "bounds": [
+        80,
+        886,
+        640,
+        932
+      ]
+    },
+    "progressDetail": {
+      "text": "Проверяю дубль 1 из 1",
+      "bounds": [
+        80,
+        992,
+        640,
+        1028
+      ]
+    },
+    "cancelRenderButton": {
+      "text": "Отменить монтаж",
+      "bounds": [
+        80,
+        1052,
+        640,
+        1148
+      ]
+    }
+  },
+  "humanCaptureVerified": false,
+  "nativeEditWithAudioVerified": false,
+  "scope": "Full native synthetic capture; actual semantic analysis and material rejection; source present with metadata size after rejection; no exported edit"
+}

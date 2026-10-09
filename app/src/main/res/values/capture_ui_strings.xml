@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capture_brand">VEYKAD  •</string>
+    <string name="capture_recording_indicator">● ЗАПИСЬ</string>
+    <string name="create_gallery_headline">Твои видео.\nГотовый монтаж.</string>
+    <string name="create_gallery_intro">Добавь исходники и выбери стиль — Veykad сам найдёт лучшие моменты, музыку и ритм.</string>
+    <string name="create_auto_headline">Твоя съёмка.\nГотовый эдит.</string>
+    <string name="create_auto_intro">Снимай себя прямо в Veykad: музыка и подсказки помогут пройти сценарий, а монтаж появится после записи.</string>
+    <string name="create_capture_actions_title">ЧТО ДЕЛАТЬ В КАДРЕ</string>
+    <string name="create_fear_actions">Начни движение, повернись к камере, подойди ближе и отойди в полный рост.</string>
+    <string name="create_heartbeat_actions">Задержи взгляд, подойди ближе, повернись к свету и сделай плавное движение.</string>
+    <string name="create_capture_actions_unavailable">Сценарий съёмки пока есть для FEAR и Heartbeat. Выбери один из них перед камерой.</string>
+    <string name="create_capture_actions_hint">Во время записи Veykad подскажет каждое действие.</string>
+    <string name="capture_help_title">Помощь</string>
+    <string name="capture_help_body">Как создать монтаж?\nДобавьте видео, выберите стиль и нажмите «Создать монтаж».\n\nКак снимать в приложении?\nПереключитесь на «Авто». «Под музыку» — одна запись с подсказками; «Лучший дубль» — три попытки с перерывами. Во время серии можно добавить ещё две. Разрешение на микрофон не требуется.\n\nГде съёмки и результат?\nИсходники и готовые ролики доступны в «Эдитах». На результате серии можно выбрать «Другой дубль» — предыдущий монтаж сохранится. Сохранение в галерею выполняется отдельной кнопкой или автоматически, если включено в настройках.\n\nПочему кнопка неактивна?\nДля импорта сначала выберите нужное число исходников и дождитесь подбора музыки. Для камеры разрешите доступ и выберите FEAR или Heartbeat.</string>
+    <string name="capture_help_done">Готово</string>
+</resources>

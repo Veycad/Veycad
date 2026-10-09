@@ -1,0 +1,120 @@
+
+com.example.autoedit.CaptureReviewScreenTest:
+Error in failedCaptureKeepsBothReasonsAfterInspectionFailureAndRecreation(com.example.autoedit.CaptureReviewScreenTest):
+java.lang.AssertionError: Container failure was hidden: Камера отключилась. Запись остановлена; сохранённый исходник можно проверить в «Эдитах».
+Съёмка была прервана. Сохранённую часть можно проверить или снять заново.
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.autoedit.CaptureReviewScreenTest.failedCaptureKeepsBothReasonsAfterInspectionFailureAndRecreation$lambda$4$assertReasons$lambda$1(CaptureReviewScreenTest.kt:70)
+	at com.example.autoedit.CaptureReviewScreenTest$$ExternalSyntheticLambda4.perform(D8$$SyntheticClass:0)
+	at androidx.test.core.app.ActivityScenario.lambda$onActivity$2$androidx-test-core-app-ActivityScenario(ActivityScenario.java:794)
+	at androidx.test.core.app.ActivityScenario$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:524)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2616)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:248)
+	at android.os.Looper.loop(Looper.java:338)
+	at android.app.ActivityThread.main(ActivityThread.java:9067)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+
+Error in readableFailedContainerCanBeCheckedWithoutErasingTheOriginalBytes(com.example.autoedit.CaptureReviewScreenTest):
+androidx.test.espresso.PerformException: Error performing 'scroll to' on view 'view.getId() is <2131230841/com.example.autoedit.uitest:id/capturePrimary>'.
+	at androidx.test.espresso.PerformException$Builder.build(PerformException.java:86)
+	at androidx.test.espresso.base.PerformExceptionHandler.handleSafely(PerformExceptionHandler.java:56)
+	at androidx.test.espresso.base.PerformExceptionHandler.handleSafely(PerformExceptionHandler.java:31)
+	at androidx.test.espresso.base.DefaultFailureHandler$TypedFailureHandler.handle(DefaultFailureHandler.java:158)
+	at androidx.test.espresso.base.DefaultFailureHandler.handle(DefaultFailureHandler.java:120)
+	at androidx.test.espresso.ViewInteraction.waitForAndHandleInteractionResults(ViewInteraction.java:385)
+	at androidx.test.espresso.ViewInteraction.desugaredPerform(ViewInteraction.java:212)
+	at androidx.test.espresso.ViewInteraction.perform(ViewInteraction.java:140)
+	at com.example.autoedit.UiTestFixtureRule.click(UiTestFixtureRule.kt:100)
+	at com.example.autoedit.CaptureReviewScreenTest.readableFailedContainerCanBeCheckedWithoutErasingTheOriginalBytes(CaptureReviewScreenTest.kt:101)
+	... 33 trimmed
+Caused by: java.lang.RuntimeException: Action will not be performed because the target view does not match one or more of the following constraints:
+(view has effective visibility <VISIBLE> and is descendant of a view matching (is assignable from class <class android.widget.ScrollView> or is assignable from class <class android.widget.HorizontalScrollView> or is assignable from class <class android.widget.ListView> or is assignable from class <class androidx.core.widget.NestedScrollView> or  or is assignable from class <class androidx.recyclerview.widget.RecyclerView>))
+Target view: "MaterialButton{id=2131230841, res-name=capturePrimary, visibility=VISIBLE, width=632, height=116, has-focus=false, has-focusable=true, has-window-focus=true, is-clickable=true, is-enabled=true, is-focused=false, is-focusable=true, is-layout-requested=false, is-selected=false, layout-params=android.widget.LinearLayout$LayoutParams@YYYYYY, tag=null, root-is-layout-requested=false, has-input-connection=false, x=44.0, y=32.0, text=Проверить сохранённую часть, input-type=0, ime-target=false, has-links=false, is-checked=false}"
+	at androidx.test.espresso.ViewInteraction.doPerform(ViewInteraction.java:287)
+	at androidx.test.espresso.ViewInteraction.-$$Nest$mdoPerform(Unknown Source:0)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:193)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:182)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:248)
+	at android.os.Looper.loop(Looper.java:338)
+	at android.app.ActivityThread.main(ActivityThread.java:9067)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+
+com.example.autoedit.CaptureRecordingScreenTest:
+Error in cameraLossDuringCountdownCreatesNoDraftAndRetryRecordsWithPreview(com.example.autoedit.CaptureRecordingScreenTest):
+java.lang.AssertionError: Timed out: camera loss cancels countdown; state=State(phase=PREPARING, session=Session(id=81b02973-0df5-41fd-8091-53c3a439742a, createdMs=1790927379691, styleId=fear_strobe, scriptVersion=1, mode=MUSIC, requestedTakes=1, status=PREPARED, durationMs=0, bytes=0, frontCamera=true, rotation=0, recordStartedNs=null, selectedTake=null, error=null, resultNames=[], resultTakes={}, recommendedTake=null, stopReason=null), elapsedMs=0, take=1, cue=null, nextCue=null, error=null)
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.example.autoedit.CaptureRecordingScreenTest.await(CaptureRecordingScreenTest.kt:293)
+	at com.example.autoedit.CaptureRecordingScreenTest.cameraLossDuringCountdownCreatesNoDraftAndRetryRecordsWithPreview(CaptureRecordingScreenTest.kt:91)
+
+
+Time: 17.48
+There were 3 failures:
+1) failedCaptureKeepsBothReasonsAfterInspectionFailureAndRecreation(com.example.autoedit.CaptureReviewScreenTest)
+java.lang.AssertionError: Container failure was hidden: Камера отключилась. Запись остановлена; сохранённый исходник можно проверить в «Эдитах».
+Съёмка была прервана. Сохранённую часть можно проверить или снять заново.
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.autoedit.CaptureReviewScreenTest.failedCaptureKeepsBothReasonsAfterInspectionFailureAndRecreation$lambda$4$assertReasons$lambda$1(CaptureReviewScreenTest.kt:70)
+	at com.example.autoedit.CaptureReviewScreenTest$$ExternalSyntheticLambda4.perform(D8$$SyntheticClass:0)
+	at androidx.test.core.app.ActivityScenario.lambda$onActivity$2$androidx-test-core-app-ActivityScenario(ActivityScenario.java:794)
+	at androidx.test.core.app.ActivityScenario$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:524)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2616)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:248)
+	at android.os.Looper.loop(Looper.java:338)
+	at android.app.ActivityThread.main(ActivityThread.java:9067)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+2) readableFailedContainerCanBeCheckedWithoutErasingTheOriginalBytes(com.example.autoedit.CaptureReviewScreenTest)
+androidx.test.espresso.PerformException: Error performing 'scroll to' on view 'view.getId() is <2131230841/com.example.autoedit.uitest:id/capturePrimary>'.
+	at androidx.test.espresso.PerformException$Builder.build(PerformException.java:86)
+	at androidx.test.espresso.base.PerformExceptionHandler.handleSafely(PerformExceptionHandler.java:56)
+	at androidx.test.espresso.base.PerformExceptionHandler.handleSafely(PerformExceptionHandler.java:31)
+	at androidx.test.espresso.base.DefaultFailureHandler$TypedFailureHandler.handle(DefaultFailureHandler.java:158)
+	at androidx.test.espresso.base.DefaultFailureHandler.handle(DefaultFailureHandler.java:120)
+	at androidx.test.espresso.ViewInteraction.waitForAndHandleInteractionResults(ViewInteraction.java:385)
+	at androidx.test.espresso.ViewInteraction.desugaredPerform(ViewInteraction.java:212)
+	at androidx.test.espresso.ViewInteraction.perform(ViewInteraction.java:140)
+	at com.example.autoedit.UiTestFixtureRule.click(UiTestFixtureRule.kt:100)
+	at com.example.autoedit.CaptureReviewScreenTest.readableFailedContainerCanBeCheckedWithoutErasingTheOriginalBytes(CaptureReviewScreenTest.kt:101)
+	... 33 trimmed
+Caused by: java.lang.RuntimeException: Action will not be performed because the target view does not match one or more of the following constraints:
+(view has effective visibility <VISIBLE> and is descendant of a view matching (is assignable from class <class android.widget.ScrollView> or is assignable from class <class android.widget.HorizontalScrollView> or is assignable from class <class android.widget.ListView> or is assignable from class <class androidx.core.widget.NestedScrollView> or  or is assignable from class <class androidx.recyclerview.widget.RecyclerView>))
+Target view: "MaterialButton{id=2131230841, res-name=capturePrimary, visibility=VISIBLE, width=632, height=116, has-focus=false, has-focusable=true, has-window-focus=true, is-clickable=true, is-enabled=true, is-focused=false, is-focusable=true, is-layout-requested=false, is-selected=false, layout-params=android.widget.LinearLayout$LayoutParams@YYYYYY, tag=null, root-is-layout-requested=false, has-input-connection=false, x=44.0, y=32.0, text=Проверить сохранённую часть, input-type=0, ime-target=false, has-links=false, is-checked=false}"
+	at androidx.test.espresso.ViewInteraction.doPerform(ViewInteraction.java:287)
+	at androidx.test.espresso.ViewInteraction.-$$Nest$mdoPerform(Unknown Source:0)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:193)
+	at androidx.test.espresso.ViewInteraction$1.call(ViewInteraction.java:182)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at android.os.Handler.handleCallback(Handler.java:995)
+	at android.os.Handler.dispatchMessage(Handler.java:103)
+	at android.os.Looper.loopOnce(Looper.java:248)
+	at android.os.Looper.loop(Looper.java:338)
+	at android.app.ActivityThread.main(ActivityThread.java:9067)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+3) cameraLossDuringCountdownCreatesNoDraftAndRetryRecordsWithPreview(com.example.autoedit.CaptureRecordingScreenTest)
+java.lang.AssertionError: Timed out: camera loss cancels countdown; state=State(phase=PREPARING, session=Session(id=81b02973-0df5-41fd-8091-53c3a439742a, createdMs=1790927379691, styleId=fear_strobe, scriptVersion=1, mode=MUSIC, requestedTakes=1, status=PREPARED, durationMs=0, bytes=0, frontCamera=true, rotation=0, recordStartedNs=null, selectedTake=null, error=null, resultNames=[], resultTakes={}, recommendedTake=null, stopReason=null), elapsedMs=0, take=1, cue=null, nextCue=null, error=null)
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.example.autoedit.CaptureRecordingScreenTest.await(CaptureRecordingScreenTest.kt:293)
+	at com.example.autoedit.CaptureRecordingScreenTest.cameraLossDuringCountdownCreatesNoDraftAndRetryRecordsWithPreview(CaptureRecordingScreenTest.kt:91)
+
+FAILURES!!!
+Tests run: 3,  Failures: 3

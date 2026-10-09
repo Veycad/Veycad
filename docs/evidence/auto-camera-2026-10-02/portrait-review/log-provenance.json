@@ -1,0 +1,20 @@
+[
+  {
+    "source": "artifacts/camera-samsung-014/centering-red.txt",
+    "sourceSha256": "a3ccf0db1c455efbee822f8371b04b13fb110fcb957058f531632c3b9bfa8d8b",
+    "saved": "centering-red.txt",
+    "savedSha256": "bd774b77623d025dc6f1e6d81869f4ca8a3ff2fefa30e3f245647aae8d9ee646"
+  },
+  {
+    "source": "artifacts/camera-samsung-014/centering-green.txt",
+    "sourceSha256": "38005eebc059b52a720ca6d358ca9bcf597029a4ff174352b83befda2a37bde0",
+    "saved": "centering-green.txt",
+    "savedSha256": "dd526f9104c96f3da347627254baeb8b8e30c6dbf1e44b89d3f5ff44a13683c4"
+  },
+  {
+    "source": "artifacts/camera-samsung-014/centering-015-build.log",
+    "sourceSha256": "fbdf7d6c8667f4f179cf26c40065145e41b898d81878a6774f6640cb047015e5",
+    "saved": "baseline-build.txt",
+    "savedSha256": "18b835b9cb5792b8d8ef46130428669507da7909939d8b1c9166bba0f7fd7f08"
+  }
+]

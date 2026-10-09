@@ -41,20 +41,63 @@ internal class EditSession internal constructor(
             "Работа была прервана системой. Исходники и предыдущий монтаж сохранены; можно повторить." else null
     ))
     val state: LiveData<State> = mutableState
+    private val cancelLock = Any()
     @Volatile private var cancelled = false
+    @Volatile private var publishing = false
     @Volatile private var activeLease: File? = null
 
     data class State(
         val busy: Boolean = false,
         val saving: Boolean = false,
         val importing: Boolean = false,
+        val publishing: Boolean = false,
         val progress: VeycadAutomaticEditor.Progress? = null,
         val entry: CompletedRenderStore.Entry? = null,
         val draft: Draft? = null,
-        val error: String? = null
+        val error: String? = null,
+        val operationDetail: String? = null
     )
 
     data class Draft(val files: List<File>, val names: List<String>, val music: BuiltInMusicCatalog.Selection)
+
+    /** Capture selection and rendering use the same owned worker and durable result publication. */
+    fun prepareCapture(id: String, requestedTake: Int? = null, width: Int = 720, height: Int = 1_280,
+        bitrate: Int = 5_000_000) {
+        if (state.value?.busy == true) return
+        synchronized(cancelLock) { cancelled = false; publishing = false }
+        val previous = state.value?.entry
+        mutableState.value = State(busy = true, entry = previous, operationDetail = "Подбираю подходящий дубль…")
+        LocalDiagnostics.record(app, "capture_selection_requested", mapOf("requested_take" to (requestedTake ?: 0).toString()))
+        preferences.edit().putBoolean("running", true).commit()
+        executor.execute {
+            var preparationWakeLock: PowerManager.WakeLock? = null
+            val result = runCatching {
+                val power = app.getSystemService(PowerManager::class.java)
+                preparationWakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "${app.packageName}:capture-selection")
+                    .apply { acquire(15 * 60 * 1000L) }
+                CaptureTakePreparation.prepare(app, id, requestedTake,
+                    checkCancelled = { check(!cancelled) { "Подбор дубля отменён" } },
+                    onProgress = { detail -> main.post {
+                        mutableState.value = State(busy = true, entry = previous, operationDetail = detail)
+                    } })
+            }
+            preparationWakeLock?.let { if (it.isHeld) it.release() }
+            main.post {
+                preferences.edit().putBoolean("running", false).commit()
+                if (cancelled) { mutableState.value = State(entry = previous, error = "Подбор дубля отменён"); return@post }
+                result.onSuccess { prepared ->
+                    val style = MontageStyleCatalog.restore(prepared.session.styleId)
+                    render(prepared.file, null, prepared.musicFile, style, width, height, bitrate,
+                        captureSessionId = id, continuingCapturePreparation = true,
+                        captureTakeOrdinal = requireNotNull(prepared.session.selectedTake),
+                        captureAutoRecommendation = requestedTake == null)
+                }.onFailure {
+                    CaptureDiagnostics.failure(app, CaptureDiagnostics.Stage.TAKE_SELECTION, it)
+                    mutableState.value = State(entry = previous, error = it.message)
+                }
+            }
+        }
+    }
 
     fun importVideos(uris: List<android.net.Uri>, style: MontageStyleCatalog.Style) {
         if (state.value?.busy == true) return
@@ -97,6 +140,8 @@ internal class EditSession internal constructor(
     init {
         // A new session means the old process is gone; no old worker can still use its scratch.
         RenderWorkspace.pendingRendersDirectory(app.filesDir).deleteRecursively()
+        if (CompletedRenderStore.recoverCaptureLinks(app.filesDir).isNotEmpty())
+            LocalDiagnostics.record(app, "capture_result_link_recovery_failed")
         preferences.edit().putBoolean("running", false).commit()
     }
 
@@ -107,10 +152,16 @@ internal class EditSession internal constructor(
         style: MontageStyleCatalog.Style,
         width: Int = 720,
         height: Int = 1_280,
-        bitrate: Int = 5_000_000
+        bitrate: Int = 5_000_000,
+        captureSessionId: String? = null,
+        continuingCapturePreparation: Boolean = false,
+        captureTakeOrdinal: Int? = null,
+        captureAutoRecommendation: Boolean = false
     ) {
-        if (state.value?.busy == true) return
-        cancelled = false
+        require(captureSessionId == null || captureTakeOrdinal != null)
+        if (state.value?.busy == true && !(continuingCapturePreparation && captureSessionId != null &&
+            state.value?.operationDetail != null)) return
+        synchronized(cancelLock) { cancelled = false; publishing = false }
         val previous = state.value?.entry
         preferences.edit().putBoolean("running", true).commit()
         mutableState.value = State(busy = true, entry = previous,
@@ -146,25 +197,46 @@ internal class EditSession internal constructor(
                     "готово с предупреждением QA: ${edit.issues.joinToString()}"
                 val summary = "${style.title} · ${edit.clipCount} фрагментов · " +
                     "бит ${(edit.beatHitRate * 100).toInt()}% · $warning"
-                CompletedRenderStore.publish(app.filesDir, output, summary)
+                synchronized(cancelLock) {
+                    check(!cancelled) { "Монтаж отменён" }
+                    publishing = true
+                }
+                main.post { mutableState.value = State(busy = true, publishing = true,
+                    entry = previous, operationDetail = "Сохраняю готовый эдит…") }
+                val link = captureSessionId?.let { CompletedRenderStore.CaptureLink(it,
+                    requireNotNull(captureTakeOrdinal), captureAutoRecommendation) }
+                val published = CompletedRenderStore.publish(app.filesDir, output, summary, link)
+                val linkError = link?.let {
+                    runCatching { CaptureSessionStore(app.filesDir).attachResult(it.sessionId,
+                        published.file.name, it.takeOrdinal, it.recommended) }.exceptionOrNull()
+                }
+                if (linkError != null) LocalDiagnostics.record(app, "capture_result_link_failed")
+                published to linkError
             }
             wakeLock?.let { if (it.isHeld) it.release() }
+            if (captureSessionId != null) result.exceptionOrNull()?.let {
+                CaptureDiagnostics.failure(app, CaptureDiagnostics.Stage.RENDER, it, mapOf("style" to style.id))
+            }
             directory.deleteRecursively()
             activeLease = null
             preferences.edit().putBoolean("running", false).commit()
             main.post {
-                mutableState.value = State(entry = result.getOrNull() ?: previous,
-                    error = result.exceptionOrNull()?.message)
+                val completed = result.getOrNull()
+                mutableState.value = State(entry = completed?.first ?: previous,
+                    error = result.exceptionOrNull()?.message ?: completed?.second?.let {
+                        "Эдит сохранён. Связь с дублем восстановится при следующем запуске приложения."
+                    })
             }
         }
     }
 
     /** Cleanup waits for the worker to unwind; no files in use are deleted from the UI. */
-    fun cancelRender() {
-        if (state.value?.busy == true && state.value?.saving != true) {
-            cancelled = true
-            activeLease?.delete()
-        }
+    fun cancelRender(): Boolean = synchronized(cancelLock) {
+        if (state.value?.busy != true || state.value?.saving == true ||
+            state.value?.importing == true || publishing || cancelled) return@synchronized false
+        cancelled = true
+        activeLease?.delete()
+        true
     }
 
     fun clearDraft() {

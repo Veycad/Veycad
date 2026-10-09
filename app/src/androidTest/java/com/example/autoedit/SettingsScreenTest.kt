@@ -1,6 +1,18 @@
 package com.example.autoedit
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.app.Activity
+import android.app.Instrumentation
+import androidx.test.espresso.intent.Intents
+import androidx.test.espresso.intent.Intents.intending
+import androidx.test.espresso.intent.Intents.intended
+import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
+import androidx.test.espresso.intent.matcher.IntentMatchers.hasType
+import org.hamcrest.Matchers.allOf
+import org.json.JSONObject
+import java.io.IOException
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.action.ViewActions.click
@@ -176,6 +188,56 @@ class SettingsScreenTest {
         ui.awaitDisplayed(R.id.directorContent)
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
         onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · от 15 секунд")))
+    }
+
+    @Test fun helpExportsCaptureFailureDetailsAndCancellationLeavesTheReportUntouched() {
+        ui.launch()
+        val original = File(ui.context.filesDir, "private-original.mov").apply { writeText("PRIVATE_MEDIA_BYTES") }
+        val reportFile = File(ui.context.cacheDir, "exported-report.json")
+        CaptureDiagnostics.failure(ui.context, CaptureDiagnostics.Stage.TAKE_SELECTION,
+            RuntimeException(IOException(original.path)), mapOf("style" to "fear_strobe"))
+        LocalDiagnostics.record(ui.context, "render_inspector_failed", mapOf("detail" to original.path))
+        LocalDiagnostics.record(ui.context, "capture_test_unknown_fields", mapOf("file" to original.path,
+            "error_message" to "PRIVATE_MEDIA_BYTES"))
+        Intents.release()
+        Intents.init()
+        intending(allOf(hasAction(Intent.ACTION_CREATE_DOCUMENT), hasType("application/json")))
+            .respondWith(Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.fromFile(reportFile))))
+        openSettings()
+        ui.click(R.id.helpButton)
+        val screenshots = requireNotNull(ui.context.getExternalFilesDir("camera-evidence"))
+        androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
+            .takeScreenshot(File(screenshots, "capture-report-help.png"))
+        onView(withText(R.string.capture_save_report)).inRoot(isDialog()).perform(click())
+        ui.waitUntil("complete diagnostic export") {
+            runCatching { JSONObject(reportFile.readText()).has("events") }.getOrDefault(false)
+        }
+        intended(allOf(hasAction(Intent.ACTION_CREATE_DOCUMENT), hasType("application/json")))
+        val text = reportFile.readText()
+        File(screenshots, "capture-exported-report.json").writeText(text)
+        val report = JSONObject(text)
+        assertEquals(ui.context.packageName, report.getString("package"))
+        assertEquals(BuildConfig.VERSION_NAME, report.getString("version_name"))
+        val events = report.getJSONArray("events")
+        val failure = (0 until events.length()).map(events::getJSONObject).first { it.getString("event") == "capture_failed" }
+        assertEquals("TAKE_SELECTION", failure.getString("stage"))
+        assertEquals(IOException::class.java.name, failure.getString("root_exception"))
+        assertFalse(text.contains("private-original.mov"))
+        assertFalse(text.contains("PRIVATE_MEDIA_BYTES"))
+        assertFalse(text.contains("render_inspector_failed"))
+        assertTrue(original.isFile)
+        assertEquals("PRIVATE_MEDIA_BYTES", original.readText())
+        val saved = reportFile.readBytes()
+        ui.recreate()
+        Intents.release()
+        Intents.init()
+        intending(hasAction(Intent.ACTION_CREATE_DOCUMENT))
+            .respondWith(Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null))
+        openSettings()
+        ui.click(R.id.helpButton)
+        onView(withText(R.string.capture_save_report)).inRoot(isDialog()).perform(click())
+        assertArrayEquals(saved, reportFile.readBytes())
+        ui.awaitDisplayed(R.id.settingsContent)
     }
 
     private fun openSettings() {

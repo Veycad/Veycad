@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.intent.Intents
@@ -101,11 +103,28 @@ class RuntimePermissionsTest {
         assertEquals(permission, expected, ui.context.checkSelfPermission(permission))
 
     private fun clickPermissionButton(resourceName: String) {
-        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val device = UiDevice.getInstance(instrumentation)
         val selector = By.res("com.android.permissioncontroller", resourceName)
-        val button = device.wait(Until.findObject(selector), 15_000L)
-            ?: throw AssertionError("Actual OS permission dialog did not show $resourceName")
-        button.click()
+        assertTrue("Actual OS permission dialog must show $resourceName",
+            device.wait(Until.hasObject(selector), 15_000L))
+        // The OS can expose the dialog before its touch input channel is ready.
+        // Activate its real focused button through accessibility; never grant via shell.
+        val deadline = SystemClock.uptimeMillis() + 15_000L
+        var button: AccessibilityNodeInfo? = null
+        while (button == null && SystemClock.uptimeMillis() < deadline) {
+            button = instrumentation.uiAutomation.windows.asSequence()
+                .filter { it.isFocused }
+                .mapNotNull { it.root }
+                .filter { it.packageName?.toString() == "com.android.permissioncontroller" }
+                .flatMap { it.findAccessibilityNodeInfosByViewId("com.android.permissioncontroller:id/$resourceName").asSequence() }
+                .firstOrNull { it.isVisibleToUser && it.isEnabled && it.isClickable }
+            if (button == null) SystemClock.sleep(50L)
+        }
+        val focusedButton = button
+            ?: throw AssertionError("Focused OS permission dialog did not show $resourceName")
+        assertTrue("OS permission button must accept its click action: $resourceName",
+            focusedButton.performAction(AccessibilityNodeInfo.ACTION_CLICK))
         assertTrue("OS permission dialog must dismiss after $resourceName",
             device.wait(Until.gone(selector), 15_000L))
     }

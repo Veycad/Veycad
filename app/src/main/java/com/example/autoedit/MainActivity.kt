@@ -31,6 +31,7 @@ import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -57,6 +58,8 @@ class MainActivity : AppCompatActivity() {
     private var previewPrepared = false
     private var previewPlaybackRequested = false
     private var activityResumed = false
+    private var autoCapture = false
+    private var captureMode = CaptureMode.MUSIC
 
     private lateinit var selectVideoButton: Button
     private lateinit var renderButton: Button
@@ -77,6 +80,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var autoSaveSwitch: SwitchCompat
     private lateinit var notificationSwitch: SwitchCompat
 
+    private val captureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            result.data?.getStringExtra(CaptureActivity.EXTRA_SESSION)?.let { id ->
+                val capture = CaptureSessionStore(filesDir).load(id) ?: return@let
+                montageStyle = MontageStyleCatalog.restore(capture.styleId)
+                getSharedPreferences("montage_style", MODE_PRIVATE).edit().putString("selected", montageStyle.id).apply()
+                showDirectorScreen()
+                updateStyleLabel()
+                refreshMusicForStyle()
+                val fullHd = settingsPreferences().getString(PREF_QUALITY, QUALITY_720) == QUALITY_1080
+                session.prepareCapture(id, result.data?.getIntExtra(CaptureActivity.EXTRA_TAKE, 0)?.takeIf { it > 0 },
+                    if (fullHd) 1080 else 720, if (fullHd) 1920 else 1280, if (fullHd) 8_000_000 else 5_000_000)
+            }
+        }
+    }
     private val videoGallery = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) result.data?.data?.let { uri ->
             session.importVideos(listOf(uri), montageStyle)
@@ -106,6 +124,17 @@ class MainActivity : AppCompatActivity() {
         legacySaveEntry = null
         if (uri != null && entry != null) session.save(entry, uri)
         updateReadyState()
+    }
+    private val diagnosticExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            val app = applicationContext
+            worker.execute {
+                val saved = CaptureDiagnostics.export(app, uri)
+                runOnUiThread {
+                    if (!isDestroyed) toast(getString(if (saved) R.string.capture_report_saved else R.string.capture_report_failed))
+                }
+            }
+        }
     }
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -137,6 +166,9 @@ class MainActivity : AppCompatActivity() {
             getSharedPreferences("montage_style", MODE_PRIVATE).getString("selected", null))
         updateStyleLabel()
         bindActions()
+        captureMode = runCatching { CaptureMode.valueOf(savedInstanceState?.getString("capture_mode").orEmpty()) }
+            .getOrDefault(CaptureMode.MUSIC)
+        setCaptureMode(savedInstanceState?.getBoolean("auto_capture") == true)
         savedInstanceState?.getString("legacy_save_file")?.let { path ->
             session.state.value?.entry?.takeIf { it.file.path == path }?.let { legacySaveEntry = it }
         }
@@ -174,6 +206,7 @@ class MainActivity : AppCompatActivity() {
                 if (musicSelection == null) refreshMusicForStyle()
                 updateReadyState()
             }
+            val progressWasVisible = progressPanel.visibility == View.VISIBLE
             if (importing) {
                 progressPanel.visibility = View.VISIBLE
                 progressBar.isIndeterminate = true
@@ -186,8 +219,22 @@ class MainActivity : AppCompatActivity() {
                 progressDetail.text = "Копирую видео в галерею и библиотеку"
             } else if (rendering) {
                 progressPanel.visibility = View.VISIBLE
-                state.progress?.let(::showProgress)
+                if (state.publishing) {
+                    progressBar.isIndeterminate = true
+                    progressTitle.text = "Сохраняю эдит"
+                    progressDetail.text = state.operationDetail.orEmpty()
+                } else if (state.operationDetail != null) {
+                    progressBar.isIndeterminate = true
+                    progressTitle.setText(R.string.capture_processing)
+                    progressDetail.text = state.operationDetail
+                } else state.progress?.let(::showProgress)
             } else progressPanel.visibility = View.GONE
+            // Reveal a new job once; updates preserve the user's reading position.
+            if (rendering && !progressWasVisible) progressPanel.doOnLayout { panel ->
+                if (directorContent.isShown && panel.isShown && session.state.value?.busy == true) {
+                    panel.requestRectangleOnScreen(android.graphics.Rect(0, 0, panel.width, panel.height), true)
+                }
+            }
             if (state.entry != null && observedEntry != state.entry.file && !state.busy) {
                 observedEntry = state.entry.file
                 showCompletedResult(state.entry)
@@ -206,7 +253,15 @@ class MainActivity : AppCompatActivity() {
                 // Keep the job failure visible until another action refreshes readiness.
                 findViewById<TextView>(R.id.renderHint).text = error
             }
-            findViewById<Button>(R.id.cancelRenderButton).visibility = if (rendering) View.VISIBLE else View.GONE
+            findViewById<TextView>(R.id.operationError).apply {
+                text = state.error.orEmpty()
+                visibility = if (state.error != null && !state.busy) View.VISIBLE else View.GONE
+                if (visibility == View.VISIBLE && directorContent.isShown) post {
+                    requestRectangleOnScreen(android.graphics.Rect(0, 0, width, height), true)
+                }
+            }
+            findViewById<Button>(R.id.cancelRenderButton).visibility =
+                if (rendering && !state.publishing) View.VISIBLE else View.GONE
             updateMyEditsButton()
         }
     }
@@ -214,7 +269,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         stopPreviewPlayback()
         musicRequests.invalidate()
-        // Only music selection uses the screen executor; media jobs belong to EditSession.
+        // Music selection and short diagnostics exports use this executor; media jobs belong to EditSession.
         worker.shutdown()
         super.onDestroy()
     }
@@ -232,6 +287,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("auto_capture", autoCapture)
+        outState.putString("capture_mode", captureMode.name)
         legacySaveEntry?.let { outState.putString("legacy_save_file", it.file.path) }
         super.onSaveInstanceState(outState)
     }
@@ -258,6 +315,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
+        findViewById<Button>(R.id.galleryModeButton).setOnClickListener { setCaptureMode(false) }
+        findViewById<Button>(R.id.autoModeButton).setOnClickListener { setCaptureMode(true) }
+        findViewById<Button>(R.id.captureMusicMode).setOnClickListener { captureMode = CaptureMode.MUSIC; setCaptureMode(true) }
+        findViewById<Button>(R.id.captureBestMode).setOnClickListener { captureMode = CaptureMode.BEST_TAKE; setCaptureMode(true) }
         findViewById<Button>(R.id.selectStyleButton).setOnClickListener { showStylePicker() }
         findViewById<TextView>(R.id.allStylesButton).setOnClickListener { showStylePicker() }
         findViewById<TextView>(R.id.settingsButton).setOnClickListener { showSettings() }
@@ -294,7 +355,7 @@ class MainActivity : AppCompatActivity() {
         }
         renderButton.setOnClickListener {
             LocalDiagnostics.record(this, "tap_render")
-            startAutomaticEdit()
+            if (autoCapture) openCapture() else startAutomaticEdit()
         }
         saveButton.setOnClickListener {
             LocalDiagnostics.record(this, "tap_save")
@@ -314,8 +375,7 @@ class MainActivity : AppCompatActivity() {
             showNewEditScreen()
         }
         findViewById<Button>(R.id.cancelRenderButton).setOnClickListener {
-            session.cancelRender()
-            progressDetail.text = "Отменяю монтаж. Освобождаю ресурсы…"
+            if (session.cancelRender()) progressDetail.text = "Отменяю монтаж. Освобождаю ресурсы…"
         }
         // VideoView consumes touches for its optional media controller on some Android
         // versions, so its normal click listener alone does not receive screen taps.
@@ -333,6 +393,15 @@ class MainActivity : AppCompatActivity() {
                 if (canPlayPreview()) resultVideo.start()
             }
         }
+        // VideoView consumes touches without forwarding them to View.performClick on some APIs.
+        val previewTaps = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(event: android.view.MotionEvent) = true
+            override fun onSingleTapUp(event: android.view.MotionEvent): Boolean {
+                resultVideo.performClick()
+                return true
+            }
+        })
+        resultVideo.setOnTouchListener { _, event -> previewTaps.onTouchEvent(event) }
     }
 
     private fun showStylePicker(fromSettings: Boolean = false) {
@@ -382,6 +451,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateReadyState() {
         val ready = !rendering && !importing && !saving && legacySaveEntry == null
+        findViewById<Button>(R.id.galleryModeButton).isEnabled = ready
+        findViewById<Button>(R.id.autoModeButton).isEnabled = ready
+        findViewById<Button>(R.id.captureMusicMode).isEnabled = ready
+        findViewById<Button>(R.id.captureBestMode).isEnabled = ready
         findViewById<Button>(R.id.myEditsButton).isEnabled = ready
         findViewById<Button>(R.id.newEditButton).isEnabled = ready
         selectVideoButton.isEnabled = ready
@@ -389,11 +462,14 @@ class MainActivity : AppCompatActivity() {
         val sourcesReady = sourceFile?.isFile == true &&
             (montageStyle.sourceCount == 1 || secondarySourceFile?.isFile == true)
         val musicReady = musicSelection?.let { it.styleId == montageStyle.id && it.file.isFile } == true
-        renderButton.isEnabled = ready && montageStyle.available && sourcesReady && musicReady
+        renderButton.isEnabled = if (autoCapture) ready else ready && montageStyle.available && sourcesReady && musicReady
+        renderButton.text = if (autoCapture) getString(R.string.capture_open) else "Создать монтаж"
         findViewById<TextView>(R.id.renderHint).text = when {
             importing -> "Добавляю исходники…"
             rendering -> "Монтаж создаётся"
             saving -> "Сохраняю результат…"
+            autoCapture -> if (CaptureScript.forStyle(montageStyle.id) == null) getString(R.string.capture_style_missing)
+                else getString(R.string.capture_prototype)
             !montageStyle.available -> montageStyle.unavailableLabel
             !sourcesReady -> if (montageStyle.sourceCount == 2) "Сначала добавь два видео" else "Сначала добавь видео"
             !musicReady -> "Подбираю музыку…"
@@ -405,9 +481,62 @@ class MainActivity : AppCompatActivity() {
         val presentation = MontageStylePresentation.forStyle(montageStyle)
         findViewById<Button>(R.id.selectStyleButton).text = presentation.selectorLabel
         selectVideoButton.text = presentation.addSourceLabel
+        updateCaptureActionPreview()
         updateSourceDisplay()
         updateMusicDisplay()
         updateReadyState()
+    }
+
+    private fun updateCaptureActionPreview() {
+        val actions = when (montageStyle.id) {
+            MontageStyleCatalog.fearStrobe.id -> R.string.create_fear_actions
+            MontageStyleCatalog.heartbeat.id -> R.string.create_heartbeat_actions
+            else -> R.string.create_capture_actions_unavailable
+        }
+        findViewById<TextView>(R.id.captureActionPreview).setText(actions)
+    }
+
+    private fun setCaptureMode(enabled: Boolean) {
+        autoCapture = enabled
+        findViewById<TextView>(R.id.createHeadline).setText(
+            if (enabled) R.string.create_auto_headline else R.string.create_gallery_headline)
+        findViewById<TextView>(R.id.createIntro).setText(
+            if (enabled) R.string.create_auto_intro else R.string.create_gallery_intro)
+        findViewById<View>(R.id.autoCaptureOptions).visibility = if (enabled) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.captureActionPreviewPanel).visibility = if (enabled) View.VISIBLE else View.GONE
+        selectVideoButton.visibility = if (enabled) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.videoSelection).visibility = if (enabled) View.GONE else View.VISIBLE
+        findViewById<Button>(R.id.galleryModeButton).backgroundTintList = android.content.res.ColorStateList.valueOf(
+            getColor(if (enabled) R.color.surface_high else R.color.surface))
+        findViewById<Button>(R.id.autoModeButton).backgroundTintList = android.content.res.ColorStateList.valueOf(
+            getColor(if (enabled) R.color.surface else R.color.surface_high))
+        listOf(R.id.captureMusicMode to CaptureMode.MUSIC, R.id.captureBestMode to CaptureMode.BEST_TAKE).forEach { (id, mode) ->
+            findViewById<com.google.android.material.button.MaterialButton>(id).apply {
+                isSelected = mode == captureMode
+                strokeColor = android.content.res.ColorStateList.valueOf(getColor(if (isSelected) R.color.neon else R.color.stroke))
+            }
+        }
+        updateReadyState()
+    }
+
+    private fun openCapture(saved: CaptureSessionStore.Session? = null, selectedTake: Int? = null) {
+        if (session.state.value?.busy == true) return
+        if (saved == null && CaptureScript.forStyle(montageStyle.id) == null) {
+            val styles = listOf(MontageStyleCatalog.fearStrobe, MontageStyleCatalog.heartbeat)
+            AlertDialog.Builder(this).setTitle(R.string.capture_select_style).setItems(styles.map { it.title }.toTypedArray()) { _, index ->
+                montageStyle = styles[index]
+                updateStyleLabel()
+                refreshMusicForStyle()
+                openCapture()
+            }.setNegativeButton(android.R.string.cancel, null).show()
+            return
+        }
+        captureLauncher.launch(Intent(this, CaptureActivity::class.java).apply {
+            putExtra(CaptureActivity.EXTRA_STYLE, saved?.styleId ?: montageStyle.id)
+            putExtra(CaptureActivity.EXTRA_MODE, (saved?.mode ?: captureMode).name)
+            saved?.let { putExtra(CaptureActivity.EXTRA_SESSION, it.id) }
+            selectedTake?.let { putExtra(CaptureActivity.EXTRA_TAKE, it) }
+        })
     }
 
     private fun updateSourceDisplay() {
@@ -502,6 +631,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCompletedResult(entry: CompletedRenderStore.Entry) {
+        completedEntry = entry
         renderedFile = entry.file
         resultOpenedFromLibrary = false
         renderedSaved = entry.saved
@@ -515,7 +645,19 @@ class MainActivity : AppCompatActivity() {
         saveButton.isEnabled = !entry.saved && !saving
         saveButton.text = if (entry.saved) "✓  Сохранено" else "↓  Сохранить в галерею"
         resultSummary.text = entry.summary
+        updateCaptureResultAction(entry.file)
         preparePreview(entry.file)
+    }
+
+    private fun updateCaptureResultAction(file: File) {
+        val capture = CaptureSessionStore(filesDir).forResult(file.name)
+        findViewById<Button>(R.id.otherTakeButton).apply {
+            visibility = if (capture?.requestedTakes?.let { it > 1 } == true) View.VISIBLE else View.GONE
+            setOnClickListener { capture?.let {
+                stopPreviewPlayback()
+                openCapture(it, it.resultTakes[file.name])
+            } }
+        }
     }
 
     private fun preparePreview(file: File) {
@@ -642,9 +784,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun showHelp() {
         AlertDialog.Builder(this)
-            .setTitle("Помощь")
-            .setMessage("Как создать монтаж?\nДобавьте видео, выберите стиль и нажмите «Создать монтаж».\n\nГде результат?\nПосле рендера он появится в «Эдитах». Сохранение в галерею выполняется отдельной кнопкой или автоматически, если включено в настройках.\n\nПочему кнопка неактивна?\nСначала выберите нужное число исходников и дождитесь подбора музыки.")
-            .setPositiveButton("Готово", null)
+            .setTitle(R.string.capture_help_title)
+            .setMessage(getString(R.string.capture_help_body) + "\n\n" + getString(R.string.capture_report_help))
+            .setNeutralButton(R.string.capture_save_report) { _, _ -> diagnosticExport.launch("Veykad-Auto-report.json") }
+            .setPositiveButton(R.string.capture_help_done, null)
             .show()
     }
 
@@ -744,18 +887,35 @@ class MainActivity : AppCompatActivity() {
         myEditsContent.visibility = View.VISIBLE
         myEditsContent.scrollTo(0, 0)
         myEditsList.removeAllViews()
+        CaptureSessionStore(filesDir).list().forEach { capture ->
+            myEditsList.addView(Button(this).apply {
+                text = getString(R.string.capture_session_entry, MontageStyleCatalog.restore(capture.styleId).title,
+                    if (capture.status == CaptureSessionStore.Status.READY) getString(R.string.capture_saved)
+                    else getString(R.string.capture_resume)) + "\n" +
+                    java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                        .format(java.util.Date(capture.createdMs))
+                isAllCaps = false
+                setTextColor(getColor(R.color.text_primary))
+                background = getDrawable(R.drawable.panel_surface)
+                minHeight = (72 * resources.displayMetrics.density).toInt()
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = (10 * resources.displayMetrics.density).toInt() }
+                setOnClickListener { openCapture(capture) }
+            })
+        }
         val edits = myEditsDirectory().listFiles()
             ?.filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
             ?.sortedByDescending { it.lastModified() }
             .orEmpty()
-        completedEntry?.takeIf { !it.saved }?.let { entry ->
+        val unsaved = CompletedRenderStore.list(filesDir).filter { !it.saved }
+        unsaved.forEach { entry ->
             myEditsList.addView(Button(this).apply {
-                text = "Последний монтаж · ещё не сохранён в галерею"
+                text = if (entry == unsaved.first()) "Последний монтаж · ещё не сохранён в галерею" else entry.summary
                 isAllCaps = false
-                setOnClickListener { showCompletedResult(entry) }
+                setOnClickListener { showCompletedResult(entry); resultOpenedFromLibrary = true }
             })
         }
-        if (edits.isEmpty() && completedEntry?.saved != false) {
+        if (edits.isEmpty() && unsaved.isEmpty() && CaptureSessionStore(filesDir).list().isEmpty()) {
             myEditsList.addView(TextView(this).apply {
                 text = "✦\n\nЗдесь появятся эдиты\n\nСоздай первый монтаж — он сохранится в твоей коллекции."
                 gravity = Gravity.CENTER
@@ -793,11 +953,12 @@ class MainActivity : AppCompatActivity() {
         resultPanel.visibility = View.VISIBLE
         saveButton.visibility = View.GONE
         resultSummary.text = "Сохранённый монтаж · ${file.length() / 1_000_000f} МБ"
+        updateCaptureResultAction(file)
         preparePreview(file)
     }
 
     private fun saveResult() {
-        val entry = completedEntry?.takeIf { it.file == renderedFile } ?: return
+        val entry = CompletedRenderStore.list(filesDir).firstOrNull { it.file == renderedFile } ?: return
         if (entry.saved || rendering || importing || saving || legacySaveEntry != null) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             legacySaveEntry = entry

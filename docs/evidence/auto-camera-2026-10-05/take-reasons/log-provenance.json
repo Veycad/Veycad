@@ -1,0 +1,26 @@
+[
+  {
+    "file": "baseline-build.txt",
+    "original_sha256": "bbfdc69099a5d529c8a05f0d93d23bafd3674644eb11fe9403746190975799a3",
+    "normalized_sha256": "074284703c34a192dd300cb5ad932a3e5d69b3b8573b0293fdee2dccf4d52a5a",
+    "normalization": "UTF-8 LF; remove trailing whitespace"
+  },
+  {
+    "file": "red-instrumentation.txt",
+    "original_sha256": "64cd7e8867dc846caecbe7ab82716626d7a8677f166ae09670151c34e96bf3f8",
+    "normalized_sha256": "2145326753940e53b098a6c9352bd25221023c45890ef3020917a27c0a1b6737",
+    "normalization": "UTF-8 LF; remove trailing whitespace"
+  },
+  {
+    "file": "green-instrumentation.txt",
+    "original_sha256": "271ebf281bbca4a6cc98cf3b567b7c0c5669c1e05b500c09182cd654c34eda64",
+    "normalized_sha256": "1b82d833fe4bfce21aadc522c10a8c30040c045608c4eb5da11743771f7601b4",
+    "normalization": "UTF-8 LF; remove trailing whitespace"
+  },
+  {
+    "file": "green-tests.xml",
+    "original_sha256": "76f5bc7efd47415b33b89da3ac58642aed24c5cddcb1b76a2810d5d30375ded0",
+    "normalized_sha256": "e228744478b74fd7cf37c90e47ab265e31c963eddaeee6ac288fbc78213f5138",
+    "normalization": "UTF-8 LF; remove trailing whitespace"
+  }
+]

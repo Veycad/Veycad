@@ -1,0 +1,16 @@
+{
+  "baseline": "success",
+  "seconds": 212,
+  "unit_suites": 81,
+  "unit_tests": 631,
+  "python_tests": 255,
+  "lint_warnings": 21,
+  "lint_errors": 0,
+  "focused_ui": {
+    "tests": 1,
+    "failures": 0,
+    "time_seconds": 32.591
+  },
+  "build_inputs": 266,
+  "full_ui_latest_head": "pending CI"
+}

@@ -1,0 +1,1024 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/rexar/.gradle/wrapper/dists/gradle-9.3.1-bin/23ovyewtku6u96viwx3xl3oks/gradle-9.3.1/lib/native-platform-0.22-milestone-29.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preUiTestBuild UP-TO-DATE
+> Task :app:mergeUiTestNativeDebugMetadata NO-SOURCE
+> Task :app:generateUiTestBuildConfig
+> Task :app:generateUiTestResources
+> Task :app:packageUiTestResources
+> Task :app:processUiTestNavigationResources
+> Task :app:generateUiTestAssets UP-TO-DATE
+> Task :app:javaPreCompileUiTest
+> Task :app:parseUiTestLocalResources
+> Task :app:mergeUiTestAssets
+> Task :app:compressUiTestAssets
+> Task :app:generateUiTestRFile
+> Task :app:checkUiTestDuplicateClasses
+> Task :app:desugarUiTestFileDependencies
+> Task :app:mergeLibDexUiTest
+> Task :app:mapUiTestSourceSetPaths
+> Task :app:checkUiTestAarMetadata
+> Task :app:compileUiTestNavigationResources
+> Task :app:createUiTestCompatibleScreenManifests
+> Task :app:extractDeepLinksUiTest
+> Task :app:mergeUiTestResources
+> Task :app:processUiTestMainManifest
+> Task :app:processUiTestManifest
+> Task :app:mergeUiTestJniLibFolders
+> Task :app:processUiTestManifestForPackage
+> Task :app:validateSigningUiTest
+> Task :app:writeUiTestAppMetadata
+> Task :app:writeUiTestSigningConfigVersions
+> Task :app:preUiTestAndroidTestBuild SKIPPED
+> Task :app:processUiTestAndroidTestManifest
+> Task :app:generateUiTestAndroidTestBuildConfig
+> Task :app:generateUiTestAndroidTestResources
+> Task :app:packageUiTestAndroidTestResources
+> Task :app:processUiTestAndroidTestNavigationResources
+> Task :app:generateUiTestAndroidTestAssets UP-TO-DATE
+> Task :app:javaPreCompileUiTestAndroidTest
+> Task :app:parseUiTestAndroidTestLocalResources
+> Task :app:mergeUiTestNativeLibs
+> Task :app:mergeUiTestAndroidTestAssets
+> Task :app:compressUiTestAndroidTestAssets
+> Task :app:generateUiTestAndroidTestRFile
+> Task :app:desugarUiTestAndroidTestFileDependencies
+> Task :app:checkUiTestAndroidTestDuplicateClasses
+
+> Task :app:stripUiTestDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libface_detector_v2_jni.so, libimage_processing_util_jni.so, libmediapipe_tasks_jni.so, libsurface_util_jni.so, libxeno_native.so. Run with --info option to learn more.
+
+> Task :app:checkUiTestAndroidTestAarMetadata
+> Task :app:mapUiTestAndroidTestSourceSetPaths
+> Task :app:compileUiTestAndroidTestNavigationResources
+> Task :app:mergeLibDexUiTestAndroidTest
+> Task :app:mergeUiTestAndroidTestJniLibFolders
+> Task :app:mergeUiTestAndroidTestResources
+> Task :app:mergeUiTestAndroidTestNativeLibs NO-SOURCE
+> Task :app:stripUiTestAndroidTestDebugSymbols NO-SOURCE
+> Task :app:validateSigningUiTestAndroidTest
+> Task :app:writeUiTestAndroidTestSigningConfigVersions
+> Task :app:mergeExtDexUiTestAndroidTest
+> Task :app:processUiTestAndroidTestResources
+> Task :app:mergeExtDexUiTest
+> Task :app:processUiTestResources
+> Task :app:compileUiTestKotlin
+
+> Task :app:compileUiTestJavaWithJavac
+Java compiler version 25 has deprecated support for compiling with source/target version 8.
+Try one of the following options:
+    1. [Recommended] Use Java toolchain with a lower language version
+    2. Set a higher source/target version
+    3. Use a lower version of the JDK running the build (if you're not using Java toolchain)
+For more details on how to configure these settings, see https://developer.android.com/build/jdks.
+To suppress this warning, set android.javaCompile.suppressSourceTargetDeprecationWarning=true in gradle.properties.
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+3 warnings
+
+> Task :app:dexBuilderUiTest
+> Task :app:processUiTestJavaRes
+> Task :app:bundleUiTestClassesToCompileJar
+> Task :app:mergeProjectDexUiTest
+> Task :app:mergeUiTestJavaResource
+
+> Task :app:compileUiTestAndroidTestKotlin
+w: file:///C:/Users/rexar/.codex/worktrees/auto-camera-pr/AutoEdit/app/src/androidTest/java/com/example/autoedit/SyntheticVideo.kt:35:75 'static field COLOR_FormatYUV420Planar: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rexar/.codex/worktrees/auto-camera-pr/AutoEdit/app/src/androidTest/java/com/example/autoedit/SyntheticVideo.kt:36:56 'static field COLOR_FormatYUV420SemiPlanar: Int' is deprecated. Deprecated in Java.
+
+> Task :app:packageUiTest
+> Task :app:createUiTestApkListingFileRedirect
+> Task :app:assembleUiTest
+
+> Task :app:compileUiTestAndroidTestJavaWithJavac
+Java compiler version 25 has deprecated support for compiling with source/target version 8.
+Try one of the following options:
+    1. [Recommended] Use Java toolchain with a lower language version
+    2. Set a higher source/target version
+    3. Use a lower version of the JDK running the build (if you're not using Java toolchain)
+For more details on how to configure these settings, see https://developer.android.com/build/jdks.
+To suppress this warning, set android.javaCompile.suppressSourceTargetDeprecationWarning=true in gradle.properties.
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+3 warnings
+
+> Task :app:dexBuilderUiTestAndroidTest
+> Task :app:processUiTestAndroidTestJavaRes
+> Task :app:mergeProjectDexUiTestAndroidTest
+> Task :app:mergeUiTestAndroidTestJavaResource
+> Task :app:packageUiTestAndroidTest
+> Task :app:createUiTestAndroidTestApkListingFileRedirect
+> Task :app:assembleUiTestAndroidTest
+
+[Incubating] Problems report is available at: file:///C:/Users/rexar/.codex/worktrees/auto-camera-pr/AutoEdit/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 42s
+68 actionable tasks: 68 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RuntimePermissionsTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.RuntimePermissionsTest:
+INSTRUMENTATION_STATUS: test=denied_notifications_reset_switch_and_preference_then_retry_persists_allowed_choice
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RuntimePermissionsTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=denied_notifications_reset_switch_and_preference_then_retry_persists_allowed_choice
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RuntimePermissionsTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=denied_video_permission_keeps_render_disabled_and_retry_imports_after_full_access
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RuntimePermissionsTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=denied_video_permission_keeps_render_disabled_and_retry_imports_after_full_access
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 9.085
+
+OK (2 tests)
+
+
+INSTRUMENTATION_CODE: -1
+permissions: 2/2 tests, 0 failures, 0 errors, 0 skipped.
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureModeScreenTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.CaptureModeScreenTest:
+INSTRUMENTATION_STATUS: test=priorResultsRemainAccessibleAndCanStillBeSaved
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureModeScreenTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=priorResultsRemainAccessibleAndCanStillBeSaved
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureModeScreenTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=autoSelectionSurvivesRecreationAndGalleryDraftIsPreserved
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureModeScreenTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=autoSelectionSurvivesRecreationAndGalleryDraftIsPreserved
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureMusicPlaybackDeviceTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.CaptureMusicPlaybackDeviceTest:
+INSTRUMENTATION_STATUS: test=bothAuthoredTracksRewindDuringBreakAndWaitForNextTake
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureMusicPlaybackDeviceTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=bothAuthoredTracksRewindDuringBreakAndWaitForNextTake
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.CaptureRecordingScreenTest:
+INSTRUMENTATION_STATUS: test=cameraLossDuringCountdownCreatesNoDraftAndRetryRecordsWithPreview
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=cameraLossDuringCountdownCreatesNoDraftAndRetryRecordsWithPreview
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=5
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=unexpectedCameraLossPreservesSourceAndReasonAfterRecreation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=5
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=unexpectedCameraLossPreservesSourceAndReasonAfterRecreation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=heartbeatSingleTakeFinalizesWithItsOwnCuesAndMusic
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=heartbeatSingleTakeFinalizesWithItsOwnCuesAndMusic
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=7
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=countdownCanCancelAndShortRecordingProducesReadableSilentVideo
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=7
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=countdownCanCancelAndShortRecordingProducesReadableSilentVideo
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=8
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=8
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=9
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=musicInterruptionKeepsFullTakeAndShowsReasonAfterRecreation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=9
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=musicInterruptionKeepsFullTakeAndShowsReasonAfterRecreation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=10
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=backgroundingStopsRecordingButRetainsFinalizedSource
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=10
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=backgroundingStopsRecordingButRetainsFinalizedSource
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=11
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=continuousThreeTakeSessionHasRecoveriesAndFinalizesAutomatically
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=11
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=continuousThreeTakeSessionHasRecoveriesAndFinalizesAutomatically
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureReviewScreenTest
+INSTRUMENTATION_STATUS: current=12
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.CaptureReviewScreenTest:
+INSTRUMENTATION_STATUS: test=failedCaptureKeepsBothReasonsAfterInspectionFailureAndRecreation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureReviewScreenTest
+INSTRUMENTATION_STATUS: current=12
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=failedCaptureKeepsBothReasonsAfterInspectionFailureAndRecreation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureReviewScreenTest
+INSTRUMENTATION_STATUS: current=13
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=automaticChoiceSurvivesRecreationAfterOpeningSpecificResultTake
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureReviewScreenTest
+INSTRUMENTATION_STATUS: current=13
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=automaticChoiceSurvivesRecreationAfterOpeningSpecificResultTake
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureReviewScreenTest
+INSTRUMENTATION_STATUS: current=14
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=readableFailedContainerCanBeCheckedWithoutErasingTheOriginalBytes
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureReviewScreenTest
+INSTRUMENTATION_STATUS: current=14
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=readableFailedContainerCanBeCheckedWithoutErasingTheOriginalBytes
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=15
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.DirectorScreenTest:
+INSTRUMENTATION_STATUS: test=opening_the_empty_collection_and_returning_does_not_discard_a_ready_source
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=15
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=opening_the_empty_collection_and_returning_does_not_discard_a_ready_source
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=16
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=an_unreadable_import_does_not_destroy_the_previous_draft_or_leave_partial_files
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=16
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=an_unreadable_import_does_not_destroy_the_previous_draft_or_leave_partial_files
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=17
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=cancelling_single_video_selection_preserves_the_existing_ready_draft
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=17
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=cancelling_single_video_selection_preserves_the_existing_ready_draft
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=18
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=duality_requires_two_sources_and_keeps_the_picker_order_after_recreation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=18
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=duality_requires_two_sources_and_keeps_the_picker_order_after_recreation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=19
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=splash_opens_a_fresh_director_with_render_disabled_until_a_source_is_imported
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=19
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=splash_opens_a_fresh_director_with_render_disabled_until_a_source_is_imported
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=20
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=single_video_import_copies_a_real_file_and_readies_the_selected_music
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=20
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=single_video_import_copies_a_real_file_and_readies_the_selected_music
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=21
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=recreation_keeps_the_imported_source_style_and_ready_state
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=21
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=recreation_keeps_the_imported_source_style_and_ready_state
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=22
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=replacing_an_import_removes_only_the_previous_draft_and_updates_its_display_name
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=22
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=replacing_an_import_removes_only_the_previous_draft_and_updates_its_display_name
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=23
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=switching_single_dual_and_single_styles_preserves_sources_and_routes_matching_music
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=23
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=switching_single_dual_and_single_styles_preserves_sources_and_routes_matching_music
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=24
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=duality_rejects_wrong_unique_source_counts_without_importing_partial_drafts
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=24
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=duality_rejects_wrong_unique_source_counts_without_importing_partial_drafts
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=25
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=cancelling_dual_selection_preserves_both_names_files_and_readiness
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=25
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=cancelling_dual_selection_preserves_both_names_files_and_readiness
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=26
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=duplicate_picker_uris_are_deduplicated_without_changing_their_first_occurrence_order
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.DirectorScreenTest
+INSTRUMENTATION_STATUS: current=26
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=duplicate_picker_uris_are_deduplicated_without_changing_their_first_occurrence_order
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.FeatureIntegrationTest
+INSTRUMENTATION_STATUS: current=27
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.FeatureIntegrationTest:
+INSTRUMENTATION_STATUS: test=duality_import_order_full_hd_render_survives_recreation_and_saves_into_collection
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.FeatureIntegrationTest
+INSTRUMENTATION_STATUS: current=27
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=duality_import_order_full_hd_render_survives_recreation_and_saves_into_collection
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.FeatureIntegrationTest
+INSTRUMENTATION_STATUS: current=28
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=auto_save_and_ready_notification_publish_once_and_survive_navigation_and_recreation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.FeatureIntegrationTest
+INSTRUMENTATION_STATUS: current=28
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=auto_save_and_ready_notification_publish_once_and_survive_navigation_and_recreation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.InformationalDialogsTest
+INSTRUMENTATION_STATUS: current=29
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.InformationalDialogsTest:
+INSTRUMENTATION_STATUS: test=version_dialog_uses_installed_build_identity_and_can_be_closed_by_button_and_back
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.InformationalDialogsTest
+INSTRUMENTATION_STATUS: current=29
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=version_dialog_uses_installed_build_identity_and_can_be_closed_by_button_and_back
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.InformationalDialogsTest
+INSTRUMENTATION_STATUS: current=30
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=privacy_dialog_explains_local_processing_and_dismisses_without_leaving_settings
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.InformationalDialogsTest
+INSTRUMENTATION_STATUS: current=30
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=privacy_dialog_explains_local_processing_and_dismisses_without_leaving_settings
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.InformationalDialogsTest
+INSTRUMENTATION_STATUS: current=31
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=help_dialog_explains_creation_results_and_disabled_action_then_returns_to_settings
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.InformationalDialogsTest
+INSTRUMENTATION_STATUS: current=31
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=help_dialog_explains_creation_results_and_disabled_action_then_returns_to_settings
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.LibraryScreenTest
+INSTRUMENTATION_STATUS: current=32
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.LibraryScreenTest:
+INSTRUMENTATION_STATUS: test=unsaved_entry_precedes_saved_rows_without_hiding_saved_collection
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.LibraryScreenTest
+INSTRUMENTATION_STATUS: current=32
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=unsaved_entry_precedes_saved_rows_without_hiding_saved_collection
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.LibraryScreenTest
+INSTRUMENTATION_STATUS: current=33
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=saved_collection_is_sorted_counted_and_returns_from_preview_to_collection
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.LibraryScreenTest
+INSTRUMENTATION_STATUS: current=33
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=saved_collection_is_sorted_counted_and_returns_from_preview_to_collection
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.LibraryScreenTest
+INSTRUMENTATION_STATUS: current=34
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=unsaved_completed_render_is_accessible_without_being_counted_as_saved
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.LibraryScreenTest
+INSTRUMENTATION_STATUS: current=34
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=unsaved_completed_render_is_accessible_without_being_counted_as_saved
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.LibraryScreenTest
+INSTRUMENTATION_STATUS: current=35
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=empty_collection_shows_help_and_both_back_routes_return_to_director
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.LibraryScreenTest
+INSTRUMENTATION_STATUS: current=35
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=empty_collection_shows_help_and_both_back_routes_return_to_director
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=36
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.RenderProgressScreenTest:
+INSTRUMENTATION_STATUS: test=every_render_stage_has_its_copy_and_indeterminate_or_exact_candidate_percentage
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=36
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=every_render_stage_has_its_copy_and_indeterminate_or_exact_candidate_percentage
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=37
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=a_running_render_blocks_import_style_collection_settings_and_duplicate_render_actions
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=37
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=a_running_render_blocks_import_style_collection_settings_and_duplicate_render_actions
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=38
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=a_quality_warning_is_shown_explicitly_and_does_not_disable_saving_or_sharing
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=38
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=a_quality_warning_is_shown_explicitly_and_does_not_disable_saving_or_sharing
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=39
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=39
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=new_operation_shows_progress_without_scrolling_and_updates_preserve_user_position
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=40
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=cancellation_unwinds_scratch_and_keeps_the_draft_previous_result_and_saved_library
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=40
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=cancellation_unwinds_scratch_and_keeps_the_draft_previous_result_and_saved_library
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=41
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=render_failure_preserves_the_previous_result_and_readiness_then_a_retry_can_finish
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=41
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=render_failure_preserves_the_previous_result_and_readiness_then_a_retry_can_finish
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=42
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=activity_recreation_keeps_the_same_running_request_and_its_current_progress
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RenderProgressScreenTest
+INSTRUMENTATION_STATUS: current=42
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=activity_recreation_keeps_the_same_running_request_and_its_current_progress
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=43
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.ResultScreenTest:
+INSTRUMENTATION_STATUS: test=real_preview_plays_pauses_and_resumes_without_losing_requested_pause
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=43
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=real_preview_plays_pauses_and_resumes_without_losing_requested_pause
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=44
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=failed_real_preview_keeps_save_and_share_available
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=44
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=failed_real_preview_keeps_save_and_share_available
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=45
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=manual_save_copies_actual_video_and_disables_duplicate_save_after_recreation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=45
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=manual_save_copies_actual_video_and_disables_duplicate_save_after_recreation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=46
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=share_uses_readable_content_uri_with_grant_and_original_video_bytes
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=46
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=share_uses_readable_content_uri_with_grant_and_original_video_bytes
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=47
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=create_new_clears_imported_draft_and_preserves_completed_result
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.ResultScreenTest
+INSTRUMENTATION_STATUS: current=47
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=create_new_clears_imported_draft_and_preserves_completed_result
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=48
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.SettingsScreenTest:
+INSTRUMENTATION_STATUS: test=quality_choices_and_cancel_preserve_the_selected_resolution_after_recreation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=48
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=quality_choices_and_cancel_preserve_the_selected_resolution_after_recreation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=49
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=temporary_file_clear_requires_confirmation_and_preserves_finished_and_saved_video_bytes
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=49
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=temporary_file_clear_requires_confirmation_and_preserves_finished_and_saved_video_bytes
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=50
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=default_style_cancel_preserves_selection_and_apply_updates_both_screens_after_recreation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=50
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=default_style_cancel_preserves_selection_and_apply_updates_both_screens_after_recreation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=51
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=helpExportsCaptureFailureDetailsAndCancellationLeavesTheReportUntouched
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=51
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=helpExportsCaptureFailureDetailsAndCancellationLeavesTheReportUntouched
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=52
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=automatic_save_and_ready_notifications_are_independent_durable_switches
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=52
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=automatic_save_and_ready_notifications_are_independent_durable_switches
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=53
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=clean_settings_show_owned_defaults_and_both_back_actions_keep_the_draft
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.SettingsScreenTest
+INSTRUMENTATION_STATUS: current=53
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=clean_settings_show_owned_defaults_and_both_back_actions_keep_the_draft
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=54
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.StylePickerScreenTest:
+INSTRUMENTATION_STATUS: test=system_back_discards_a_pending_choice_and_keeps_the_imported_source
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=54
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=system_back_discards_a_pending_choice_and_keeps_the_imported_source
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=55
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=apply_persists_the_chosen_style_and_recreation_restores_it
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=55
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=apply_persists_the_chosen_style_and_recreation_restores_it
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=56
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=all_available_styles_apply_their_own_source_requirements_and_bundled_music
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=56
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=all_available_styles_apply_their_own_source_requirements_and_bundled_music
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=57
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=paused_sigma_and_every_upcoming_row_are_visible_but_cannot_be_selected
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=57
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=paused_sigma_and_every_upcoming_row_are_visible_but_cannot_be_selected
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=58
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=switching_styles_keeps_unrelated_preferences_and_uses_the_final_music_callback
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=58
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=switching_styles_keeps_unrelated_preferences_and_uses_the_final_music_callback
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=59
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=scrolling_the_last_choice_keeps_apply_and_cancel_fully_accessible
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=59
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=scrolling_the_last_choice_keeps_apply_and_cancel_fully_accessible
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=60
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=all_styles_opens_the_same_picker_and_cancel_preserves_the_selected_style
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.StylePickerScreenTest
+INSTRUMENTATION_STATUS: current=60
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=60
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=all_styles_opens_the_same_picker_and_cancel_preserves_the_selected_style
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 467.657
+
+OK (60 tests)
+
+
+INSTRUMENTATION_CODE: -1
+screens: 60/60 tests, 0 failures, 0 errors, 0 skipped.
+UI verification passed: 62 tests on emulator-5558 (AutoCamera_API36). Report: C:\Users\rexar\.codex\worktrees\auto-camera-pr\AutoEdit\build\reports\ui-tests.json

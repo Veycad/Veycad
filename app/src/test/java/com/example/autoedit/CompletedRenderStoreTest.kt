@@ -73,4 +73,31 @@ class CompletedRenderStoreTest {
             assertEquals(old.copy(saved = true), CompletedRenderStore.latest(root))
         } finally { root.deleteRecursively() }
     }
+
+    @Test fun published_capture_links_recover_after_process_death_in_result_order() {
+        val root = createTempDirectory("capture-result-recovery").toFile()
+        try {
+            val captureStore = CaptureSessionStore(root)
+            val capture = captureStore.create(CaptureScript.fear, CaptureMode.BEST_TAKE, 3, true, 0)
+            val first = CompletedRenderStore.publish(root,
+                root.resolve("first.mp4").apply { writeBytes(byteArrayOf(1)) }, "Первый",
+                CompletedRenderStore.CaptureLink(capture.id, 1, true))
+            val second = CompletedRenderStore.publish(root,
+                root.resolve("second.mp4").apply { writeBytes(byteArrayOf(2)) }, "Второй",
+                CompletedRenderStore.CaptureLink(capture.id, 2, false))
+            first.file.setLastModified(1_000L)
+            second.file.setLastModified(2_000L)
+            assertNull(captureStore.forResult(first.file.name))
+            assertTrue(CompletedRenderStore.recoverCaptureLinks(root).isEmpty())
+            val restored = requireNotNull(CaptureSessionStore(root).load(capture.id))
+            assertEquals(2, restored.selectedTake)
+            assertEquals(1, restored.recommendedTake)
+            assertEquals(mapOf(first.file.name to 1, second.file.name to 2), restored.resultTakes)
+            assertTrue(CompletedRenderStore.recoverCaptureLinks(root).isEmpty())
+            assertEquals(restored, CaptureSessionStore(root).load(capture.id))
+            CompletedRenderStore.markSaved(second)
+            assertEquals(second.captureLink, CompletedRenderStore.latest(root)?.captureLink)
+            assertTrue(CompletedRenderStore.latest(root)!!.saved)
+        } finally { root.deleteRecursively() }
+    }
 }

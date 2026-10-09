@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.autoedit.CaptureMusicPlaybackTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-02T08:27:43.228Z" hostname="WHITEKINGCOMP" time="0.02">
+  <properties/>
+  <testcase name="firstPreparedTakeStartsOnceWithoutSeeking" classname="com.example.autoedit.CaptureMusicPlaybackTest" time="0.012"/>
+  <testcase name="playerErrorsStopPlaybackAndInvalidatePendingWork" classname="com.example.autoedit.CaptureMusicPlaybackTest" time="0.005"/>
+  <testcase name="seekCompletesDuringBreakAndOnlyNextTakeStartsPlayback" classname="com.example.autoedit.CaptureMusicPlaybackTest" time="0.001"/>
+  <testcase name="stopDuringSeekRejectsLateAndDuplicateCallbacks" classname="com.example.autoedit.CaptureMusicPlaybackTest" time="0.0"/>
+  <testcase name="unfinishedSeekStopsInsteadOfStartingAnOffsetTake" classname="com.example.autoedit.CaptureMusicPlaybackTest" time="0.001"/>
+  <testcase name="oldSeekCallbackCannotAffectTheNextRecovery" classname="com.example.autoedit.CaptureMusicPlaybackTest" time="0.0"/>
+  <testcase name="missingEntireBreakDoesNotResumeOldMusic" classname="com.example.autoedit.CaptureMusicPlaybackTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

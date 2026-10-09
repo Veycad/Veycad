@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/background">
+<ScrollView
+    android:id="@+id/captureRoot" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:clipToPadding="false" android:fillViewport="true" android:paddingBottom="172dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="22dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <Button android:id="@+id/captureBack" android:layout_width="48dp" android:layout_height="48dp"
+                android:text="‹" android:textSize="26sp" android:padding="0dp" android:minWidth="0dp"
+                android:contentDescription="@string/capture_back" android:backgroundTint="@color/surface_high" android:textColor="@color/text_primary" />
+            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:text="@string/capture_brand" android:gravity="center" android:textColor="@color/text_primary"
+                android:textSize="12sp" android:letterSpacing="0.18" android:textStyle="bold" />
+            <TextView android:layout_width="48dp" android:layout_height="wrap_content" android:text="@string/capture_auto"
+                android:gravity="center" android:textColor="@color/neon" android:textStyle="bold" android:textSize="12sp" />
+        </LinearLayout>
+        <TextView android:id="@+id/captureModeLabel" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="24dp" android:text="@string/capture_music" android:textColor="@color/neon" android:textSize="12sp" android:textStyle="bold" />
+        <TextView android:id="@+id/captureTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:text="@string/capture_prepare" android:textColor="@color/text_primary" android:textSize="34sp" android:fontFamily="sans-serif-black" />
+        <TextView android:id="@+id/captureDetail" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="10dp" android:text="@string/capture_explanation" android:textColor="@color/text_secondary" android:textSize="14sp" />
+        <FrameLayout android:id="@+id/capturePreviewFrame" android:layout_width="match_parent" android:layout_height="370dp"
+            android:layout_marginTop="20dp" android:background="@drawable/video_preview_surface" android:clipToOutline="true">
+            <androidx.camera.view.PreviewView android:id="@+id/capturePreview" android:layout_width="match_parent" android:layout_height="match_parent" />
+            <VideoView android:id="@+id/capturePlayback" android:layout_width="match_parent" android:layout_height="match_parent"
+                android:layout_gravity="center" android:visibility="gone" />
+            <com.example.autoedit.CaptureFrameOverlay android:id="@+id/captureFrameOverlay" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
+            <TextView android:id="@+id/captureClock" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_gravity="top|start" android:layout_margin="12dp" android:padding="10dp" android:background="@drawable/panel_surface"
+                android:textColor="@color/text_primary" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/captureRecordingIndicator" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_gravity="top|end" android:layout_margin="12dp" android:padding="10dp" android:background="@drawable/panel_surface"
+                android:text="@string/capture_recording_indicator" android:textColor="@color/neon" android:textSize="12sp"
+                android:textStyle="bold" android:visibility="gone" android:accessibilityLiveRegion="polite" />
+            <TextView android:id="@+id/captureCountdown" android:layout_width="match_parent" android:layout_height="match_parent"
+                android:gravity="center" android:textColor="@color/white" android:shadowColor="@color/black" android:shadowRadius="8"
+                android:textSize="80sp" android:textStyle="bold" android:visibility="gone" android:accessibilityLiveRegion="polite" />
+
+        </FrameLayout>
+        <TextView android:id="@+id/captureFrameHint" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:gravity="center" android:text="@string/capture_frame_square" android:textColor="@color/text_secondary" android:textSize="12sp" />
+            <LinearLayout android:id="@+id/captureCuePanel" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_gravity="bottom" android:layout_margin="12dp" android:padding="14dp" android:orientation="vertical"
+                android:background="@drawable/panel_surface" android:visibility="gone">
+                <TextView android:id="@+id/captureCue" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:gravity="center" android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold" android:accessibilityLiveRegion="polite" />
+                <TextView android:id="@+id/captureNextCue" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp" android:gravity="center" android:textColor="@color/text_secondary" android:textSize="12sp" />
+            </LinearLayout>
+        <LinearLayout android:id="@+id/captureControls" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:layout_marginTop="16dp">
+            <Button android:id="@+id/captureFlip" android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:minHeight="48dp" android:text="@string/capture_front" android:textAllCaps="false"
+                android:textColor="@color/text_primary" android:backgroundTint="@color/surface_high" />
+            <TextView android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:gravity="center" android:padding="8dp" android:text="@string/capture_countdown" android:textColor="@color/text_secondary" android:textSize="12sp" />
+        </LinearLayout>
+        <Button android:id="@+id/captureTakePicker" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="52dp" android:text="@string/capture_other_take" android:textAllCaps="false" android:textColor="@color/text_primary"
+            android:backgroundTint="@color/surface_high" android:visibility="gone" />
+        <Button android:id="@+id/captureSecondary" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="52dp" android:text="@string/capture_again" android:textAllCaps="false" android:textColor="@color/text_primary"
+            android:backgroundTint="@color/surface_high" android:visibility="gone" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp"
+            android:gravity="center" android:text="@string/capture_prototype" android:textColor="@color/text_secondary" android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>
+<LinearLayout android:id="@+id/captureActionBar" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:layout_gravity="bottom" android:paddingStart="22dp" android:paddingEnd="22dp"
+    android:paddingTop="8dp" android:paddingBottom="22dp" android:orientation="vertical"
+    android:background="@color/background">
+    <Button android:id="@+id/captureAddTake" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:minHeight="48dp" android:text="@string/capture_add_take" android:textAllCaps="false"
+        android:textColor="@color/text_primary" android:backgroundTint="@color/surface_high"
+        android:visibility="gone" />
+    <Button android:id="@+id/capturePrimary" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:minHeight="58dp" android:text="@string/capture_start"
+        android:enabled="false"
+        android:textAllCaps="false" android:textStyle="bold" android:textColor="@color/capture_primary_text"
+        android:background="@drawable/capture_primary_start" android:backgroundTint="@null" app:backgroundTint="@null" />
+</LinearLayout>
+</FrameLayout>

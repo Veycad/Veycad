@@ -1,0 +1,23 @@
+{
+  "headSha": "5dcd9583c37337f72bc42ea81aedf351969bc98b",
+  "package": "com.example.autoedit.camera",
+  "versionName": "0.1.13-auto-camera-pilot",
+  "serial": "emulator-5558",
+  "style": "heartbeat",
+  "mode": "MUSIC",
+  "sessionId": "135551e9-bcad-4f5e-90f9-08d135f81c8d",
+  "status": "READY",
+  "durationMs": 31979,
+  "bytes": 2092157,
+  "sourceSha256": "f5c8f19e0235a91a55254e16853b8ab104b84718bdbc4b1ef7ed3dbf7ae05a4b",
+  "eligible": false,
+  "materialCodes": [
+    "insufficient_human_evidence",
+    "capture_no_eligible_take"
+  ],
+  "savedResults": "",
+  "scope": "Full native synthetic capture; actual semantic analysis and material rejection; preserved source, no exported edit",
+  "progressVisibleDuringSelection": false,
+  "humanCaptureVerified": false,
+  "nativeEditWithAudioVerified": false
+}
