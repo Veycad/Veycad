@@ -1,0 +1,39 @@
+# Android/Gradle generated state
+.gradle/
+.kotlin/
+.gradle-local/
+.idea/
+**/build/
+local.properties
+*.iml
+*.apk
+*.aab
+.swift-module-cache/
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local credentials and signing material
+.env
+.env.*
+*.jks
+*.keystore
+*.pem
+*.key
+
+# Local device and render evidence
+artifacts/
+TRANSFER-MANIFEST.json
+captures/
+diagnostics/
+outputs/
+*.log
+*.hprof
+
+# User-owned and Golden video fixtures stay local and never enter Git/APK.
+app/src/testFixtures/golden-mp4/*.mp4
+*.mp4
+
+# Platform files
+.DS_Store
+Thumbs.db

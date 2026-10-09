@@ -1,0 +1,11 @@
+{
+  "file": "Veykad-Camera-0.1.14-arm64-pilot.apk",
+  "bytes": 81215643,
+  "sha256": "16270A2E4450866D25D279896FFC62900BD39215B1708C5FC2581A08F4396F61",
+  "package": "com.example.autoedit.camera",
+  "versionName": "0.1.14-auto-camera-pilot",
+  "versionCode": 15,
+  "parentRef": "5dcd9583c37337f72bc42ea81aedf351969bc98b",
+  "userVideoEntries": [],
+  "testDescriptors": []
+}

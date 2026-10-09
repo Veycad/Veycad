@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.autoedit.CaptureSessionStoreTest" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-10-02T08:27:43.258Z" hostname="WHITEKINGCOMP" time="0.319">
+  <properties/>
+  <testcase name="pathsCannotLeaveCaptureDirectory" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.016"/>
+  <testcase name="publishingAnotherTakeKeepsBothResultLinks" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.1"/>
+  <testcase name="preparedMetadataWithoutAnyRecordedBytesIsNotShownAsACapture" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.027"/>
+  <testcase name="playbackStopReasonSurvivesFinalizationAndReopeningWithoutMarkingVideoFailed" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.018"/>
+  <testcase name="liveOwnerIsNotRecoveredAsAnInterruption" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.014"/>
+  <testcase name="cannotFinalizeAnEmptyFile" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.01"/>
+  <testcase name="finalizationMovesOnlyValidatedStagingFile" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.015"/>
+  <testcase name="interruptedProcessDoesNotClaimSuccessfulRecording" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.017"/>
+  <testcase name="preparedMetadataWithUnfinalizedFramesIsRecoverableAfterProcessDeath" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.017"/>
+  <testcase name="invalidSchemaIsNotSilentlyAccepted" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.014"/>
+  <testcase name="validatedContainerMovedBeforeProcessDeathCanBeRecoveredWithoutOverwritingIt" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.019"/>
+  <testcase name="recordingMetadataSurvivesNewStoreInstanceWithoutPublishingAProvisionalChoice" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.013"/>
+  <testcase name="recoveryCannotPromoteLiveRecording" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.011"/>
+  <testcase name="aManualFirstResultDoesNotClaimToBeTheAppsRecommendation" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.013"/>
+  <testcase name="legacyResultNamesStillLoadWithoutInventingAResultTake" classname="com.example.autoedit.CaptureSessionStoreTest" time="0.012"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

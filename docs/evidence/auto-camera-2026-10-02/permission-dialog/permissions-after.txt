@@ -1,0 +1,37 @@
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RuntimePermissionsTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.RuntimePermissionsTest:
+INSTRUMENTATION_STATUS: test=denied_notifications_reset_switch_and_preference_then_retry_persists_allowed_choice
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RuntimePermissionsTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=denied_notifications_reset_switch_and_preference_then_retry_persists_allowed_choice
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RuntimePermissionsTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=denied_video_permission_keeps_render_disabled_and_retry_imports_after_full_access
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.RuntimePermissionsTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=denied_video_permission_keeps_render_disabled_and_retry_imports_after_full_access
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 10.96
+
+OK (2 tests)
+
+
+INSTRUMENTATION_CODE: -1

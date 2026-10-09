@@ -1,0 +1,57 @@
+# Python automated test review
+
+Reviewed every test method in all 18 `tools/test_*.py` files and the relevant production paths on 2026-09-27. Initial executable inventory was **220 tests**, not the older 205. Final coherent inventory is **242 tests**: other work added temporal evidence checks during the review; those additions were preserved, read and validated. Counts below are discovered methods; table-driven subcases are not counted as separate tests.
+
+## Evidence
+
+- Full suite: **242 run, 0 failures, 0 errors, 0 skips**, 6.281 seconds including interpreter startup. Initial suite took 9.112 seconds in unittest. Timings are single local observations, not a benchmark; workloads changed during review.
+- Final run used `tools/run_tests.py`; JSON result is `build/reports/python-tests-review.json`, full output is `build/reports/python-review-suite.log`.
+- SHA-256 snapshots of **every tools/*.py file**, including the runner, matched before and after the full run. Exact hashes are in `build/reports/python-review-source-snapshot.json`. This binds the result to a coherent source snapshot despite concurrent earlier edits.
+- `tools/check_python_test_mutations.py` dynamically copies and mutates five production functions in memory. Each original targeted test passes; each changed implementation produces assertion failures with **zero test errors**. All five mutations were caught: semantic support becomes a no-op, byte ranges ignore requested start, audio RMS is always zero, future review dates are accepted, missing clock evidence is silently dropped. Source hashes remain unchanged. Result: `build/reports/python-test-mutations.json`. This is a sampled sensitivity check, not a full mutation score.
+- No Python test was merely a search for production source text. Synthetic reports exercise validators and aggregation, not Android execution, actual video decoding, model accuracy or human viewing.
+
+## Removed methods, with replacement coverage
+
+Exactly five redundant methods were removed; their behavioral cases remain covered.
+
+| Removed method | Why / retained coverage |
+|---|---|
+| `test_new_capture_mixed_duality_orders_are_preserved` | Folded all three source pairs and both directions into `test_both_duality_orders_are_preserved`, preserving ordering and authorization assertions. |
+| `test_duplicate_new_capture_cannot_fill_both_duality_roles` | General duplicate-identity test now covers every approved source, plus different paths with identical hashes. |
+| `test_modified_new_capture_bytes_are_not_authorized_by_filename` | General altered-source rejection test now covers the new capture in each active single-source recipe. |
+| `test_repeated_single_new_capture_is_rejected` | General alternation test now covers both original sources and the newer capture in its allowed recipes. |
+| `test_heartbeat_reprise_is_not_sigma_duplicate_failure` | It only accepted the unchanged baseline fixture, without introducing a reprise. Independent positive, repetition-boundary, audio resolution and tail-boundary tests already exercise baseline acceptance. |
+
+## File-by-file review
+
+| File | Tests | Decision and changes |
+|---|---:|---|
+| `test_compare_render_clocks.py` | 4 | Retained missing/secondary evidence cases; duplicate PTS now tested on either operand with the expected error. Added a full independently specified sorted-union partition, primary decoded PTS change, legal zero PTS, symmetry, missing operand and nonmutation checks. |
+| `test_heartbeat_review_server.py` | 3 | Retained range tests. Added one-byte and final-byte seeks, empty files, empty-file unsatisfiable ranges, case/whitespace/nonnumeric malformed headers, named subcases. No live HTTP service required for range-policy coverage. |
+| `test_modnet_probe.py` | 5 | Retained official diagnostic sizing examples. Added 511/512/513 reference boundaries, nonmultiple-of-32 alignment, narrow images, one-pixel images and transpose symmetry. Tests cover sizing only, not ONNX inference. |
+| `test_quality_active_release_scope.py` | 18 | Retained all aggregation scenarios: complete positive control, missing active cases, both DUALITY orders, negative confirmations, coverage, shared parents, schema/scope integrity. Shared factories moved out of test modules. Preserved external temporal evidence requirements; fixtures now explicitly supply per-product policy and valid generator names. Corpus/seal chronology/audio decoding/non-Heartbeat assessment remain explicitly mocked; readiness here is synthetic aggregation evidence only. |
+| `test_quality_audio_report.py` | 10 | Strengthened WAV checks to assert both decoded samples and literal IEEE float GUID. Added padding, duplicate/missing chunks and format-field corruption; independent PCM peak/RMS/frame-clock expectations; duration and full-scale plateau boundaries; empty/invalid contracts. Added real-file hash binding around mocked decoder output, float decode command contract, and modification during decode rejection. |
+| `test_quality_cached_motion_report.py` | 23 | Retained distinct v16/v17/v18 layouts, corruption/truncation, profile/count contracts, unknown-vs-unrequested evidence, connected motion runs, exclusive report writes. Float32 threshold now derived from the independent literal `.18` and compared to production before exercising its neighbor, removing the previous self-referential boundary expectation. |
+| `test_quality_holdout.py` | 11 | Retained media tamper, metadata evidence, pilots/derivatives, full sealed corpus and coverage rejection tests; moved baseline factory to shared support. Temporary cleanup registered immediately so failed setup cannot leak directories. Tests use fake bytes and metadata and do not attest true VFR or camera origin. |
+| `test_quality_holdout_next.py` | 6 | Retained unchanged: source nonmutation, transitive parent retirement, candidate readiness, sealed input refusal, exact result-byte identity including secondary source, malformed source identity. These test different branches and are not redundant. |
+| `test_quality_holdout_seal.py` | 14 | Retained actual baseline/manifest/APK hash and exposure tests, scope bindings and review chronology. Baseline fixture moved out of test module; setup cleanup registered immediately. Baseline bytes are synthetic, so verification proves integrity logic only. |
+| `test_quality_inspector_report.py` | 21 | Shared inspector factory moved out. Structural fixture reduced from 1,270 to 8 records across two clips; raw counts still agree. Added true cut-time reset acceptance and independently asserted decoded-clock regression inside a clip. Preserved concurrent temporal-policy/visibility/dual-decoder tests; replaced frame 705 with frame 6 and shifted the synthetic source clock, keeping large valid separation examples without 1,270-record deepcopy overhead. Malformed list/dictionary layer kinds remain rejection cases. |
+| `test_quality_product_scope.py` | 6 | Expected four products are now literal, not imported from the same implementation. Added independent active/paused-state assertions and fresh nested-record tests to catch shared mutable factory state. Retained strict pause basis and schema rejection tests. |
+| `test_quality_release_matrix.py` | 31 | Retained distinct integration boundaries: source/build/review/inspector binding, actual seal verification, saved-vs-remeasured audio, exact negative evidence and DUALITY ordering. Shared fixtures moved out; setup cleanup registered immediately. Decoder subprocess remains mocked so no false claim of real MP4 validation. |
+| `test_quality_render_report.py` | 40 | Removed one redundant baseline-only method. Shared Heartbeat/Sigma/FEAR/audio/review fixtures moved out, including duplicated FEAR construction. Added independent literal checklist contract so production list deletion cannot shrink expectations silently. Retained boundary/counter/unknown/identity cases and preserved concurrent temporal-policy checks. |
+| `test_quality_review_form.py` | 8 | Retained all form-generation, immutable writes, negative-byte binding and CLI scenarios. Uses shared factories and early setup cleanup. CLI subprocess is retained because it verifies argument handling and refusal to overwrite, beyond the pure function checks. |
+| `test_quality_review_identity.py` | 7 | Retained unchanged: timezone normalization, one-microsecond future boundary, malformed/date-only/naive types, wrong review shape and injected timezone-less clock. Fixed injected clock avoids current-date flakiness. Included future acceptance in mutation sampling. |
+| `test_quality_source_timing.py` | 7 | Removed a duplicate assessor call inside a test. Added minimum timestamp/timebase invalid boundaries; full independent histogram/FPS/period/start expectations, decode-order and start-offset invariance, input nonmutation. Added framecrc parser/real hash binding and changed source rejection with subprocess output explicitly mocked. |
+| `test_quality_user_source_guard.py` | 21 | Consolidated four duplicates while preserving every source/order/recipe scenario. Removed brittle copies of personal path/provenance wording; preserved allowed recipe policy. Added real hashing through preflight using locally authorized synthetic bytes and same-length tampering, catching defects hidden by previous mocked hashes. |
+| `test_semantic_alpha_support.py` | 7 | Previous `0 <= result <= alpha` allowed both identity and all-zero implementations. Now checks removed distant support, retained center, fractional boundaries, rectangular geometry, threshold effect, dilation effect and both invalid planes. Added isolated zero-margin native-crash regression; mutation sampling verifies no-op is rejected. |
+
+## Production defects exposed
+
+1. **Valid zero margin crashed the Python process.** `constrain(..., margin=0)` invoked Pillow `MaxFilter(1)` and the bundled Windows runtime terminated with decimal exit code **3221225620** (`0xC0000094`, integer divide by zero). A direct isolated repro printed its pre-call marker and then exited without a traceback. The new subprocess test first failed on this status. The narrowly authorized fix bypasses dilation for margin zero, its correct identity operation; Gaussian blur/resizing and every positive-margin path remain intact. Regression now passes.
+2. **New malformed temporal layer kinds could raise TypeError.** The concurrently introduced inspector logic accepted `[]` / `{}` into a later frozenset membership expression after reporting the invalid field, causing two test errors. A string type guard appeared from the concurrent work before this review's fix could be applied. That correction was preserved and the malformed-kind regressions now pass. This review does not claim authorship of that production correction or the newly introduced temporal gate.
+
+## Limits and follow-up
+
+Passing this suite establishes the tested Python contracts. It does not establish perceptual montage quality, Android device behavior, codec interoperability, model accuracy or truthfulness of claimed human review. The existing reports are intentionally synthetic; a real end-to-end acceptance run needs approved media, real decoder/device output and reviewed results. This review kept those boundaries explicit instead of manufacturing acceptance evidence.
+
+The full run was coherent at its recorded hashes. Earlier concurrent additions mean the initial/final count increase should not be presented entirely as review-created coverage. Any subsequent source change needs a new run and a new snapshot.

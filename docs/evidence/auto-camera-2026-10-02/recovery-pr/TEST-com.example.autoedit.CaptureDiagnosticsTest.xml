@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.autoedit.CaptureDiagnosticsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-02T08:27:43.195Z" hostname="WHITEKINGCOMP" time="0.029">
+  <properties/>
+  <testcase name="cyclicCauseChainIsBoundedAndMarkedAsTruncated" classname="com.example.autoedit.CaptureDiagnosticsTest" time="0.008"/>
+  <testcase name="materialCodeSurvivesWrapperWithoutRejectingMovementAsStatic" classname="com.example.autoedit.CaptureDiagnosticsTest" time="0.02"/>
+  <testcase name="wrappedFailureRetainsTypesWithoutPrivateMessagesOrPaths" classname="com.example.autoedit.CaptureDiagnosticsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

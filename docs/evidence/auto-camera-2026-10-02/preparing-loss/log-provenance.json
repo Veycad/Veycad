@@ -1,0 +1,56 @@
+[
+  {
+    "file": "regression-before.txt",
+    "originalSha256": "0ba8d7555087199e0d33af203e64a1c1874067b69b5e79997e9719731aac13f4",
+    "committedSha256": "57c8b15b7c8a64e7377d6ef707e5dbbda3b574aa566c200509f1ef142156c7af",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  },
+  {
+    "file": "regression-after.txt",
+    "originalSha256": "59ef94c8b00a6b570809bfda2e294634e1955fc6cb0ff8749b9269be5aa45f18",
+    "committedSha256": "569d826218903b09d2a1e4598bbfdd84ec97d203d1e0de1663bb5427052c90b6",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  },
+  {
+    "file": "baseline.txt",
+    "originalSha256": "64aab9cfc5e77b64a3e20d58af12c7825c71fe2973bb9680683f3a7c0b172bd3",
+    "committedSha256": "e11909b8ee1fc883ded2501691d61a99231c01b18b68b90007af18b9bc9d1d0c",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  },
+  {
+    "file": "ui-tests.json",
+    "originalSha256": "a61aa520678be11d0a6db51bc9cb32f273fcc06ede9deb6a3cc2f6a4410a585f",
+    "committedSha256": "64e175df9b68601203b4656379aff01a63879283eb391b2fb154e81bce229817",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  },
+  {
+    "file": "ui-full.txt",
+    "originalSha256": "54c030361dd0930068d010959a221117975d0067642b6f2daa018dde62ed52cf",
+    "committedSha256": "d5e6aa158594606f509752bc134a3dbf48a68df852c1d000470569ce51a62871",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  },
+  {
+    "file": "permissions-tests.xml",
+    "originalSha256": "19f3fab91026ceae70ccc366a4a38fd2b3700dd087b56b764f9bf90bd7ae8f2b",
+    "committedSha256": "012086e1a2eacd846135166747202aab5409a0a3a76c3bbb157bbd2001d291ec",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  },
+  {
+    "file": "permissions-instrumentation.txt",
+    "originalSha256": "75ec3f7e6ab266e81081f6e8fc91fe68bec0bc3edcc67ed996d813240efe3eae",
+    "committedSha256": "60307f4d7fe17f33a3b3ddf458013ac0ef87b43d72fbe693fd8cbe71c7890d2f",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  },
+  {
+    "file": "screens-tests.xml",
+    "originalSha256": "83a73fb38b962f57ab321e162b1f68a9b35211e0af51569f04ab40c91244ae4c",
+    "committedSha256": "24f42723995bd368db3b173270dafe693245e7cd84c03808727101c8cccb0c57",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  },
+  {
+    "file": "screens-instrumentation.txt",
+    "originalSha256": "630a629c409fcc82a291b4037fe942e69cd0d66b79953bdadd51c6ac653b75c6",
+    "committedSha256": "14b41c8a4850221e897c0a509c290b9d75be5c120e2a865a17be8653422634e4",
+    "normalization": "UTF-8 LF; trailing whitespace and blank EOF removed"
+  }
+]

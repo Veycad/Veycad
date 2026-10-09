@@ -1,0 +1,77 @@
+{
+  "baseCommit": "1179192cac2dfc4af65dca840080c8dd19712b9d",
+  "versionName": "0.1.15-auto-camera-pilot",
+  "versionCode": 16,
+  "unit": {
+    "tests": 631,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 81
+  },
+  "python": {
+    "discovered": 255,
+    "run": 255,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": true
+  },
+  "lint": {
+    "warnings": 21,
+    "errors": 0
+  },
+  "buildInputCount": 266,
+  "red": {
+    "test": "CaptureReviewScreenTest#savedPortraitPreviewIsCenteredBeforeAndAfterRecreation",
+    "failures": 1,
+    "actual": "left=0, width=240, frame=632",
+    "seconds": 4.311
+  },
+  "green": {
+    "sameTest": true,
+    "passed": 1,
+    "seconds": 4.845,
+    "covers": [
+      "decoded portrait aspect ratio",
+      "horizontal and vertical centering",
+      "inside preview card",
+      "Activity recreation",
+      "unchanged source bytes"
+    ]
+  },
+  "physical": {
+    "model": "Samsung Galaxy A25 SM-A256E",
+    "android": 16,
+    "api": 36,
+    "installedVersion": "0.1.14-auto-camera-pilot",
+    "sourcePreserved": true,
+    "nativeRenderAttempted": false,
+    "freshCaptureOn014": false,
+    "sourceDecode": {
+      "sourceSha256": "3a15014f38f15c7c697af9ff67a42f9a19e3f26f231601ef4b0908dfe6768974",
+      "fullVideoDecodeExit": 0,
+      "elapsedSeconds": 2.94,
+      "decodeScope": "old physical source, video only; CameraX capture intentionally has no microphone",
+      "fresh014Capture": false,
+      "contactSheet": "artifacts\\camera-samsung-014\\saved-source-contact.png"
+    }
+  },
+  "fullUi": {
+    "runId": "20261002-155241-078",
+    "total": 63,
+    "exactSourceIds": true,
+    "phases": [
+      {
+        "name": "permissions",
+        "tests": 2,
+        "passed": true
+      },
+      {
+        "name": "screens",
+        "tests": 61,
+        "passed": true
+      }
+    ]
+  }
+}

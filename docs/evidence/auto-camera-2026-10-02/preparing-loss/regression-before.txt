@@ -1,0 +1,41 @@
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+com.example.autoedit.CaptureRecordingScreenTest:
+INSTRUMENTATION_STATUS: test=cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.autoedit.CaptureRecordingScreenTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: Timed out: preparing capture terminates after camera loss; state=State(phase=PREPARING, session=Session(id=79e4c0a4-34ec-4edf-aeba-9756752345e7, createdMs=1790932621969, styleId=fear_strobe, scriptVersion=1, mode=MUSIC, requestedTakes=1, status=PREPARED, durationMs=0, bytes=0, frontCamera=true, rotation=0, recordStartedNs=null, selectedTake=null, error=null, resultNames=[], resultTakes={}, recommendedTake=null, stopReason=null), elapsedMs=0, take=1, cue=null, nextCue=null, error=null)
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.example.autoedit.CaptureRecordingScreenTest.await(CaptureRecordingScreenTest.kt:340)
+	at com.example.autoedit.CaptureRecordingScreenTest.cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords(CaptureRecordingScreenTest.kt:161)
+
+INSTRUMENTATION_STATUS: stream=
+Error in cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords(com.example.autoedit.CaptureRecordingScreenTest):
+java.lang.AssertionError: Timed out: preparing capture terminates after camera loss; state=State(phase=PREPARING, session=Session(id=79e4c0a4-34ec-4edf-aeba-9756752345e7, createdMs=1790932621969, styleId=fear_strobe, scriptVersion=1, mode=MUSIC, requestedTakes=1, status=PREPARED, durationMs=0, bytes=0, frontCamera=true, rotation=0, recordStartedNs=null, selectedTake=null, error=null, resultNames=[], resultTakes={}, recommendedTake=null, stopReason=null), elapsedMs=0, take=1, cue=null, nextCue=null, error=null)
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.example.autoedit.CaptureRecordingScreenTest.await(CaptureRecordingScreenTest.kt:340)
+	at com.example.autoedit.CaptureRecordingScreenTest.cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords(CaptureRecordingScreenTest.kt:161)
+
+INSTRUMENTATION_STATUS: test=cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 23.663
+There was 1 failure:
+1) cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords(com.example.autoedit.CaptureRecordingScreenTest)
+java.lang.AssertionError: Timed out: preparing capture terminates after camera loss; state=State(phase=PREPARING, session=Session(id=79e4c0a4-34ec-4edf-aeba-9756752345e7, createdMs=1790932621969, styleId=fear_strobe, scriptVersion=1, mode=MUSIC, requestedTakes=1, status=PREPARED, durationMs=0, bytes=0, frontCamera=true, rotation=0, recordStartedNs=null, selectedTake=null, error=null, resultNames=[], resultTakes={}, recommendedTake=null, stopReason=null), elapsedMs=0, take=1, cue=null, nextCue=null, error=null)
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.example.autoedit.CaptureRecordingScreenTest.await(CaptureRecordingScreenTest.kt:340)
+	at com.example.autoedit.CaptureRecordingScreenTest.cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords(CaptureRecordingScreenTest.kt:161)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1

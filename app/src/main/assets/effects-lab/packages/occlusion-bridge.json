@@ -1,0 +1,8 @@
+{
+  "id": "occlusion-bridge",
+  "shader": "velocity_blur.frag",
+  "minimumGles": 3,
+  "durationMs": 105,
+  "parameters": { "intensity": 0.85, "flash": true },
+  "fallback": "black-frame"
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.autoedit.CaptureTakeTimelineTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-10-02T08:27:43.581Z" hostname="WHITEKINGCOMP" time="0.011">
+  <properties/>
+  <testcase name="refusesUnboundedRecording" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.0"/>
+  <testcase name="encodedFrameToleranceDoesNotAdmitInterruptedBestTake" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.002"/>
+  <testcase name="manualChoiceAcceptsEligibleTakeWithUnknownRecommendationScore" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.004"/>
+  <testcase name="earlyStopDoesNotInventLaterTakes" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.001"/>
+  <testcase name="equalScoresKeepStableOriginalOrder" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.0"/>
+  <testcase name="oneTakeDoesNotAskForAnother" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.0"/>
+  <testcase name="breakIsNotPartOfEitherTake" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.001"/>
+  <testcase name="endingDuringBreakPreservesOnlyFinishedTake" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.0"/>
+  <testcase name="completeSeriesHasNoFinalBreak" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.001"/>
+  <testcase name="onlyEligibleFiniteScoresCanWin" classname="com.example.autoedit.CaptureTakeTimelineTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

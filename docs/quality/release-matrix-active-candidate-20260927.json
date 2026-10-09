@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "product_scope": {
+    "schema_version": 1,
+    "products": {
+      "SIGMA": {
+        "state": "paused",
+        "reason_code": "user_requested_pause",
+        "instruction": "Над Sigma пока приостанавливаем работу, в приложении его нужно \"заблокировать\" чтобы пользователи не могли воспользоваться(под замочек внести к примеру)"
+      },
+      "HEARTBEAT": {"state": "active"},
+      "FEAR_STROBE": {"state": "active"},
+      "DUALITY_LOOP": {"state": "active"}
+    }
+  },
+  "cases": [],
+  "note": "No independent release case has been verified. A/B and IMG_2249.MOV are pilots in the explicitly authorized existing-data series; C was conservatively retired from unused coverage when native FEAR analysis started. Actual v23 pilot results are documented separately, not copied here. Complete sealed unused coverage, actual exports/rejections and dated human reviews remain required for the original full objective."
+}

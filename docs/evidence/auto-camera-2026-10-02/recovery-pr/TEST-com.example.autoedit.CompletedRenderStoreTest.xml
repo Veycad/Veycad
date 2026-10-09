@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.autoedit.CompletedRenderStoreTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-02T08:27:43.597Z" hostname="WHITEKINGCOMP" time="0.135">
+  <properties/>
+  <testcase name="latest_ignores_empty_and_partial_files_and_saved_state_belongs_to_each_result" classname="com.example.autoedit.CompletedRenderStoreTest" time="0.041"/>
+  <testcase name="failed_publication_does_not_replace_previous_completed_result" classname="com.example.autoedit.CompletedRenderStoreTest" time="0.02"/>
+  <testcase name="process_death_between_mp4_publication_and_metadata_keeps_result_recoverable" classname="com.example.autoedit.CompletedRenderStoreTest" time="0.007"/>
+  <testcase name="published_capture_links_recover_after_process_death_in_result_order" classname="com.example.autoedit.CompletedRenderStoreTest" time="0.05"/>
+  <testcase name="completed_result_survives_scratch_and_source_cleanup_and_restores_saved_state" classname="com.example.autoedit.CompletedRenderStoreTest" time="0.016"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

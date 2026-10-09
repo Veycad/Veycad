@@ -1,0 +1,47 @@
+[
+  {
+    "file": "regression-before.txt",
+    "originalSha256": "c0a5986c088fbc62828a710e943530c12e7d483d32f02502bbf4503f9d032198",
+    "committedSha256": "d2f46112839ab29ca80aafacb0bd418667358b30e32be0542d62b97eb618637c"
+  },
+  {
+    "file": "regression-after.txt",
+    "originalSha256": "8625b0b1e9bb8eaa872615ed2a7b03592eaa4553ab84cf0fddd1b50e651a36d6",
+    "committedSha256": "d2de2b54523655c0dd33e9134df2f57a0a7388bc98c0ba429f23483aac6887dd"
+  },
+  {
+    "file": "baseline.txt",
+    "originalSha256": "40b4f61c551b59cdeab4ab6cb5838554ec2b31709203c313bea207218697796e",
+    "committedSha256": "ea9a819f5832ecb141251f2d40fbd74a30359957fd34f730df9cba5b5984f973"
+  },
+  {
+    "file": "ui-tests.json",
+    "originalSha256": "bf648aff1afa02cb4673758e0dc53fae90cb25a3e8c88c1e59ea66e90cb31e7e",
+    "committedSha256": "0ed91583dd746cad8d88f831c570e20baaccf31a894cffb584dcc46205ef8f68"
+  },
+  {
+    "file": "ui-full.txt",
+    "originalSha256": "3016d8d5b814c01ec15f037550999e3b1b4651760a8581857e9e5c872d3075be",
+    "committedSha256": "12c218296096bcb39497c985fb54e91957a0e80b9a613d222cc95b3bb55c8ef3"
+  },
+  {
+    "file": "permissions-tests.xml",
+    "originalSha256": "7bd6d1b141fb77bf2bc3782b89a8a77e3d449b27fcec6c3bda7529361b140359",
+    "committedSha256": "90d0a6e410000fdc2f353051c94860b9eab54fad9f327408ebc36629ad5fb322"
+  },
+  {
+    "file": "permissions-instrumentation.txt",
+    "originalSha256": "9f671d465722ac511590a0b7b49b059f3afb9e0b56ea9c1ec41788d73ffb2312",
+    "committedSha256": "d8fcdabcb732d56284bcaf570eaef9b1a4006f71ec17a9ffab102af1a1b6485a"
+  },
+  {
+    "file": "screens-tests.xml",
+    "originalSha256": "e9d34f5de597ca490b700eb290b7f241214b7c35a3ae99233d11027ac372069d",
+    "committedSha256": "2622f4eaf71129e6b77128fac810e4a2e6e46b9019c73f4b9b5075a802763edf"
+  },
+  {
+    "file": "screens-instrumentation.txt",
+    "originalSha256": "647149c8710eb9ddccdc310e58af0b0996681b5d6915f81efd7ce2aaf7ece743",
+    "committedSha256": "35f9c2e80c3f49f02f43b7d5d58ce8679cf67d1e5881f85e47e79cfaaea3ae0b"
+  }
+]

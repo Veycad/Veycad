@@ -1,0 +1,22 @@
+[
+  {
+    "file": "permissions-after.xml",
+    "originalSha256": "2ffebeab080f62b3282db88efab0e5cfb25e29083c86e5c8db47262a16432415",
+    "committedSha256": "387b72dec3c0c6a8810eaa9a55a25336bc0cc05aaf3020c6c344fc4117b149a2"
+  },
+  {
+    "file": "permissions-after.txt",
+    "originalSha256": "877904a75897fcd1f08c70212776895cb1989d72c9ed3afc859fbac911f533d5",
+    "committedSha256": "1d5349a09be4e78dd2fc096b791cbfbc568c3c9d30120b51675770777eb94c4e"
+  },
+  {
+    "file": "permissions-ci-before.xml",
+    "originalSha256": "4915c3d1ed9b82caffadd78d30967898b50455987d3d433f4ce15110d67938de",
+    "committedSha256": "4915c3d1ed9b82caffadd78d30967898b50455987d3d433f4ce15110d67938de"
+  },
+  {
+    "file": "permission-input-excerpt.txt",
+    "originalSha256": "bb19dd2112f52e1eaad9e1650c8e7b75c368d9d7748b0bccd106374a94123d47",
+    "committedSha256": "bb19dd2112f52e1eaad9e1650c8e7b75c368d9d7748b0bccd106374a94123d47"
+  }
+]

@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1880" height="3820" viewBox="0 0 1880 3820">
+  <defs>
+    <linearGradient id="art" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#A53A2B"/><stop offset=".32" stop-color="#283234"/><stop offset="1" stop-color="#050606"/></linearGradient>
+    <linearGradient id="heart" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6B2033"/><stop offset="1" stop-color="#16090D"/></linearGradient>
+    <linearGradient id="duality" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#15334D"/><stop offset=".49" stop-color="#15334D"/><stop offset=".5" stop-color="#652B21"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dy="16" stdDeviation="22" flood-color="#000" flood-opacity=".28"/></filter>
+    <style>
+      .ui{font-family:Inter,Arial,sans-serif}.brand{font-size:12px;font-weight:800;letter-spacing:2.6px;fill:#F7FAFC}.ey{font-size:10px;font-weight:800;letter-spacing:1.5px;fill:#FF4A32}.h1{font-size:34px;font-weight:700;letter-spacing:-1.3px;fill:#F7FAFC}.h2{font-size:25px;font-weight:700;letter-spacing:-.6px;fill:#F7FAFC}.body{font-size:14px;fill:#B9C3CB}.strong{font-size:14px;font-weight:700;fill:#F7FAFC}.small{font-size:11px;fill:#78838B}.tiny{font-size:9px;font-weight:700;letter-spacing:.7px;fill:#FF4A32}.screenlabel{font-size:13px;font-weight:700;fill:#50585B}.white{fill:#FFF}.icon{fill:none;stroke:#F7FAFC;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.muted{fill:none;stroke:#78838B;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+    </style>
+    <g id="phone"><rect width="412" height="900" rx="32" fill="#050708" stroke="#273035"/></g>
+    <g id="header"><text class="brand" x="22" y="39">VEYKAD</text><circle cx="94" cy="35" r="3.5" fill="#FF4A32"/><rect x="350" y="15" width="40" height="40" rx="14" fill="#20272B"/><path class="icon" d="M362 28h16M365 35h10M360 42h20M369 25v6M372 32v6M365 39v6"/></g>
+    <g id="backheader"><rect x="22" y="15" width="40" height="40" rx="14" fill="#20272B"/><path class="icon" d="M48 27l-8 8 8 8M40 35h13"/><text class="brand" x="170" y="39">VEYKAD</text><circle cx="242" cy="35" r="3.5" fill="#FF4A32"/></g>
+    <g id="nav"><rect y="818" width="412" height="82" fill="#050708"/><line y1="818" x2="412" y2="818" stroke="#20272B"/><text class="small" x="111" y="867">✦  Создать</text><text class="small" x="270" y="867">▣  Эдиты</text></g>
+    <g id="primary"><rect width="368" height="58" rx="19" fill="#FF4A32"/></g>
+    <g id="secondary"><rect width="368" height="56" rx="19" fill="#20272B"/></g>
+  </defs>
+  <rect width="1880" height="3820" fill="#E7E8E5"/>
+  <g class="ui">
+    <text x="40" y="45" font-size="24" font-weight="700" fill="#15191A">Veykad · Product states</text><text x="40" y="69" font-size="12" fill="#697174">Required and post‑MVP screens</text>
+
+    <!-- 01 SPLASH -->
+    <text class="screenlabel" x="40" y="110">01 · SPLASH / ВОССТАНОВЛЕНИЕ</text>
+    <g id="screen-splash" transform="translate(40 130)" filter="url(#shadow)"><use href="#phone"/>
+      <circle cx="206" cy="334" r="72" fill="#20272B"/><circle cx="206" cy="334" r="50" fill="#FF4A32" fill-opacity=".12"/><path d="M173 355l31-63 35 63-16-10-19 22-17-22z" fill="#FF4A32"/>
+      <text x="145" y="445" font-size="32" font-weight="700" letter-spacing="2" fill="#F7FAFC">VEYKAD</text><text class="body" x="130" y="477">Montage Engine</text>
+      <circle cx="181" cy="556" r="4" fill="#FF4A32"/><circle cx="206" cy="556" r="4" fill="#FF4A32" opacity=".55"/><circle cx="231" cy="556" r="4" fill="#FF4A32" opacity=".25"/>
+      <text class="strong" x="119" y="610">Восстанавливаем проект</text><text class="small" x="103" y="634">Проверяем черновик и незавершённый рендер</text>
+    </g>
+
+    <!-- 02 RESULT -->
+    <text class="screenlabel" x="492" y="110">02 · ГОТОВЫЙ МОНТАЖ</text>
+    <g id="screen-result" transform="translate(492 130)" filter="url(#shadow)"><use href="#phone"/><use href="#backheader"/>
+      <text class="ey" x="122" y="92">МОНТАЖ ГОТОВ</text><text class="h1" x="63" y="136">Вот что получилось</text>
+      <g><rect x="36" y="165" width="340" height="430" rx="28" fill="url(#art)"/><circle cx="206" cy="370" r="34" fill="#050708" fill-opacity=".62"/><path d="M200 357l20 13-20 13z" fill="#FFF"/><text x="336" y="574" font-size="10" fill="#FFF">0:15</text><rect x="52" y="552" width="308" height="4" rx="2" fill="#FFF" fill-opacity=".25"/><rect x="52" y="552" width="110" height="4" rx="2" fill="#FF4A32"/></g>
+      <rect x="36" y="614" width="340" height="62" rx="19" fill="#101416"/><text class="ey" x="52" y="638">СИГМА</text><text class="small" x="52" y="658">1080p · 0:15 · 24 МБ</text><text class="small" x="327" y="649">✦</text>
+      <g transform="translate(22 695)"><use href="#primary"/><text x="107" y="35" font-size="14" font-weight="700" fill="#FFF">↓  Сохранить в галерею</text></g>
+      <g transform="translate(22 763)"><use href="#secondary"/><text class="strong" x="143" y="34">↗  Поделиться</text></g>
+      <text class="small" x="146" y="858">＋ Создать новый</text>
+    </g>
+
+    <!-- 03 SOURCES -->
+    <text class="screenlabel" x="944" y="110">03 · ИСХОДНИКИ / DUALITY</text>
+    <g id="screen-sources" transform="translate(944 130)" filter="url(#shadow)"><use href="#phone"/><use href="#backheader"/>
+      <text class="ey" x="22" y="92">МАТЕРИАЛ</text><text class="h1" x="22" y="136">Исходники</text><text class="body" x="22" y="165">Для DUALITY нужны два ролика.</text>
+      <g><rect x="22" y="195" width="368" height="188" rx="24" fill="#101416" stroke="#273035"/><rect x="34" y="207" width="122" height="164" rx="17" fill="url(#art)"/><text x="44" y="227" font-size="9" font-weight="700" fill="#FFF">1</text><text class="strong" x="173" y="233">portrait_night.mp4</text><text class="small" x="173" y="255">00:23 · 1080 × 1920</text><rect x="173" y="288" width="88" height="38" rx="13" fill="#20272B"/><text class="small" x="190" y="311">Заменить</text><rect x="269" y="288" width="88" height="38" rx="13" fill="#20272B"/><text class="small" x="294" y="311">Удалить</text></g>
+      <circle cx="206" cy="405" r="22" fill="#FF4A32"/><text x="196" y="412" font-size="18" font-weight="700" fill="#FFF">⇅</text><text class="small" x="235" y="410">Поменять местами</text>
+      <g><rect x="22" y="443" width="368" height="188" rx="24" fill="#101416" stroke="#FF4A32"/><rect x="34" y="455" width="122" height="164" rx="17" fill="url(#duality)"/><text x="44" y="475" font-size="9" font-weight="700" fill="#FFF">2</text><text class="strong" x="173" y="481">second_take.mp4</text><text class="small" x="173" y="503">00:04 · 1080 × 1920</text><rect x="173" y="536" width="88" height="38" rx="13" fill="#20272B"/><text class="small" x="190" y="559">Заменить</text><rect x="269" y="536" width="88" height="38" rx="13" fill="#20272B"/><text class="small" x="294" y="559">Удалить</text></g>
+      <rect x="22" y="647" width="368" height="66" rx="18" fill="#2B1715"/><text class="ey" x="39" y="674">! ВИДЕО СЛИШКОМ КОРОТКОЕ</text><text class="small" x="39" y="695">Для DUALITY нужно не менее 6 секунд.</text>
+      <g transform="translate(22 740)"><rect width="368" height="58" rx="19" fill="#20272B"/><text x="145" y="35" font-size="14" font-weight="700" fill="#78838B">Продолжить</text></g>
+    </g>
+
+    <!-- 04 RECOVERY -->
+    <text class="screenlabel" x="1396" y="110">04 · ОШИБКИ И ВОССТАНОВЛЕНИЕ</text>
+    <g id="screen-recovery" transform="translate(1396 130)" filter="url(#shadow)"><use href="#phone"/><use href="#header"/>
+      <text class="ey" x="22" y="92">ВОССТАНОВЛЕНИЕ</text><text class="h1" x="22" y="136">Монтаж прервался</text><text class="body" x="22" y="167">Приложение закрылось во время рендера.</text><text class="body" x="22" y="188">Исходники и настройки сохранились.</text>
+      <g><circle cx="206" cy="335" r="92" fill="#20272B"/><circle cx="206" cy="335" r="61" fill="#FF4A32" fill-opacity=".1"/><path class="icon" stroke="#FF4A32" stroke-width="3" d="M176 337a32 32 0 105-18M176 319v20h20"/><text class="small" x="161" y="390">42% завершено</text></g>
+      <rect x="22" y="473" width="368" height="76" rx="20" fill="#101416"/><text class="strong" x="40" y="500">Сигма · portrait_night.mp4</text><text class="small" x="40" y="523">Черновик сохранён сегодня, 18:42</text>
+      <g transform="translate(22 580)"><use href="#primary"/><text x="123" y="35" font-size="14" font-weight="700" fill="#FFF">↻  Повторить рендер</text></g>
+      <g transform="translate(22 648)"><use href="#secondary"/><text class="strong" x="107" y="34">Выбрать другой исходник</text></g>
+      <text class="small" x="151" y="746">Удалить черновик</text>
+      <rect x="22" y="782" width="368" height="55" rx="17" fill="#101416"/><text class="small" x="39" y="805">Другие ошибки: повреждённый файл · формат</text><text class="small" x="39" y="823">не поддерживается · недостаточно памяти</text>
+    </g>
+
+    <!-- 05 EMPTY EDITS -->
+    <text class="screenlabel" x="40" y="1040">05 · ПУСТЫЕ «ЭДИТЫ»</text>
+    <g id="screen-empty" transform="translate(40 1060)" filter="url(#shadow)"><use href="#phone"/><use href="#header"/>
+      <text class="ey" x="22" y="92">ТВОЯ КОЛЛЕКЦИЯ</text><text class="h1" x="22" y="136">Мои эдиты</text>
+      <g opacity=".55"><rect x="112" y="210" width="188" height="260" rx="28" fill="url(#art)"/><rect x="92" y="230" width="188" height="260" rx="28" fill="#20272B" stroke="#273035"/></g>
+      <circle cx="206" cy="332" r="34" fill="#FF4A32" fill-opacity=".16"/><text x="192" y="341" font-size="28" fill="#FF4A32">✦</text>
+      <text class="h2" x="89" y="546">Здесь появятся эдиты</text><text class="body" x="65" y="580">Создай первый монтаж — он сохранится</text><text class="body" x="119" y="601">в твоей коллекции.</text>
+      <g transform="translate(22 650)"><use href="#primary"/><text x="111" y="35" font-size="14" font-weight="700" fill="#FFF">✦  Создать первый эдит</text></g><use href="#nav"/>
+    </g>
+
+    <!-- 06 DIALOGS -->
+    <text class="screenlabel" x="492" y="1040">06 · ПОДТВЕРЖДЕНИЯ</text>
+    <g id="screen-dialogs" transform="translate(492 1060)" filter="url(#shadow)"><use href="#phone"/><use href="#header"/><rect y="68" width="412" height="832" fill="#000" opacity=".58"/>
+      <g transform="translate(30 102)"><rect width="352" height="164" rx="24" fill="#101416" stroke="#273035"/><text class="strong" x="20" y="32">Отменить монтаж?</text><text class="small" x="20" y="58">Текущий прогресс будет потерян.</text><rect x="20" y="93" width="145" height="48" rx="16" fill="#20272B"/><text class="small" x="69" y="122">Продолжить</text><rect x="177" y="93" width="155" height="48" rx="16" fill="#FF4A32"/><text x="226" y="122" font-size="11" font-weight="700" fill="#FFF">Отменить</text></g>
+      <g transform="translate(30 283)"><rect width="352" height="164" rx="24" fill="#101416" stroke="#273035"/><text class="strong" x="20" y="32">Удалить эдит?</text><text class="small" x="20" y="58">Вернуть его после удаления не получится.</text><rect x="20" y="93" width="145" height="48" rx="16" fill="#20272B"/><text class="small" x="72" y="122">Отмена</text><rect x="177" y="93" width="155" height="48" rx="16" fill="#B33D31"/><text x="227" y="122" font-size="11" font-weight="700" fill="#FFF">Удалить</text></g>
+      <g transform="translate(30 464)"><rect width="352" height="164" rx="24" fill="#101416" stroke="#273035"/><text class="strong" x="20" y="32">Очистить временные файлы?</text><text class="small" x="20" y="58">Освободится 248 МБ. Эдиты останутся.</text><rect x="20" y="93" width="145" height="48" rx="16" fill="#20272B"/><text class="small" x="72" y="122">Отмена</text><rect x="177" y="93" width="155" height="48" rx="16" fill="#FF4A32"/><text x="221" y="122" font-size="11" font-weight="700" fill="#FFF">Очистить</text></g>
+      <g transform="translate(30 645)"><rect width="352" height="176" rx="24" fill="#101416" stroke="#273035"/><text class="strong" x="20" y="32">Начать новый монтаж?</text><text class="small" x="20" y="58">Текущий результат ещё не сохранён.</text><rect x="20" y="78" width="312" height="42" rx="14" fill="#FF4A32"/><text x="107" y="104" font-size="11" font-weight="700" fill="#FFF">Сохранить и продолжить</text><text class="small" x="88" y="150">Продолжить без сохранения</text></g>
+    </g>
+
+    <!-- 07 ONBOARDING -->
+    <text class="screenlabel" x="944" y="1040">07 · ЗНАКОМСТВО</text>
+    <g id="screen-onboarding" transform="translate(944 1060)" filter="url(#shadow)"><use href="#phone"/>
+      <text class="brand" x="22" y="39">VEYKAD</text><circle cx="94" cy="35" r="3.5" fill="#FF4A32"/><text class="small" x="349" y="39">Пропустить</text>
+      <g><rect x="42" y="98" width="328" height="408" rx="32" fill="url(#art)"/><rect x="87" y="150" width="108" height="270" rx="23" fill="#101416" stroke="#FF4A32"/><rect x="218" y="190" width="108" height="270" rx="23" fill="url(#heart)"/><path d="M165 294h79" stroke="#FF4A32" stroke-width="4" stroke-linecap="round"/><circle cx="205" cy="294" r="17" fill="#FF4A32"/><text x="199" y="300" font-size="15" fill="#FFF">✦</text></g>
+      <text class="h1" x="52" y="574">Видео превращаются</text><text class="h1" x="105" y="612">в готовый эдит</text><text class="body" x="54" y="648">Veykad сам найдёт сильные кадры, музыку</text><text class="body" x="125" y="669">и ритм монтажа.</text>
+      <circle cx="190" cy="714" r="4" fill="#FF4A32"/><circle cx="206" cy="714" r="4" fill="#394144"/><circle cx="222" cy="714" r="4" fill="#394144"/>
+      <g transform="translate(22 755)"><use href="#primary"/><text x="157" y="35" font-size="14" font-weight="700" fill="#FFF">Далее</text></g>
+    </g>
+
+    <!-- 08 HELP -->
+    <text class="screenlabel" x="1396" y="1040">08 · ПОМОЩЬ</text>
+    <g id="screen-help" transform="translate(1396 1060)" filter="url(#shadow)"><use href="#phone"/><use href="#backheader"/>
+      <text class="ey" x="22" y="92">ПОДДЕРЖКА</text><text class="h1" x="22" y="136">Чем помочь?</text>
+      <rect x="22" y="163" width="368" height="54" rx="18" fill="#101416"/><text class="small" x="42" y="196">⌕  Найти ответ</text>
+      <text class="small" x="24" y="256" font-weight="700">ЧАСТЫЕ ВОПРОСЫ</text>
+      <g><rect x="22" y="271" width="368" height="260" rx="24" fill="#101416" stroke="#273035"/><text class="strong" x="40" y="307">Как работает автоматический монтаж?</text><text class="small" x="367" y="307">›</text><line x1="40" y1="330" x2="372" y2="330" stroke="#20272B"/><text class="strong" x="40" y="367">Почему видео должно быть длиннее?</text><text class="small" x="367" y="367">›</text><line x1="40" y1="390" x2="372" y2="390" stroke="#20272B"/><text class="strong" x="40" y="427">Где хранятся мои видео?</text><text class="small" x="367" y="427">›</text><line x1="40" y1="450" x2="372" y2="450" stroke="#20272B"/><text class="strong" x="40" y="487">Как освободить память?</text><text class="small" x="367" y="487">›</text></g>
+      <rect x="22" y="561" width="368" height="112" rx="24" fill="#2B1715"/><text class="strong" x="40" y="596">Не нашли ответ?</text><text class="small" x="40" y="618">Расскажите, что пошло не так.</text><text class="tiny" x="40" y="651">НАПИСАТЬ В ПОДДЕРЖКУ →</text>
+    </g>
+
+    <!-- 09 PRIVACY -->
+    <text class="screenlabel" x="40" y="1970">09 · КОНФИДЕНЦИАЛЬНОСТЬ</text>
+    <g id="screen-privacy" transform="translate(40 1990)" filter="url(#shadow)"><use href="#phone"/><use href="#backheader"/>
+      <text class="ey" x="22" y="92">ТВОИ ДАННЫЕ</text><text class="h1" x="22" y="136">Конфиденциальность</text>
+      <circle cx="206" cy="253" r="68" fill="#20272B"/><path class="icon" stroke="#FF4A32" stroke-width="3" d="M180 249v-17a26 26 0 0152 0v17M174 249h64v53h-64zM206 265v19"/>
+      <text class="h2" x="72" y="356">Видео остаются на устройстве</text><text class="body" x="57" y="388">Исходники, анализ и рендер не отправляются</text><text class="body" x="105" y="409">на сторонние серверы.</text>
+      <g><rect x="22" y="451" width="368" height="205" rx="24" fill="#101416" stroke="#273035"/><text class="strong" x="42" y="487">✓ Локальная обработка</text><text class="small" x="42" y="509">Все этапы монтажа выполняются на телефоне.</text><line x1="42" y1="531" x2="372" y2="531" stroke="#20272B"/><text class="strong" x="42" y="565">✓ Без аккаунта</text><text class="small" x="42" y="587">Мы не собираем профиль пользователя.</text><line x1="42" y1="609" x2="372" y2="609" stroke="#20272B"/><text class="strong" x="42" y="641">✓ Вы управляете файлами</text></g>
+      <text class="tiny" x="115" y="711">ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ →</text>
+    </g>
+
+    <!-- 10 PERMISSIONS -->
+    <text class="screenlabel" x="492" y="1970">10 · РАЗРЕШЕНИЯ</text>
+    <g id="screen-permissions" transform="translate(492 1990)" filter="url(#shadow)"><use href="#phone"/><use href="#backheader"/>
+      <text class="ey" x="22" y="92">ДОСТУП</text><text class="h1" x="22" y="136">Разрешения</text><text class="body" x="22" y="168">Veykad использует только необходимое.</text>
+      <g><rect x="22" y="199" width="368" height="92" rx="24" fill="#101416" stroke="#273035"/><rect x="38" y="218" width="48" height="48" rx="16" fill="#2B1715"/><text x="52" y="250" font-size="22" fill="#FF4A32">▣</text><text class="strong" x="101" y="231">Видео и фото</text><text class="small" x="101" y="252">Выбор исходников и сохранение</text><text class="tiny" x="319" y="244">РАЗРЕШЕНО</text></g>
+      <g><rect x="22" y="303" width="368" height="92" rx="24" fill="#101416" stroke="#273035"/><rect x="38" y="322" width="48" height="48" rx="16" fill="#2B1715"/><text x="53" y="353" font-size="20" fill="#FF4A32">●</text><text class="strong" x="101" y="335">Уведомления</text><text class="small" x="101" y="356">Сообщить о готовом монтаже</text><text class="small" x="326" y="347">Выкл. ›</text></g>
+      <rect x="22" y="428" width="368" height="92" rx="20" fill="#20272B"/><text class="strong" x="42" y="460">Камера и микрофон не нужны</text><text class="small" x="42" y="483">Приложение не запрашивает лишний доступ.</text>
+      <g transform="translate(22 560)"><use href="#secondary"/><text class="strong" x="117" y="34">Открыть настройки Android</text></g>
+    </g>
+
+    <!-- 11 NO SPACE -->
+    <text class="screenlabel" x="944" y="1970">11 · НЕТ МЕСТА</text>
+    <g id="screen-space" transform="translate(944 1990)" filter="url(#shadow)"><use href="#phone"/><use href="#header"/>
+      <circle cx="206" cy="262" r="94" fill="#20272B"/><circle cx="206" cy="262" r="59" fill="#FF4A32" fill-opacity=".1"/><text x="191" y="279" font-size="50" font-weight="700" fill="#FF4A32">!</text>
+      <text class="h1" x="70" y="406">Недостаточно места</text><text class="body" x="63" y="442">Для завершения монтажа нужно ещё 1,2 ГБ.</text><text class="body" x="82" y="463">Исходники и прогресс сохранены.</text>
+      <rect x="22" y="512" width="368" height="82" rx="22" fill="#101416"/><text class="strong" x="42" y="543">Доступно 640 МБ</text><text class="small" x="42" y="566">Рекомендуем освободить не менее 2 ГБ</text>
+      <g transform="translate(22 628)"><use href="#primary"/><text x="112" y="35" font-size="14" font-weight="700" fill="#FFF">Очистить временные файлы</text></g><g transform="translate(22 696)"><use href="#secondary"/><text class="strong" x="115" y="34">Открыть память устройства</text></g>
+      <text class="small" x="147" y="789">Вернуться позже</text>
+    </g>
+
+    <!-- 12 NOTIFICATION -->
+    <text class="screenlabel" x="1396" y="1970">12 · УВЕДОМЛЕНИЕ</text>
+    <g id="screen-notification" transform="translate(1396 1990)" filter="url(#shadow)"><use href="#phone"/>
+      <rect width="412" height="900" rx="32" fill="url(#art)" opacity=".42"/>
+      <text x="22" y="40" font-size="12" fill="#FFF">18:47</text><text x="335" y="40" font-size="11" fill="#FFF">● ◖ 87%</text>
+      <rect x="16" y="72" width="380" height="148" rx="26" fill="#20272B" stroke="#333B3E"/>
+      <rect x="31" y="89" width="42" height="42" rx="14" fill="#FF4A32"/><text x="42" y="116" font-size="19" font-weight="700" fill="#FFF">V</text><text class="strong" x="87" y="104">Veykad</text><text class="small" x="338" y="104">сейчас</text><text class="strong" x="31" y="154">Монтаж готов ✦</text><text class="small" x="31" y="177">Сигма · 0:15 · Нажмите, чтобы посмотреть</text><text class="tiny" x="31" y="205">ОТКРЫТЬ</text>
+      <text class="h2" x="103" y="480">Готово, пока вы заняты</text><text class="body" x="66" y="515">Уведомление возвращает прямо на экран</text><text class="body" x="131" y="536">готового монтажа.</text>
+    </g>
+
+    <!-- 13 WHAT'S NEW -->
+    <text class="screenlabel" x="40" y="2900">13 · ЧТО НОВОГО</text>
+    <g id="screen-whatsnew" transform="translate(40 2920)" filter="url(#shadow)"><use href="#phone"/>
+      <text class="brand" x="22" y="39">VEYKAD</text><circle cx="94" cy="35" r="3.5" fill="#FF4A32"/><text class="small" x="348" y="39">1.1.0</text>
+      <rect x="22" y="82" width="368" height="288" rx="30" fill="url(#duality)"/><text x="168" y="240" font-size="64" font-weight="700" fill="#FFF">Ⅱ</text><circle cx="206" cy="226" r="85" fill="none" stroke="#FF4A32" stroke-opacity=".45"/>
+      <text class="ey" x="22" y="414">ЧТО НОВОГО</text><text class="h1" x="22" y="458">Встречайте DUALITY</text><text class="body" x="22" y="490">Новый стиль соединяет два видео в одном</text><text class="body" x="22" y="511">ритме и создаёт ударную перекличку кадров.</text>
+      <g><rect x="22" y="554" width="368" height="136" rx="24" fill="#101416"/><text class="strong" x="42" y="588">✦ Два исходника</text><text class="small" x="42" y="610">Меняйте ролики местами перед монтажом.</text><text class="strong" x="42" y="650">✦ Новый музыкальный рисунок</text><text class="small" x="42" y="672">Ритм специально собран для DUALITY.</text></g>
+      <g transform="translate(22 729)"><use href="#primary"/><text x="125" y="35" font-size="14" font-weight="700" fill="#FFF">Попробовать DUALITY</text></g><text class="small" x="184" y="824">Позже</text>
+    </g>
+
+    <!-- 14 UNSUPPORTED FILE -->
+    <text class="screenlabel" x="492" y="2900">14 · ФАЙЛ НЕ ПОДДЕРЖИВАЕТСЯ</text>
+    <g id="screen-unsupported" transform="translate(492 2920)" filter="url(#shadow)"><use href="#phone"/><use href="#backheader"/>
+      <circle cx="206" cy="270" r="94" fill="#20272B"/><rect x="175" y="217" width="62" height="86" rx="12" fill="#273035" stroke="#FF4A32"/><path d="M217 217v22h20" fill="none" stroke="#FF4A32" stroke-width="2"/><text x="197" y="276" font-size="25" font-weight="700" fill="#FF4A32">×</text>
+      <text class="h1" x="82" y="414">Не удалось открыть видео</text><text class="body" x="55" y="450">Файл повреждён или использует неподдерживаемый</text><text class="body" x="132" y="471">формат кодирования.</text>
+      <rect x="22" y="520" width="368" height="76" rx="20" fill="#101416"/><text class="strong" x="42" y="550">clip_export.mov</text><text class="small" x="42" y="573">Попробуйте MP4, MOV или WebM</text>
+      <g transform="translate(22 630)"><use href="#primary"/><text x="118" y="35" font-size="14" font-weight="700" fill="#FFF">Выбрать другое видео</text></g><text class="small" x="165" y="724">Узнать подробнее</text>
+    </g>
+  </g>
+</svg>

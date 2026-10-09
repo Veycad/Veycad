@@ -1,0 +1,14 @@
+<resources>
+    <color name="black">#101315</color>
+    <color name="background">#F5F5F2</color>
+    <color name="text_primary">#101315</color>
+    <color name="text_secondary">#666D6A</color>
+    <color name="text_muted">#747A78</color>
+    <color name="neon">#FF5138</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_high">#E9EAE6</color>
+    <color name="stroke">#E0E2DF</color>
+    <color name="accent_soft">#FFE5DF</color>
+    <color name="white">#FFFFFF</color>
+    <color name="launcher_background">#F5F5F2</color>
+</resources>

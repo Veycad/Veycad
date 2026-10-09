@@ -1,0 +1,14 @@
+[
+  {
+    "abi": "universal",
+    "userVideoEntries": [],
+    "testDescriptors": [],
+    "captureActivityPresent": true
+  },
+  {
+    "abi": "arm64",
+    "userVideoEntries": [],
+    "testDescriptors": [],
+    "captureActivityPresent": true
+  }
+]

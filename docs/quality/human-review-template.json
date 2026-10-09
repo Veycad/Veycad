@@ -1,0 +1,20 @@
+{
+  "output_sha256": "",
+  "recipe": "",
+  "graph_generator": "",
+  "reviewer": "",
+  "reviewed_at": "",
+  "playback_1x": false,
+  "playback_half": false,
+  "checks": {
+    "shot_choice": false,
+    "composition_and_face": false,
+    "transitions": false,
+    "rhythm": false,
+    "colour": false,
+    "music": false,
+    "finale": false
+  },
+  "style_checks": {},
+  "blockers": []
+}
