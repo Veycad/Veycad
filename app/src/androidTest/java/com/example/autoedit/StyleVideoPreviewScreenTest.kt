@@ -53,8 +53,7 @@ class StyleVideoPreviewScreenTest {
     @Test fun watching_fear_does_not_choose_it_or_persist_a_pending_style() {
         ui.launch()
         ui.click(R.id.selectStyleButton)
-        onView(withText("Динамичный бит")).perform(scrollTo())
-        onView(withTagValue(equalTo("style_preview:fear_strobe"))).perform(click())
+        onView(withTagValue(equalTo("style_preview:fear_strobe"))).perform(scrollTo(), click())
         val preferences = ui.context.getSharedPreferences("montage_style", Context.MODE_PRIVATE)
         assertNull(preferences.getString("selected", null))
         onView(allOf(isClickable(), hasDescendant(withText("Динамичный бит")))).check(matches(not(isSelected())))
