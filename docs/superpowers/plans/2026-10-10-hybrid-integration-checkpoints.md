@@ -1,6 +1,6 @@
 # Совместимые checkpoints общего ядра
 
-Дополнение к одобренному [плану гибридного режима](2026-10-10-hybrid-mode.md). Основание: делегированное владельцем решение общего координатора — сохранить все одобренные возможности галереи, ручного монтажа, текста и Live Scrubbing, с единственным project/store/revision API в PR #15. Это последовательные интеграционные задачи с отдельными коммитами и независимым ревью каждой части. Статус: планируемые API, реализации ещё нет.
+Дополнение к одобренному [плану гибридного режима](2026-10-10-hybrid-mode.md). Основание: делегированное владельцем решение общего координатора — сохранить все одобренные возможности галереи, ручного монтажа, текста и Live Scrubbing, с единственным project/store/revision API в PR #15. Это последовательные интеграционные задачи с отдельными коммитами и независимым ревью каждой части. A1 реализована; точный статус ревью/CI и фактические API — в [общем контракте](../specs/2026-10-10-shared-project-contract.md). Остальные этапы ещё в реализации/плане.
 
 Выполнять после задачи 3 основного плана до подключения потребителей общего проекта. Задача A1 сохраняет модель/codec источников, форматов, текста и gain; A2 отдельно подключает reviewed manual payload, точную фазу и durable backing. B добавляет staging и migration; C добавляет runtime/leases и deletion/recovery. Полные локальные baseline/UI/emulator проверки остаются в общей очереди; целевые JVM — только `--max-workers=1`, полный CI — для точного коммита.
 
@@ -29,9 +29,21 @@ Meaningful A1 tests: repeated-asset selections roundtrip; clip reorder keeps sou
 
 Commit: `feat(storage): сохранять полный общий проект источников форматов и текста`.
 
+## A1r. Канонический сброс монтажной части
+
+Дополнительное делегированное решение владельца: ручной `RestoreBaseline` сохраняет текущие музыку, текст, стиль и locks. Полный `RestoreAutomatic` продолжает восстанавливать всю исходную ревизию. После связной A1 выполнить отдельным агентом и независимо проверить `ProjectCommand.RestoreMontage` и `HybridEditCommands.restoreMontage(project)`.
+
+Команда восстанавливает `original.graph` и `original.clips`, сохраняя текущие music, texts, style, lockedCutIds, visualSettings и textState. Ядро выделяет одну ревизию через собственный allocator/history и durable `restoresAutomaticSources` event; обычный `commitRevision` не получает права подделывать событие. Повтор unchanged reset — no-op; одинаковые видимые samples не означают одинаковый выбор скрытой кривой. Undo/redo и reopen сохраняют этот выбор.
+
+Locks сохраняются по стабильному ID входящего клипа; явный ручной reset может изменить координату существующей склейки. Отсутствующий ID или превращение locked cut в первый клип, а также текст/cues/layers за пределами восстановленной длительности отклоняют всю операцию через объяснимый `HybridEditRejected`. Не удалять и не обрезать поля молча, не делать два commits. CAS остаётся у общего store.
+
+Проверки: одна новая ревизия с текущими rich payload/музыкой/gain2/форматом и исходным монтажом; full reset сохраняет прежнюю семантику; rewrite→scoped reset→reopen→trim/extend; undo/redo; повторный no-op; несовместимые locks и оба вида текста оставляют историю/counter/redo/CURRENT без изменений. A2 backing после pruning остаётся отдельным gate.
+
+Commit: `feat(ui): сбрасывать монтаж с сохранением авторских настроек`.
+
 ## A2. Manual payload, точная фаза и долговечные source maps
 
-Dependency status checked 2026-10-10: manual pure compiler `67e730cb936f4f5f7f63a38bfe6c81611189f7cb` прошёл независимое scoped re-review после terminal-HOLD исправления. Его exact-head baseline CI выявил несовместимость `ReferenceMontageProfileTest.slice_glitch_is_visible_through_the_author_window_without_changing_generic_pulses`; владелец исследует origin identity. До исправления и проверки этого конкретного сбоя не импортировать checkpoint как полностью проверенную зависимость. A1 не зависит от этого payload.
+Dependency status refreshed 2026-10-10: manual pure compiler `67e730cb936f4f5f7f63a38bfe6c81611189f7cb` прошёл scoped re-review после terminal-HOLD исправления. Следующая baseline-регрессия generic origin fixture исправлена в `a5b05458` с отдельным чистым ревью и обеими CI-проверками по ledger владельца. Pure commands `4c98848f` прошли review/fix re-review и56 целевых тестов; ledger владельца подтверждает [baseline SUCCESS](https://github.com/Veycad/Veycad/actions/runs/38051757358/job/114212141751), его UI здесь ещё не подтверждён. Перед A2b закрепить точный reviewed SHA и проверить необходимые CI; A1/A2a не импортируют этот payload.
 
 Из reviewed manual checkpoint сохранить optional `manualMontageState`, derived `editableTiming`, effect origin/phase/sample window, local tracks и source-specific attachment table; old defaults сохраняют старый план. `originalFrameOffset` — единственная редактируемая visible phase. Baseline ClipPhase сохраняет исходную миллисекундную границу/длительность, включая 1201ms: прогресс нельзя вычислить только от округлённого начала FrameSpan.
 
@@ -42,6 +54,12 @@ Source maps/backing — авторские данные, не регенерир
 Tests: manual frame-plan roundtrip at fractional boundary1201ms, effect windows/local tracks and two-source attachments; source/reference roundtrip after reopen; restored nonlinear samples after trim/slip/reopen/history pruning; original/export revisions remain immutable; large repeated maps do not multiply manifest past its bound; allocation/count bounds before reading. Exact dependency regression must pass before declaring A2 complete.
 
 Commit: `feat(storage): сохранять ручные фазы и исходные кривые правок`.
+
+## Граница исходника и ненулевой первый video PTS
+
+Дополнительное совместимое требование координатора закреплено в reviewed gallery staging proposal `cab6954f49133945b45bc9773f7d12efdff0eb44`: сохранять фактически измеренный `firstVideoPtsUs` в общем source metadata/SourceDraft/ImportedVideoSource. `durationUs` — длительность содержимого; абсолютный raw end вычисляется как `firstVideoPtsUs + durationUs` с проверкой overflow. Пример: origin120000 и duration500000 дают end620000, raw frame586666 допустим.
+
+Новый origin должен войти в общий codec, проверки source bounds и SourceTimeMap до подключения потребителей. Requested targets и actual decoded PTS — разные данные; legacy schedule не сдвигается. Отсутствующий origin старой схемы не означает ноль: при необходимости проверенно измерять owned asset и выполнять совместимую миграцию/fork по правилам неизменяемых bindings. Gallery расширяет только runtime descriptor/inspector/cache, единственная authority persistence/maps/migration остаётся в PR #15. Этот пункт выполняется отдельной связной частью с агентом/ревью или входит в B при условии, что зависимые source-map/renderer/factory gates ещё не объявлены завершёнными.
 
 ## B. SourceDraft, отменяемый импорт и атомарное продвижение
 
@@ -72,6 +90,7 @@ Scope: common store/runtime, lease primitives, staging cleanup/recovery and focu
 - `deleteSources(projectId)` returns explicit Deleted/Busy/Missing result, refuses active leases, removes only project-owned source bytes, preserves metadata/tombstone/exported MP4. Subsequent editor load exposes missing sources while last export remains usable. Other project's physical copies survive.
 - Full project deletion also respects live leases and migration tombstones. Never follow linked subtrees outside owned workspace. CompletedRenderStore MP4 lifecycle remains with its owner.
 - Cleanup obtains exclusive protection before deleting an abandoned transaction. Never delete a live unpublished import or published draft. Crash recovery leaves latest complete CURRENT/revision state intact; old unreachable transient state may be removed only under the appropriate lock.
+- A1 minor: inspected import with rejected fingerprint may leave an unreferenced content-addressed copy. Controlled cleanup must prove it is unreferenced by selections/historical assets/drafts/active leases; never delete a pre-existing deduplicated target merely because a later inspection fails. Failed import publishes no selection/CURRENT.
 - Bound combined app preview cache to 32 MiB and at most2 decoders in later reader/preview tasks; leases must not hold eager duplicated planes. Runtime state does not become an alternative compilation authority.
 - Snapshot/lease/page ownership, including producer mutation regression, follows [common freeze contract](../specs/2026-10-10-frozen-project-contract.md); C supplies OS liveness, Task4 fixes compile snapshot, Task5 supplies lazy blob v2 and bounded reader. These gates are required before preview/export publication.
 
@@ -85,4 +104,6 @@ Commit: `feat(storage): защитить активные проекты и со
 
 Semantic dependency: Live Scrubbing smart track/cache v19 checkpoint `5f545044a9f17c0e37b6cba79dbc959b9e1ee4a4`, draft PR #24. Independent task review and fix1 scoped re-review clean; exact-head CI started, not yet verified here. Task5 imports these declarations/cache changes and implements compact semantic blob v2/header/lazy reader, with field provenance and complete associated regressions. Existing core MediaFrameAnalysisCache is still v18. Atomic validated track/blob publication precedes READY; it cannot be simulated with an API stub.
 
-N-source render dependency передана координатором: gallery [PR #20](https://github.com/Veycad/Veycad/pull/20), checkpoint `2e1d0e9759f1a5c661e4c6433fa94b8d235705da`. Координатор проверил exact CI/artifact digests и сообщил667 JVM/255 Python/78 Android без ошибок/пропусков; это provenance внешней проверки, здесь suite повторно не запускался. Просмотр committed renderer подтвердил `Request(sourceFiles: List<File>?=null)` с legacy master/secondary defaults,1..20 ordered files и cap2 decoder. Task4 переиспользует этот reviewed N-source механизм и held-frame QA/geometry проверки через адаптер общей selection table. Gallery не получает отдельный store/counter. EGL/GLES adapter от Live Scrubbing checkpoint76db137 находится в ревью; до чистого результата не импортировать как проверенный код.
+N-source render dependency передана координатором: gallery [PR #20](https://github.com/Veycad/Veycad/pull/20), checkpoint `2e1d0e9759f1a5c661e4c6433fa94b8d235705da`. Координатор проверил exact CI/artifact digests и сообщил667 JVM/255 Python/78 Android без ошибок/пропусков; это provenance внешней проверки, здесь suite повторно не запускался. Просмотр committed renderer подтвердил `Request(sourceFiles: List<File>?=null)` с legacy master/secondary defaults,1..20 ordered files и cap2 decoder. Task4 переиспользует этот reviewed N-source механизм и held-frame QA/geometry проверки через адаптер общей selection table. Gallery не получает отдельный store/counter. Первоначальный EGL/GLES76db не используется как самостоятельная принятая зависимость; reviewed кандидат обновлён ниже.
+
+Более новый reviewed общий renderer checkpoint `4dda4129f425f558500dc006cc71d85b52f6bce4`, [PR #28](https://github.com/Veycad/Veycad/pull/28), объединяет N-source2e и EGL/GLES. Координатор сообщил exact baseline SUCCESS, UI ещё ожидался; это следующий кандидат импорта вместо старого76db. [PR #27](https://github.com/Veycad/Veycad/pull/27), `41ba9d9ccc37e12d54293fd073bcb3d07c6fd360`, содержит reviewed `PreviewMemoryBudget`, обе CI прошли по проверке координатора. Root прочитал API: один manager на GL worker, reserve before allocation, pin/unpin/disposal и charged quarantine после failed cleanup. Lazy readers/pages/headers/tracks/textures/FBO обязаны использовать этот же экземпляр; actual allocation wiring и peak memory пока не доказаны и остаются отдельными gates.
