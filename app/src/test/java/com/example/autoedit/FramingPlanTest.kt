@@ -50,7 +50,7 @@ class FramingPlanTest {
         val plane=FrameAttachments.Plane(5,3,FloatArray(15){(it+1).toFloat()},.8f)
         val identity=FramingPlan.Sample(whole,whole,null,0f)
         assertEquals(plane,FramingPlan.mapPlane(plane,identity))
-        val fit=FramingPlan.Sample(whole,NormalizedRect(0f,1f/3f,1f,2f/3f),whole,.02f)
+        val fit=FramingPlan.Sample(whole,NormalizedRect(0f,1f/3f,1f,2f/3f),whole,FramingPlan.BLUR_RADIUS_FRACTION)
         val mapped=FramingPlan.mapPlane(plane,fit)
         assertArrayEquals(floatArrayOf(0f,0f,0f,0f,0f,6f,7f,8f,9f,10f,0f,0f,0f,0f,0f),mapped.values,0f)
         assertEquals(plane,FramingPlan.mapPlane(plane,fit,false))
@@ -64,7 +64,7 @@ class FramingPlanTest {
     }
     @Test fun background_mapping_uses_its_own_crop_and_never_enters_foreground_qa() {
         val plane=FrameAttachments.Plane(5,3,FloatArray(15){(it+1).toFloat()},1f)
-        val s=FramingPlan.Sample(whole,NormalizedRect(0f,1f/3f,1f,2f/3f),NormalizedRect(.4f,0f,1f,1f),.02f)
+        val s=FramingPlan.Sample(whole,NormalizedRect(0f,1f/3f,1f,2f/3f),NormalizedRect(.4f,0f,1f,1f),FramingPlan.BLUR_RADIUS_FRACTION)
         assertArrayEquals(floatArrayOf(3f,3f,4f,5f,5f,8f,8f,9f,10f,10f,13f,13f,14f,15f,15f),FramingPlan.mapPlane(plane,s,false).values,0f)
         assertEquals(0f,FramingPlan.mapPlane(plane,s).values.first(),0f)
     }
