@@ -6,6 +6,12 @@ import java.io.File
 
 /** Single source of truth for rotation at decoder/player Surface boundaries. */
 internal object VideoDisplayOrientation {
+    /** Metadata affects display aspect once; decoded Surface UVs already carry rotation. */
+    fun displayAspect(geometry: SourceGeometry): Double {
+        val encodedAspect = geometry.encodedWidth.toDouble() * geometry.pixelAspectRatio / geometry.encodedHeight
+        return if (geometry.rotation % 180 == 0) encodedAspect else 1.0 / encodedAspect
+    }
+
     fun cropForFile(file: File, width: Int, height: Int): SourceFraming.Crop {
         val extractor = MediaExtractor()
         try {
