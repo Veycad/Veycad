@@ -4,6 +4,42 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EditableMontageCompilerTest {
+    // Catches the HOLD sampler returning the penultimate value beyond its terminal key.
+    @Test fun extendedClipHoldsTerminalTransformAndGradeKeysWithoutChangingLegacyNoOp() {
+        val base = ManualMontageFixtures.generatedGraph()
+        val clip = base.clips.first().copy(sourceEndMs = 2200, outputDurationMs = 1200)
+        val tracks = listOf(
+            ParameterTrack("terminal-scale", ParameterTargets.clip(clip.id, "transform.scale"), ParameterTrack.ValueType.SCALAR,
+                listOf(ParameterTrack.Keyframe(0, listOf(1f), ParameterTrack.Interpolation.HOLD),
+                    ParameterTrack.Keyframe(1_000_000, listOf(2f)))),
+            ParameterTrack("terminal-grade", ParameterTargets.clip(clip.id, "grade.rgbaBias"), ParameterTrack.ValueType.VEC4,
+                listOf(ParameterTrack.Keyframe(0, listOf(.1f, .2f, .3f, .4f), ParameterTrack.Interpolation.HOLD),
+                    ParameterTrack.Keyframe(1_000_000, listOf(.5f, .6f, .7f, .8f)))))
+        val graph = base.copy(clips = listOf(clip), outputDurationMs = 1200, parameterTracks = tracks, overlays = emptyList())
+        for (fps in listOf(30, 60)) {
+            val project = imported(graph, fps)
+            val noOp = HighQualityFramePlan.build(EditableMontageCompiler.compile(project), fps)
+            assertEquals(HighQualityFramePlan.build(graph, fps), noOp)
+            assertEquals(1f, noOp.frames.first { it.outputTimeUs > 1_000_000 }.transform.scale, 0f)
+
+            val current = project.shared.current
+            val state = current.graph.manualMontageState!!.clips.single()
+            val extended = state.copy(visible = FrameRange(0, state.visible.endExclusive + 3))
+            val candidate = current.copy(clips = listOf(current.clips.single().copy(
+                span = FrameSpan(0, extended.visible.count.toInt()),
+                sourceMap = project.current.clips.single().timeMap.toSourceTimeMap(extended.visible))),
+                graph = current.graph.copy(manualMontageState = current.graph.manualMontageState!!.copy(clips = listOf(extended))))
+            val frames = HighQualityFramePlan.build(EditableMontageCompiler.compile(project, candidate), fps).frames
+            assertEquals(2f, frames.single { it.outputTimeUs == 1_000_000L }.transform.scale, 0f)
+            val beyondOriginalEnd = frames.filter { it.outputTimeUs >= 1_200_000L }
+            assertEquals(3, beyondOriginalEnd.size)
+            beyondOriginalEnd.forEach { frame ->
+                assertEquals("terminal scale at ${frame.outputTimeUs}", 2f, frame.transform.scale, 0f)
+                assertEquals(listOf(.5f, .6f, .7f, .8f), listOf(frame.redBias, frame.greenBias, frame.blueBias, frame.exposureBias))
+            }
+        }
+    }
+
     @Test fun sameIdCandidateCompilesBeforeSharedAllocation() {
         val project = imported(ManualMontageFixtures.generatedGraph())
         val shared = project.shared

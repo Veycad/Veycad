@@ -98,18 +98,23 @@ object HighQualityFramePlan {
             val legacyTransform = clip.transform.sample(progress)
             val tracks = timing?.localTracks ?: graph.parameterTracks
             val trackTimeUs = if (timing != null && timing.phase == null) frameTimeUs(originalFrame!!, fps) else originalOutputUs
-            fun scalar(parameter: String, fallback: Float): Float = tracks
+            fun sampleTrack(parameter: String): List<Float>? = tracks
                 .firstOrNull { it.target == ParameterTargets.clip(clip.id, parameter) }
-                ?.sample(trackTimeUs)?.firstOrNull() ?: fallback
+                ?.let { track ->
+                    // Edited extensions hold endpoint keys even when the legacy HOLD sampler
+                    // would select the penultimate value beyond the last timestamp.
+                    val sampleUs = if (timing != null) trackTimeUs.coerceIn(
+                        track.keyframes.first().timeUs, track.keyframes.last().timeUs) else trackTimeUs
+                    track.sample(sampleUs)
+                }
+            fun scalar(parameter: String, fallback: Float): Float = sampleTrack(parameter)?.firstOrNull() ?: fallback
             val transform = legacyTransform.copy(
                 scale = scalar("transform.scale", legacyTransform.scale),
                 translateX = scalar("transform.translateX", legacyTransform.translateX),
                 translateY = scalar("transform.translateY", legacyTransform.translateY),
                 rotationDegrees = scalar("transform.rotationDegrees", legacyTransform.rotationDegrees)
             )
-            val grade = tracks
-                .firstOrNull { it.target == ParameterTargets.clip(clip.id, "grade.rgbaBias") }
-                ?.sample(trackTimeUs)
+            val grade = sampleTrack("grade.rgbaBias")
             val currentAttachments = if (graph.sourceAttachments.isNotEmpty()) graph.sourceAttachments
                 .firstOrNull { it.sourceIndex == clip.sourceIndex }?.timeline?.interpolated(sourceUs)
                 else graph.frameAttachments.interpolated(sourceUs)
