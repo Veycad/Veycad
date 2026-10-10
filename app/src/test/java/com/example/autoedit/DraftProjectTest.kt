@@ -52,39 +52,46 @@ class DraftProjectTest {
         assertSame(core.current.clips.last().sourceMap, p.clips.last().sourceMap)
         assertSame(core.current.music, p.music)
         assertSame(core.current.texts, p.texts)
+        assertSame(core.current.textState, p.textState)
+        assertSame(core.current.visualSettings, p.visualSettings)
         assertSame(core.current.style, p.style)
         assertEquals(core.current.lockedCutIds, p.lockedCutIds)
     }
     @Test fun visual_edits_leave_core_revision_and_timing_until_core_supplies_revision() {
         val p = PreviewTestFixtures.project()
         val proposal = p.visualSettings.withAspect(ProjectAspect.LANDSCAPE_16_9)
-        val pending = DraftProject(p.project, proposal, p.sourceOrder, p.sourceGeometry)
-        assertEquals(0L, pending.revision)
-        assertSame(p.graph, pending.graph)
-        assertEquals(p.clips, pending.clips)
-        val allocated = p.project.current.copy(id = p.project.nextRevisionId, parentId = p.revision)
-        val updatedCore = p.project.copy(current = allocated, nextRevisionId = 2,
-            undo = listOf(p.project.current))
-        val received = DraftProject(updatedCore, proposal, p.sourceOrder, p.sourceGeometry)
+        assertEquals(0L, p.revision)
+        assertSame(p.project.current.graph, p.graph)
+        assertEquals(p.project.current.clips, p.clips)
+        assertEquals(ProjectAspect.PORTRAIT_9_16, p.visualSettings.aspect)
+        val updatedCore = HybridEditCommands.commitRevision(p.project,
+            p.project.current.copy(visualSettings = proposal))
+        val received = DraftProject(updatedCore)
         assertEquals(1L, received.revision)
         assertEquals(p.projectId, received.projectId)
         assertEquals(p.clips, received.clips)
+        assertEquals(proposal, received.visualSettings)
+        assertEquals(listOf(p.project.current), updatedCore.undo)
     }
     @Test fun snapshots_all_incoming_visual_and_adapter_collections() {
         val p = PreviewTestFixtures.project()
         val key = FramingKey(p.sourceOrder.single(), p.visualSettings.aspect)
         val map = mutableMapOf(key to SourceFramingSettings())
         val visual = ProjectVisualSettings(p.visualSettings.aspect, false, map)
-        val order = p.sourceOrder.toMutableList()
-        val geometry = p.sourceGeometry.toMutableMap()
-        val semantic = p.semanticAssetIds.toMutableMap()
-        val snapshot = DraftProject(p.project, visual, order, geometry, semantic)
-        map.clear(); order.clear(); geometry.clear(); semantic.clear()
+        val selections = p.project.selectedVideos!!.toMutableList()
+        val assets = p.assets.toMutableList()
+        val revision = p.project.current.copy(visualSettings = visual)
+        val snapshot = DraftProject(p.project.copy(assets = assets, selectedVideos = selections,
+            original = revision, current = revision))
+        map.clear(); selections.clear(); assets.clear()
         assertEquals(1, snapshot.visualSettings.framings.size)
         assertEquals(1, snapshot.sourceOrder.size)
         assertEquals(1, snapshot.sourceGeometry.size)
-        assertEquals(1, snapshot.semanticAssetIds.size)
+        assertEquals(1, snapshot.sources.size)
+        assertEquals(2, snapshot.assets.size)
         assertThrows(UnsupportedOperationException::class.java) { (snapshot.sourceOrder as MutableList).clear() }
+        assertThrows(UnsupportedOperationException::class.java) { (snapshot.sourceGeometry as MutableMap).clear() }
+        assertThrows(UnsupportedOperationException::class.java) { (snapshot.sources as MutableList).clear() }
         assertThrows(UnsupportedOperationException::class.java) { (snapshot.visualSettings.framings as MutableMap).clear() }
     }
     @Test fun rejects_invalid_zoom_nan_geometry_and_core_identity() {
@@ -107,24 +114,25 @@ class DraftProjectTest {
     @Test fun rejects_unknown_source_ids_and_invalid_graph_index_binding() {
         val p = PreviewTestFixtures.project(sourceCount = 2)
         val missing = SourceId("missing")
-        assertThrows(IllegalArgumentException::class.java) {
-            DraftProject(p.project, p.visualSettings.withFraming(FramingKey(missing, p.visualSettings.aspect),
-                SourceFramingSettings()), p.sourceOrder, p.sourceGeometry)
+        assertThrows(HybridEditRejected::class.java) {
+            HybridEditCommands.commitRevision(p.project, p.project.current.copy(visualSettings =
+                p.visualSettings.withFraming(FramingKey(missing, p.visualSettings.aspect), SourceFramingSettings())))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            DraftProject(p.project, p.visualSettings, p.sourceOrder.reversed(), p.sourceGeometry)
+            DraftProject(p.project.copy(id = "invalid-order", selectedVideos = p.project.selectedVideos!!.reversed()))
         }
         val badGraph = p.graph.copy(clips = p.graph.clips.map { it.copy(sourceIndex = 2) })
         val badRevision = p.project.current.copy(id = 1, parentId = 0, graph = badGraph)
-        val badCore = p.project.copy(current = badRevision, nextRevisionId = 2)
         assertThrows(IllegalArgumentException::class.java) {
-            DraftProject(badCore, p.visualSettings, p.sourceOrder, p.sourceGeometry)
+            DraftProject(p.project.copy(current = badRevision, nextRevisionId = 2))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            DraftProject(p.project, p.visualSettings, p.sourceOrder, p.sourceGeometry, mapOf(missing to "semantic"))
+            DraftProject(p.project.copy(id = "missing-asset", selectedVideos = listOf(
+                SelectedVideo(missing, "missing", SourceOwnership.IMPORTED, displayName = "Missing"))))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            DraftProject(p.project, p.visualSettings, listOf(SourceId("music")), p.sourceGeometry)
+            DraftProject(p.project.copy(id = "audio-binding", selectedVideos = listOf(
+                SelectedVideo(SourceId("music"), "music", SourceOwnership.IMPORTED, displayName = "Audio"))))
         }
     }
 }

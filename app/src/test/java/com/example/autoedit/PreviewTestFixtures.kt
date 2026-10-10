@@ -23,20 +23,23 @@ internal object PreviewTestFixtures {
             ProjectMusic("music", 1234, .7f, 100, 200, true),
             listOf(TextItem("title", "Keep manual text", FrameSpan(0, fps), .4f, .6f, .8f, .1f,
                 -1, TextItem.Appearance.ACCENT, 3)),
-            ProjectStyle(recipe.name, 1, ProjectStyle.Mode.AUTHORED, true), setOf("clip-1"))
+            ProjectStyle(recipe.name, 1, ProjectStyle.Mode.AUTHORED, true), setOf("clip-1"),
+            visualSettings = ProjectVisualSettings(ProjectFormats.defaultFor(recipe), false))
         // Mixed asset order must never define graph sourceIndex.
         val assets = listOf(ProjectAsset("music", "music.wav", ProjectAsset.Kind.AUDIO,
-            3_000_000, "music-hash")) + List(sourceCount) { i ->
-            ProjectAsset("video-$i", "video-$i.mp4", ProjectAsset.Kind.VIDEO, 2_000_000, "hash-$i") }
+            3_000_000, contentHash("preview-music".toByteArray()))) + List(sourceCount) { i ->
+            val bytes = "preview-video-$i".toByteArray()
+            ProjectAsset("video-$i", "video-$i.mp4", ProjectAsset.Kind.VIDEO, 2_000_000, contentHash(bytes),
+                videoMetadata = VideoSourceMetadata(SourceGeometry(1920, 1080, 0, 1f),
+                    bytes.size.toLong(), "video/avc", 3, true)) }
         return HybridProject("core-project", 1, fps, 1, assets, revision, revision,
-            emptyList(), emptyList(), emptyList())
+            emptyList(), emptyList(), emptyList(), List(sourceCount) {
+                SelectedVideo(SourceId("selection-$it"), "video-$it", SourceOwnership.IMPORTED,
+                    displayName = "Video $it")
+            })
     }
     fun project(recipe: MontageStyleCatalog.Recipe = MontageStyleCatalog.Recipe.HEARTBEAT,
         sourceCount: Int = 1): DraftProject {
-        val core = core(recipe, sourceCount)
-        val order = List(sourceCount) { SourceId("video-$it") }
-        return DraftProject(core, ProjectVisualSettings(ProjectFormats.defaultFor(recipe), false),
-            order, order.associateWith { SourceGeometry(1920, 1080, 0, 1f) },
-            order.associateWith { "semantic-${it.value}" })
+        return DraftProject(core(recipe, sourceCount))
     }
 }
