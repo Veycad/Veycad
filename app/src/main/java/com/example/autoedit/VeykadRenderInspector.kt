@@ -210,8 +210,13 @@ object VeykadRenderInspector {
         val videoLastPtsUs: Long,
         val audioLastPtsUs: Long,
         val avDeltaUs: Long,
-        val issues: List<String>
-    )
+        val issues: List<String>,
+        val videoFps: Int? = null,
+        val durationMs: Long = 0L
+    ) {
+        fun toExportProbe() = ExportContract.Probe(width, height, rotation, durationMs,
+            audioMime, videoMime, videoFps)
+    }
 
     internal fun evaluate(
         graph: MontageGraph,
@@ -477,7 +482,9 @@ object VeykadRenderInspector {
             audioFirstPtsUs = containerJson.optLong("audio_first_pts_us"),
             videoLastPtsUs = containerJson.optLong("video_last_pts_us"), audioLastPtsUs = containerJson.optLong("audio_last_pts_us"),
             avDeltaUs = containerJson.optLong("av_delta_us"),
-            issues = containerJson.optJSONArray("issues")?.let { array -> List(array.length()) { array.getString(it) } }.orEmpty()
+            issues = containerJson.optJSONArray("issues")?.let { array -> List(array.length()) { array.getString(it) } }.orEmpty(),
+            videoFps = containerJson.optInt("video_fps").takeIf { it > 0 },
+            durationMs = containerJson.optLong("duration_ms")
         ) else ContainerEvidence("", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             listOf("container_evidence_missing"))
         return Artifacts(
@@ -571,6 +578,7 @@ object VeykadRenderInspector {
         put("accepted", container.issues.isEmpty())
         put("video_mime", container.videoMime); put("audio_mime", container.audioMime)
         put("width", container.width); put("height", container.height); put("rotation", container.rotation)
+        put("video_fps", container.videoFps ?: JSONObject.NULL); put("duration_ms", container.durationMs)
         put("video_samples", container.videoSamples); put("audio_samples", container.audioSamples)
         put("video_first_pts_us", container.videoFirstPtsUs); put("audio_first_pts_us", container.audioFirstPtsUs)
         put("video_last_pts_us", container.videoLastPtsUs); put("audio_last_pts_us", container.audioLastPtsUs)
@@ -580,6 +588,13 @@ object VeykadRenderInspector {
 
     private data class TrackScan(val samples: Int, val firstPtsUs: Long, val lastPtsUs: Long)
 
+    /** New project path: use the frozen profile, never infer dimensions from the recipe. */
+    internal fun inspectContainer(mp4: File, profile: ExportProfile, targetDurationMs: Long): ContainerEvidence {
+        val evidence = inspectContainer(mp4, profile.size.width, profile.size.height)
+        val exact = ExportContract.validateExact(evidence.toExportProbe(), profile, targetDurationMs)
+        return evidence.copy(issues = (evidence.issues + exact.issues).distinct())
+    }
+
     internal fun inspectContainer(mp4: File, expectedWidth: Int = 0, expectedHeight: Int = 0): ContainerEvidence {
         val extractor = MediaExtractor()
         return try {
@@ -587,6 +602,7 @@ object VeykadRenderInspector {
             var videoIndex = -1; var audioIndex = -1
             var videoMime = ""; var audioMime = ""
             var width = 0; var height = 0; var rotation = 0
+            var videoFps: Int? = null; var durationMs = 0L
             for (index in 0 until extractor.trackCount) {
                 val format = extractor.getTrackFormat(index)
                 val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
@@ -596,6 +612,9 @@ object VeykadRenderInspector {
                         width = format.integerOrZero(MediaFormat.KEY_WIDTH)
                         height = format.integerOrZero(MediaFormat.KEY_HEIGHT)
                         rotation = format.integerOrZero(MediaFormat.KEY_ROTATION)
+                        videoFps = format.integerOrZero(MediaFormat.KEY_FRAME_RATE).takeIf { it > 0 }
+                        durationMs = if (format.containsKey(MediaFormat.KEY_DURATION))
+                            format.getLong(MediaFormat.KEY_DURATION) / 1_000L else 0L
                     }
                     mime.startsWith("audio/") && audioIndex < 0 -> { audioIndex = index; audioMime = mime }
                 }
@@ -607,7 +626,8 @@ object VeykadRenderInspector {
                 video.samples, audio.samples, video.firstPtsUs, delta,
                 audio.firstPtsUs, expectedWidth, expectedHeight)
             ContainerEvidence(videoMime, audioMime, width, height, rotation, video.samples, audio.samples,
-                video.firstPtsUs, audio.firstPtsUs, video.lastPtsUs, audio.lastPtsUs, delta, issues)
+                video.firstPtsUs, audio.firstPtsUs, video.lastPtsUs, audio.lastPtsUs, delta, issues,
+                videoFps, durationMs)
         } finally { extractor.release() }
     }
 

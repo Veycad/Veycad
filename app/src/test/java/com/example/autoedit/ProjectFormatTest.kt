@@ -18,7 +18,7 @@ class ProjectFormatTest {
         }
     }
     @Test fun invalidDimensionsRejected() {
-        listOf(0, -1, 361, Int.MAX_VALUE).forEach { edge ->
+        listOf(0, -1, 361, Int.MAX_VALUE, 2_147_483_646).forEach { edge ->
             assertThrows(IllegalArgumentException::class.java) { ProjectAspect.PORTRAIT_9_16.size(edge) }
         }
     }
