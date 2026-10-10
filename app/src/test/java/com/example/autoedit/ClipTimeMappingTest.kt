@@ -172,8 +172,7 @@ class ClipTimeMappingTest {
         val fixture = ManualMontageFixtures.linearProject()
         val payload = fixture.shared.current.graph.manualMontageState!!
         val first = payload.clips.first()
-        for (invalid in listOf(first.copy(clipId = "missing"),
-            first.copy(visible = FrameRange(0, 59)), first.copy(originFrameCount = 59))) {
+        for (invalid in listOf(first.copy(clipId = "missing"), first.copy(originFrameCount = 59))) {
             val graph = fixture.shared.current.graph.copy(manualMontageState =
                 payload.copy(clips = listOf(invalid) + payload.clips.drop(1)))
             val current = fixture.shared.current.copy(id = 2, parentId = 1, graph = graph)
@@ -184,6 +183,13 @@ class ClipTimeMappingTest {
         assertThrows(IllegalArgumentException::class.java) {
             EditableMontageProject(fixture.shared.copy(assets = listOf(fixture.sources[1], fixture.sources[0], fixture.music)), fixture.export)
         }
+        // Shared commands may leave an old payload window; the canonical offset/span win.
+        val stale = fixture.shared.current.copy(graph = fixture.shared.current.graph.copy(manualMontageState =
+            payload.copy(clips = listOf(first.copy(visible = FrameRange(9, 59))) + payload.clips.drop(1))))
+        val adapter = EditableMontageProject(fixture.shared.copy(original = stale, current = stale), fixture.export)
+        assertEquals(FrameRange(0, 60), adapter.current.clips.first().visible)
+        assertArrayEquals(fixture.current.clips.first().timeMap.sourceUsByFrame,
+            adapter.current.clips.first().timeMap.sourceUsByFrame)
     }
 
     @Test fun adapterKeepsDenseRepeatedPtsAndSignedOriginalMotionPhase() {
@@ -194,7 +200,7 @@ class ClipTimeMappingTest {
         val originGraph = fixture.originalGraph.copy(clips = listOf(originalClip.original), outputDurationMs = 2_000,
             manualMontageState = null)
         val original = fixture.shared.original.copy(clips = listOf(originalClip), graph = originGraph)
-        val trimmed = originalClip.copy(span = FrameSpan(0, 3), sourceMap = sourceMap.slice(1, 4))
+        val trimmed = originalClip.copy(span = FrameSpan(0, 3), sourceMap = sourceMap.slice(1, 4), originalFrameOffset = 1)
         val state = ManualMontageState(listOf(ManualClipState("A1", FrameRange(1, 4), 4, emptyList())), emptyList())
         val current = original.copy(id = 2, parentId = 1, clips = listOf(trimmed),
             graph = originGraph.copy(manualMontageState = state))

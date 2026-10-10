@@ -2,8 +2,11 @@ package com.veycad.app
 
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 
 class EditableMontageCompilerTest {
+    @get:Rule val temporary = TemporaryFolder()
     // Catches the HOLD sampler returning the penultimate value beyond its terminal key.
     @Test fun extendedClipHoldsTerminalTransformAndGradeKeysWithoutChangingLegacyNoOp() {
         val base = ManualMontageFixtures.generatedGraph()
@@ -73,8 +76,23 @@ class EditableMontageCompilerTest {
     }
 
     @Test fun sharedMusicGainCannotSilentlyChangeOnImport() {
-        val graph = fractionalGraph().copy(audioTrack = MontageGraph.AudioTrack("selected-music", 1.5f))
-        assertThrows(IllegalArgumentException::class.java) { imported(graph) }
+        for (fps in listOf(30, 60)) {
+            val graph = fractionalGraph().copy(audioTrack = MontageGraph.AudioTrack("selected-music", 2f))
+            val project = imported(graph, fps)
+            assertEquals(2f, project.shared.current.music.gain, 0f)
+            val compiled = EditableMontageCompiler.compile(project)
+            assertEquals(graph.audioTrack, compiled.audioTrack)
+            assertEquals(HighQualityFramePlan.build(graph, fps), HighQualityFramePlan.build(compiled, fps))
+            val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
+            val encoded = codec.encode(project.shared)
+            assertEquals(4, java.nio.ByteBuffer.wrap(encoded).getInt(4))
+            assertEquals(3, MontageGraph.CURRENT_VERSION)
+            val decoded = codec.decode(encoded)
+            assertEquals(3, decoded.current.graph.version)
+            assertEquals(3, decoded.current.graph.metadata.schemaVersion)
+            assertEquals(project.shared.current.music, decoded.current.music)
+            // Manual timing/phase payload persistence is a separate owner A2 gate.
+        }
     }
 
     // Catches sourceIndex inferred from clip order and grade evaluated on the new output clock.
@@ -206,7 +224,7 @@ class EditableMontageCompilerTest {
                 val state = states.single { it.clipId == clip.id }
                 val projected = project.current.clips.single { it.id == clip.id }
                 clip.copy(span = FrameSpan(cursor, cursor + state.visible.count.toInt()).also { cursor = it.endExclusive },
-                    sourceMap = projected.timeMap.toSourceTimeMap(state.visible))
+                    sourceMap = projected.timeMap.toSourceTimeMap(state.visible), originalFrameOffset = Math.toIntExact(state.visible.start))
             }
             val next = current.copy(id = project.shared.nextRevisionId, parentId = current.id, clips = clips,
                 graph = current.graph.copy(manualMontageState = current.graph.manualMontageState!!.copy(clips = states)))

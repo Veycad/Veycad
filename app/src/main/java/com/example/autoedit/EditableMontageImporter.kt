@@ -4,11 +4,25 @@ package com.veycad.app
 internal object EditableMontageImporter {
     fun create(id: String, graph: MontageGraph, recipe: MontageStyleCatalog.Recipe,
         export: ProjectExportSettings, sources: List<ProjectAsset>, music: ProjectAsset,
-        captureLink: CompletedRenderStore.CaptureLink?): EditableMontageProject {
+        captureLink: CompletedRenderStore.CaptureLink?, selectedVideos: List<SelectedVideo>? = null): EditableMontageProject {
         require(graph.editableTiming == null && graph.manualMontageState == null) { "Import a legacy winner only" }
         require(sources.isNotEmpty() && sources.all { it.kind == ProjectAsset.Kind.VIDEO })
         require(music.kind == ProjectAsset.Kind.AUDIO)
-        require((graph.audioTrack?.gain ?: 1f) <= 1f) { "Shared ProjectMusic cannot yet preserve legacy gain above 1" }
+        // Validate every occurrence before deduplicating the physical asset registry.
+        val assets = LinkedHashMap<String, ProjectAsset>()
+        for (asset in sources + music) {
+            val previous = assets.putIfAbsent(asset.id, asset)
+            require(previous == null || previous == asset) { "Conflicting metadata for asset: ${asset.id}" }
+        }
+        if (selectedVideos == null) {
+            require(sources.map { it.id }.distinct().size == sources.size) {
+                "Repeated source assets require an explicit inspected selection order"
+            }
+        } else {
+            require(selectedVideos.size == sources.size && selectedVideos.zip(sources).all { (selection, asset) ->
+                selection.assetId == asset.id
+            }) { "Selected video order differs from resolved sources" }
+        }
         val winner = snapshotMontageGraph(graph)
         val plan = HighQualityFramePlan.build(winner, export.fps)
         var cursor = 0
@@ -31,7 +45,7 @@ internal object EditableMontageImporter {
         val revision = HybridRevision(1, null, winner.copy(manualMontageState = payload), clips,
             ProjectMusic(music.id, 0, winner.audioTrack?.gain ?: 1f, 0, 0, true), emptyList(),
             ProjectStyle(MontageStyleCatalog.all.single { it.recipe == recipe }.id, 1, ProjectStyle.Mode.AUTHORED, false), emptySet())
-        return EditableMontageProject(HybridProject(id, 1, export.fps, 2, sources + music,
-            revision, revision, emptyList(), emptyList(), emptyList()), export, captureLink)
+        return EditableMontageProject(HybridProject(id, 1, export.fps, 2, assets.values.toList(),
+            revision, revision, emptyList(), emptyList(), emptyList(), selectedVideos), export, captureLink)
     }
 }

@@ -50,6 +50,11 @@ internal object MontageTimelineEditor {
             is TimelineCommand.Trim -> {
                 val index = clipIndex(command.clipId)
                 val clip = clips[index]
+                require(project.shared.current.graph.manualMontageState != null ||
+                    (clip.visible.start == 0L && clip.visible.count ==
+                        project.shared.original.clips.single { it.id == clip.id }.span.length.toLong())) {
+                    "Missing original frame coordinates for a previously trimmed clip"
+                }
                 val visible = when (command.edge) {
                     ClipEdge.START -> FrameRange(command.frame, clip.visible.endExclusive)
                     ClipEdge.END -> FrameRange(clip.visible.start, command.frame)
@@ -113,11 +118,12 @@ internal object MontageTimelineEditor {
         var cursor = 0
         val preparedClips = clips.map { clip ->
             val source = sourceById.getValue(clip.id)
-            val end = Math.addExact(cursor, clip.visible.count.toInt())
+            val end = Math.addExact(cursor, Math.toIntExact(clip.visible.count))
             val descriptor = clip.origin.copy(
                 transform = clip.origin.transform.copy(keyframes = montageSnapshot(clip.origin.transform.keyframes)),
                 speedRamp = clip.origin.speedRamp.copy(keyframes = montageSnapshot(clip.origin.speedRamp.keyframes)))
             source.copy(span = FrameSpan(cursor, end).also { cursor = end }, original = descriptor,
+                originalFrameOffset = Math.toIntExact(clip.visible.start),
                 sourceMap = if (command is TimelineCommand.Trim && command.clipId == clip.id)
                     clip.timeMap.toSourceTimeMap(clip.visible) else source.sourceMap)
         }

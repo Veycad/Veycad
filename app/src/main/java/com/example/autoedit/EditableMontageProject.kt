@@ -61,7 +61,10 @@ internal data class EditableMontageProject(
 ) {
     val id: String get() = shared.id
     val schemaVersion: Int get() = shared.schemaVersion
-    val sources: List<ProjectAsset> = shared.assets.filter { it.kind == ProjectAsset.Kind.VIDEO }
+    val sources: List<ProjectAsset> = shared.selectedVideos?.let { selections ->
+        val assets = shared.assets.associateBy { it.id }
+        montageSnapshot(selections.map { assets.getValue(it.assetId) })
+    } ?: montageSnapshot(shared.assets.filter { it.kind == ProjectAsset.Kind.VIDEO })
     val music: ProjectAsset get() = shared.assets.single { it.id == shared.current.music.assetId }
     val originalGraph: MontageGraph get() = shared.original.graph
     val recipe: MontageStyleCatalog.Recipe = requireNotNull(MontageStyleCatalog.all
@@ -84,14 +87,15 @@ internal data class EditableMontageProject(
         require(payload == null || states.keys == revision.clips.map { it.id }.toSet()) { "Manual clip IDs differ from shared revision" }
         val origins = shared.original.clips.associateBy { it.id }
         val clips = revision.clips.map { clip ->
-            val sourceIndex = sources.indexOfFirst { it.id == clip.assetId }
-            require(sourceIndex >= 0 && clip.original.sourceIndex == sourceIndex) { "Shared asset order differs from saved sourceIndex" }
+            val sourceIndex = clip.original.sourceIndex
+            require(sourceIndex in sources.indices && sources[sourceIndex].id == clip.assetId) { "Shared asset order differs from saved sourceIndex" }
             require(clip.original.id == clip.id)
             val original = requireNotNull(origins[clip.id])
             require(clip.assetId == original.assetId) { "Manual clip source identity changed" }
             val state = states[clip.id]
-            val visible = state?.visible ?: FrameRange(0, clip.span.length.toLong())
-            require(visible.count == clip.span.length.toLong()) { "Manual visible length differs from shared span" }
+            // Payload coordinates are a derived snapshot, never a second edit authority.
+            val start = clip.originalFrameOffset.toLong()
+            val visible = FrameRange(start, Math.addExact(start, clip.span.length.toLong()))
             val originFrameCount = original.span.length.toLong()
             require(state == null || state.originFrameCount == originFrameCount) { "Original motion phase count differs" }
             EditableClip(clip.id, sourceIndex, clip.original,

@@ -24,7 +24,7 @@ internal fun storageProject(assets: List<ProjectAsset> = listOf(
     val graph = MontageGraph(2000, 1000, clips = listOf(clip), audioTrack = MontageGraph.AudioTrack("music", .7f),
         overlays = listOf(MontageGraph.Overlay("o", 12, 900, "authored", MontageGraph.BlendMode.OVERLAY,
             MontageGraph.OverlayKind.DOUBLE_EXPOSURE, .4f, .1f, .2f, .3f, 45, 67)),
-        metadata = NleProjectMetadata(2, 5, 3, "custom"),
+        metadata = NleProjectMetadata(2, 5, 3, "custom"), version = 2,
         parameterTracks = listOf(ParameterTrack("p", "clip/c/scale", ParameterTrack.ValueType.VEC2,
             listOf(ParameterTrack.Keyframe(120, listOf(.3f, .7f), ParameterTrack.Interpolation.LINEAR, curve)))),
         frameAttachments = FrameAttachmentTimeline(listOf(frame), listOf(frame)),
