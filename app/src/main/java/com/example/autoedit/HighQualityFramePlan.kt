@@ -33,7 +33,9 @@ object HighQualityFramePlan {
         /** Source PTS of another director-selected timeline role for temporal layer composition. */
         val secondarySourceTimeUs: Long? = null,
         /** Source-file index carried from the owning clip to the decoder scheduler. */
-        val sourceIndex: Int = 0
+        val sourceIndex: Int = 0,
+        /** Original montage clock survives rebasing an output window for proxy encoding. */
+        val globalOutputTimeUs: Long = outputTimeUs
     )
 
     data class Plan(val frames: List<Frame>, val durationUs: Long, val fps: Int) {
@@ -44,25 +46,34 @@ object HighQualityFramePlan {
         // Low-frame-rate schedules are used only for local candidate proxies; final exports use
         // DEFAULT_FPS or higher. Keeping the same scheduler makes proxy decisions representative.
         require(fps in 6..60)
+        val editable = graph.editableTiming
+        require(editable == null || editable.fps == fps) { "FPS differs from the saved editable grid" }
         val frameStepUs = 1_000_000.0 / fps
-        val outputDurationUs = graph.outputDurationMs * 1_000L
-        val boundaries = graph.clips.runningFold(0L) { cursor, clip -> cursor + clip.outputDurationMs * 1_000L }
-        val frames = ArrayList<Frame>((outputDurationUs / frameStepUs).toInt() + 1)
+        val outputDurationUs = editable?.let { frameTimeUs(it.frameCount, fps) } ?: (graph.outputDurationMs * 1_000L)
+        val boundaries = editable?.clips?.map { frameTimeUs(it.startFrame, fps) }
+            ?: graph.clips.runningFold(0L) { cursor, clip -> cursor + clip.outputDurationMs * 1_000L }
+        val frames = ArrayList<Frame>(editable?.frameCount?.coerceAtMost(65_536L)?.toInt()
+            ?: ((outputDurationUs / frameStepUs).toInt() + 1))
         val speedTotals = mutableMapOf<String, Float>()
         var index = 0
         while (true) {
-            val outputUs = (index * frameStepUs).roundToLong()
-            if (outputUs >= outputDurationUs) break
-            val clipIndex = ((0 until graph.clips.size).lastOrNull { outputUs >= boundaries[it] } ?: 0)
+            val outputUs = if (editable != null) frameTimeUs(index.toLong(), fps) else (index * frameStepUs).roundToLong()
+            if (editable != null && index.toLong() >= editable.frameCount || outputUs >= outputDurationUs) break
+            val clipIndex = ((0 until graph.clips.size).lastOrNull {
+                if (editable != null) index.toLong() >= editable.clips[it].startFrame else outputUs >= boundaries[it]
+            } ?: 0)
                 .coerceIn(0, graph.clips.lastIndex)
             val clip = graph.clips[clipIndex]
             val clipStartUs = boundaries[clipIndex]
-            val progress = ((outputUs - clipStartUs).toDouble() /
-                (clip.outputDurationMs * 1_000L).coerceAtLeast(1L)).toFloat().coerceIn(0f, 1f)
+            val timing = editable?.clips?.get(clipIndex)
+            val originalFrame = timing?.let { Math.addExact(it.visible.start, index.toLong() - it.startFrame) }
+            val progress = if (timing != null) (originalFrame!!.toDouble() / timing.originFrameCount).toFloat().coerceIn(0f, 1f)
+                else ((outputUs - clipStartUs).toDouble() /
+                    (clip.outputDurationMs * 1_000L).coerceAtLeast(1L)).toFloat().coerceIn(0f, 1f)
             val sourceStartUs = clip.sourceStartMs * 1_000L
             val sourceDurationUs = (clip.sourceEndMs - clip.sourceStartMs) * 1_000L
-            val animatedSourceUs = sourceStartUs +
-                (sourceDurationUs * sourceFractionAt(graph, clip, clipStartUs, progress, speedTotals)).roundToLong()
+            val animatedSourceUs = timing?.timeMap?.sourceTimeUs(originalFrame!!) ?: (sourceStartUs +
+                (sourceDurationUs * sourceFractionAt(graph, clip, clipStartUs, progress, speedTotals)).roundToLong())
             // Foreground re-entry is an animated cutout. The texture and its PTS-aligned matte
             // advance through the selected source window while the screen-space entrance motion
             // remains independent. Freezing this PTS made the person look paused.

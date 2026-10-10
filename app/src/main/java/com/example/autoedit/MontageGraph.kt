@@ -12,7 +12,9 @@ data class MontageGraph(
     val parameterTracks: List<ParameterTrack> = emptyList(),
     val frameAttachments: FrameAttachmentTimeline = FrameAttachmentTimeline(),
     val effectGraph: GpuEffectGraph = GpuEffectGraph(),
-    val version: Int = CURRENT_VERSION
+    val version: Int = CURRENT_VERSION,
+    val editableTiming: EditableFrameTiming? = null,
+    val manualMontageState: ManualMontageState? = null
 ) {
     init {
         require(sourceDurationMs > 0L && outputDurationMs > 0L && clips.isNotEmpty())
@@ -20,6 +22,12 @@ data class MontageGraph(
         require(version in 1..CURRENT_VERSION)
         require(metadata.schemaVersion == version || version == 1)
         require(parameterTracks.map { it.id }.distinct().size == parameterTracks.size)
+        require(clips.map { it.id }.distinct().size == clips.size)
+        require(overlays.map { it.id }.distinct().size == overlays.size)
+        editableTiming?.let { timing ->
+            require(version == 3)
+            require(timing.clips.map { it.clipId } == clips.map { it.id })
+        }
     }
 
     enum class Profile { AUTOMATIC_PORTRAIT }
@@ -190,5 +198,5 @@ data class MontageGraph(
         }
     }
 
-    companion object { const val CURRENT_VERSION = 2 }
+    companion object { const val CURRENT_VERSION = 3 }
 }
