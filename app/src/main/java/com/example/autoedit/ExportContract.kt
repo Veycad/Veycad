@@ -7,9 +7,25 @@ object ExportContract {
         val encodedHeight: Int,
         val rotationDegrees: Int,
         val durationMs: Long,
-        val audioMime: String? = null
+        val audioMime: String? = null,
+        val videoMime: String? = null,
+        val videoFps: Int? = null
     )
     data class Verdict(val accepted: Boolean, val issues: List<String>)
+
+    /** Geometry and codec gate. Canonical duration/PTS acceptance belongs to RenderedMp4Acceptance. */
+    @Suppress("UNUSED_PARAMETER")
+    fun validateExact(probe: Probe, profile: ExportProfile, targetDurationMs: Long): Verdict {
+        val issues = buildList {
+            if (probe.encodedWidth != profile.size.width || probe.encodedHeight != profile.size.height)
+                add("encoded_dimensions_do_not_match_export")
+            if (probe.rotationDegrees != 0) add("encoded_rotation_not_baked")
+            if (probe.videoMime != "video/avc") add("encoded_video_is_not_avc")
+            if (probe.audioMime != "audio/mp4a-latm") add("encoded_audio_is_not_aac")
+            if (probe.videoFps != profile.fps) add("encoded_fps_do_not_match_export")
+        }
+        return Verdict(issues.isEmpty(), issues)
+    }
 
     fun validate(probe: Probe, targetDurationMs: Long, requireFullHd: Boolean): Verdict {
         val portrait = if (probe.rotationDegrees % 180 != 0) {
