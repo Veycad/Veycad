@@ -89,15 +89,14 @@ internal object SequentialBitmapDecoder {
             output = GlOutput(width, height)
             decoder = MediaCodec.createDecoderByType(
                 requireNotNull(format.getString(MediaFormat.KEY_MIME))
-            ).apply {
-                configure(format, output.surface, null, 0)
-                start()
-            }
+            )
+            decoder.configure(format, output.surface, null, 0)
+            decoder.start()
             return decodeAscending(extractor, decoder, output, targetsUs, requireExactPts, onFrame)
         } finally {
             runCatching { decoder?.stop() }
-            decoder?.release()
-            extractor.release()
+            runCatching { decoder?.release() }
+            runCatching { extractor.release() }
             output?.release()
         }
     }
@@ -182,13 +181,15 @@ internal object SequentialBitmapDecoder {
     }
 
     private class GlOutput(private val width: Int, private val height: Int) {
-        private val display: android.opengl.EGLDisplay
-        private val context: android.opengl.EGLContext
-        private val eglSurface: android.opengl.EGLSurface
-        private val texture: Int
-        private val surfaceTexture: SurfaceTexture
-        val surface: Surface
-        private val program: Int
+        private var display: android.opengl.EGLDisplay = EGL14.EGL_NO_DISPLAY
+        private var context: android.opengl.EGLContext = EGL14.EGL_NO_CONTEXT
+        private var eglSurface: android.opengl.EGLSurface = EGL14.EGL_NO_SURFACE
+        private var texture = 0
+        private lateinit var surfaceTexture: SurfaceTexture
+        lateinit var surface: Surface
+            private set
+        private var program = 0
+        private var released = false
         private val positionBuffer = floatBuffer(floatArrayOf(
             -1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f
         ))
@@ -199,49 +200,53 @@ internal object SequentialBitmapDecoder {
         private var frameAvailable = false
 
         init {
-            display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
-            check(display != EGL14.EGL_NO_DISPLAY)
-            val version = IntArray(2)
-            check(EGL14.eglInitialize(display, version, 0, version, 1))
-            val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
-            val count = IntArray(1)
-            val attributes = intArrayOf(
-                EGL14.EGL_RED_SIZE, 8,
-                EGL14.EGL_GREEN_SIZE, 8,
-                EGL14.EGL_BLUE_SIZE, 8,
-                EGL14.EGL_ALPHA_SIZE, 8,
-                EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT,
-                EGL14.EGL_NONE
-            )
-            check(EGL14.eglChooseConfig(display, attributes, 0, configs, 0, 1, count, 0) && count[0] > 0)
-            context = EGL14.eglCreateContext(
-                display,
-                configs[0],
-                EGL14.EGL_NO_CONTEXT,
-                intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE),
-                0
-            )
-            check(context != EGL14.EGL_NO_CONTEXT)
-            eglSurface = EGL14.eglCreatePbufferSurface(
-                display,
-                configs[0],
-                intArrayOf(EGL14.EGL_WIDTH, width, EGL14.EGL_HEIGHT, height, EGL14.EGL_NONE),
-                0
-            )
-            check(eglSurface != EGL14.EGL_NO_SURFACE)
-            makeCurrent()
-            texture = createExternalTexture()
-            surfaceTexture = SurfaceTexture(texture).apply {
-                setOnFrameAvailableListener {
+            try {
+                display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+                check(display != EGL14.EGL_NO_DISPLAY)
+                val version = IntArray(2)
+                check(EGL14.eglInitialize(display, version, 0, version, 1))
+                val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
+                val count = IntArray(1)
+                val attributes = intArrayOf(
+                    EGL14.EGL_RED_SIZE, 8,
+                    EGL14.EGL_GREEN_SIZE, 8,
+                    EGL14.EGL_BLUE_SIZE, 8,
+                    EGL14.EGL_ALPHA_SIZE, 8,
+                    EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                    EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT,
+                    EGL14.EGL_NONE
+                )
+                check(EGL14.eglChooseConfig(display, attributes, 0, configs, 0, 1, count, 0) && count[0] > 0)
+                context = EGL14.eglCreateContext(
+                    display,
+                    configs[0],
+                    EGL14.EGL_NO_CONTEXT,
+                    intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE),
+                    0
+                )
+                check(context != EGL14.EGL_NO_CONTEXT)
+                eglSurface = EGL14.eglCreatePbufferSurface(
+                    display,
+                    configs[0],
+                    intArrayOf(EGL14.EGL_WIDTH, width, EGL14.EGL_HEIGHT, height, EGL14.EGL_NONE),
+                    0
+                )
+                check(eglSurface != EGL14.EGL_NO_SURFACE)
+                makeCurrent()
+                texture = createExternalTexture()
+                surfaceTexture = SurfaceTexture(texture)
+                surfaceTexture.setOnFrameAvailableListener {
                     synchronized(frameLock) {
                         frameAvailable = true
                         frameLock.notifyAll()
                     }
                 }
+                surface = Surface(surfaceTexture)
+                program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
+            } catch (error: Throwable) {
+                release()
+                throw error
             }
-            surface = Surface(surfaceTexture)
-            program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
         }
 
         fun awaitAndUpdate() {
@@ -295,16 +300,23 @@ internal object SequentialBitmapDecoder {
         }
 
         fun release() {
-            runCatching { makeCurrent() }
-            runCatching { surface.release(); surfaceTexture.release() }
-            runCatching {
+            if (released) return
+            released = true
+            val current = context != EGL14.EGL_NO_CONTEXT && runCatching { makeCurrent() }.isSuccess
+            if (::surface.isInitialized) runCatching { surface.release() }
+            if (::surfaceTexture.isInitialized) runCatching { surfaceTexture.release() }
+            if (current) runCatching {
+                GLES20.glUseProgram(0)
                 GLES20.glDeleteProgram(program)
                 GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
             }
-            EGL14.eglDestroySurface(display, eglSurface)
-            EGL14.eglDestroyContext(display, context)
+            if (display != EGL14.EGL_NO_DISPLAY) {
+                EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+                if (eglSurface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, eglSurface)
+                if (context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display, context)
+                EGL14.eglTerminate(display)
+            }
             EGL14.eglReleaseThread()
-            EGL14.eglTerminate(display)
         }
 
         private fun makeCurrent() {
@@ -328,23 +340,7 @@ internal object SequentialBitmapDecoder {
             )
         }[0]
 
-        private fun createProgram(vertex: String, fragment: String): Int {
-            fun shader(type: Int, source: String): Int = GLES20.glCreateShader(type).also { id ->
-                GLES20.glShaderSource(id, source)
-                GLES20.glCompileShader(id)
-                val status = IntArray(1)
-                GLES20.glGetShaderiv(id, GLES20.GL_COMPILE_STATUS, status, 0)
-                check(status[0] == GLES20.GL_TRUE) { GLES20.glGetShaderInfoLog(id) }
-            }
-            return GLES20.glCreateProgram().also { id ->
-                GLES20.glAttachShader(id, shader(GLES20.GL_VERTEX_SHADER, vertex))
-                GLES20.glAttachShader(id, shader(GLES20.GL_FRAGMENT_SHADER, fragment))
-                GLES20.glLinkProgram(id)
-                val status = IntArray(1)
-                GLES20.glGetProgramiv(id, GLES20.GL_LINK_STATUS, status, 0)
-                check(status[0] == GLES20.GL_TRUE) { GLES20.glGetProgramInfoLog(id) }
-            }
-        }
+        private fun createProgram(vertex: String, fragment: String): Int = GlesProgram.create(vertex, fragment)
     }
 
     private fun MediaExtractor.videoTrack(): Int = (0 until trackCount).firstOrNull { index ->
