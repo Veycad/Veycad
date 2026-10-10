@@ -47,6 +47,42 @@ class TextEditActivityDeviceTest {
         scenario.onActivity { view=it.findViewById(id) }
         waitFor { view.isShown && view.width>0 && !view.isLayoutRequested }
     }
+    @Test fun richAppearanceUnicodeValidationAndExplicitCaptionReview() {
+        val source=SyntheticVideo.create(File(context.filesDir,"rich-${UUID.randomUUID()}.mp4"),2000)
+        val session=TextEditSession.get(context)
+        ActivityScenario.launch<TextEditActivity>(Intent(context,TextEditActivity::class.java)
+            .putExtra(TextEditActivity.EXTRA_SOURCE,source.path)).use {
+            waitFor { session.state.value?.project?.sourcePath==source.canonicalPath && session.state.value?.busy==false }
+            onView(withId(R.id.textHookButton)).perform(scrollTo(),click())
+            onView(withId(R.id.textContentField)).perform(replaceText("😀".repeat(181)),closeSoftKeyboard())
+            onView(withText("Сохранить")).perform(click())
+            assertTrue(session.state.value!!.project!!.layers.isEmpty())
+            onView(withId(R.id.textContentField)).check(androidx.test.espresso.assertion.ViewAssertions.matches(hasErrorText("Заголовок: не более 180 символов Unicode")))
+            onView(withId(R.id.textContentField)).perform(replaceText("😀".repeat(180)),closeSoftKeyboard())
+            fun select(id:Int,label:String) {
+                onView(withId(id)).perform(scrollTo(),click())
+                androidx.test.espresso.Espresso.onData(org.hamcrest.Matchers.equalTo(label))
+                    .inRoot(androidx.test.espresso.matcher.RootMatchers.isPlatformPopup()).perform(click())
+            }
+            select(R.id.textFontField,"Моноширинный")
+            select(R.id.textBackgroundField,"Акцентная")
+            select(R.id.textAnimationField,"Лёгкое масштабирование")
+            onView(withText("Сохранить")).perform(click())
+            val title=session.state.value!!.project!!.layers.single()
+            assertEquals(TextFont.MONO,title.style.font); assertEquals(TextPlate.ACCENT,title.style.resolvedPlate)
+            assertEquals(TextAnimation.SCALE,title.style.animation); assertEquals(TextLayerKind.TITLE,title.kind)
+            instrumentation.runOnMainSync {
+                session.update(session.state.value!!.project!!.copy(captions=listOf(CaptionCue("review","Неизвестная уверенность",0,1_000_000))))
+            }
+            onView(withText("Субтитры")).perform(scrollTo(),click())
+            onView(withText(org.hamcrest.Matchers.containsString("Проверить · 0.000–1.000"))).perform(scrollTo(),click())
+            onView(withId(R.id.textReviewedField)).perform(scrollTo(),click())
+            onView(withText("Сохранить")).perform(click())
+            assertFalse(session.state.value!!.project!!.captions.single().needsReview)
+            assertNull(session.state.value!!.project!!.captions.single().confidence)
+            assertTrue(TextEditStore(File(context.filesDir,"text-drafts")).load(source.path)!!.captions.single().manuallyReviewed)
+        }
+    }
     @Test fun previewTapsPlayPauseAndControlsRemainReachable() {
         val source=SyntheticVideo.create(File(context.filesDir,"preview-${UUID.randomUUID()}.mp4"),6000)
         ActivityScenario.launch<TextEditActivity>(Intent(context,TextEditActivity::class.java)

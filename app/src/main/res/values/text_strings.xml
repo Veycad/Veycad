@@ -27,4 +27,6 @@
     <item name="textPositionField" type="id" />
     <item name="textColorField" type="id" />
     <item name="textAnimationField" type="id" />
+    <item name="textBackgroundField" type="id" />
+    <item name="textReviewedField" type="id" />
 </resources>

@@ -158,12 +158,14 @@ class TextEditActivity:AppCompatActivity() {
         when(section) {
             0 -> {
                 action(getString(R.string.text_hook),R.id.textHookButton) { editLayer(p.hook("Как сделать X"),false) }
-                p.layers.filter { it.style.position==TextPosition.TOP }.forEach { l -> action(l.text) { editLayer(l,true) } }
+                p.layers.filter { it.kind==TextLayerKind.TITLE ||
+                    (it.kind==TextLayerKind.LEGACY && it.style.position==TextPosition.TOP) }.forEach { l -> action(l.text) { editLayer(l,true) } }
             }
             1 -> {
                 action(getString(R.string.text_plate),R.id.textPlateButton) {
                     val start=(previewTimeMs()*1000L).coerceIn(0,p.durationUs-1)
-                    editLayer(TextLayer(UUID.randomUUID().toString(),"Описание",start,minOf(p.durationUs,start+3_000_000),TextStyle(position=TextPosition.CENTER)),false)
+                    editLayer(TextLayer(UUID.randomUUID().toString(),"Описание",start,minOf(p.durationUs,start+3_000_000),
+                        TextStyle(position=TextPosition.CENTER),TextLayerKind.PLATE),false)
                 }
                 // All manual layers stay reachable even after moving a title to a different position.
                 p.layers.forEach { l -> action("${seconds(l.startUs)}–${seconds(l.endUs)} · ${l.text}") { editLayer(l,true) } }
@@ -189,7 +191,8 @@ class TextEditActivity:AppCompatActivity() {
                 val pages=(p.captions.size+49)/50
                 captionPage=captionPage.coerceIn(0,(pages-1).coerceAtLeast(0))
                 p.captions.sortedBy { it.startUs }.drop(captionPage*50).take(50).forEach { c ->
-                    action("▶ ${seconds(c.startUs)}–${seconds(c.endUs)} · ${c.text}") {
+                    val review=if(c.needsReview) "Проверить · " else if(c.manuallyReviewed) "Проверено · " else ""
+                    action("▶ $review${seconds(c.startUs)}–${seconds(c.endUs)} · ${c.text}") {
                         video.pause(); video.seekTo((c.startUs/1000).toInt()+previewOffsetMs); overlay.timeUs=c.startUs; overlay.invalidate(); editCue(c,true)
                     }
                 }
@@ -211,10 +214,11 @@ class TextEditActivity:AppCompatActivity() {
             parent.addView(this)
         }
     }
-    private class StyleFields(val position:Spinner,val font:Spinner,val size:SeekBar,val color:Spinner,val plate:CheckBox,val animation:Spinner) {
+    private class StyleFields(val position:Spinner,val font:Spinner,val size:SeekBar,val color:Spinner,val plate:Spinner,val animation:Spinner) {
         fun value()=TextStyle(TextPosition.entries[position.selectedItemPosition],TextFont.entries[font.selectedItemPosition],
-            (25+size.progress)/1000f,listOf(0xffffffff.toInt(),0xffffcc33.toInt(),0xffff8633.toInt())[color.selectedItemPosition],plate.isChecked,
-            TextAnimation.entries[animation.selectedItemPosition])
+            (25+size.progress)/1000f,listOf(0xffffffff.toInt(),0xffffcc33.toInt(),0xffff8633.toInt())[color.selectedItemPosition],
+            TextPlate.entries[plate.selectedItemPosition]==TextPlate.DARK,
+            TextAnimation.entries[animation.selectedItemPosition],TextPlate.entries[plate.selectedItemPosition])
     }
     private fun styleFields(parent:LinearLayout,s:TextStyle):StyleFields {
         fun spinner(title:String,options:List<String>,selected:Int):Spinner {
@@ -223,15 +227,16 @@ class TextEditActivity:AppCompatActivity() {
         }
         val position=spinner("Положение",listOf("Сверху","По центру","Снизу"),s.position.ordinal)
         position.id=R.id.textPositionField
-        val font=spinner("Шрифт",listOf("Без засечек","Жирный","С засечками"),s.font.ordinal)
+        val font=spinner("Шрифт",listOf("Без засечек","Жирный","С засечками","Моноширинный"),s.font.ordinal)
         font.id=R.id.textFontField
         parent.addView(label("Размер текста"))
         val size=SeekBar(this).apply { max=95; progress=((s.sizeRatio-.025f)*1000).toInt().coerceIn(0,95); parent.addView(this) }
         val colors=listOf(0xffffffff.toInt(),0xffffcc33.toInt(),0xffff8633.toInt())
         val color=spinner("Цвет",listOf("Белый","Жёлтый","Оранжевый"),colors.indexOf(s.color).coerceAtLeast(0))
         color.id=R.id.textColorField
-        val plate=CheckBox(this).apply { text="Тёмная плашка"; isChecked=s.darkPlate; setTextColor(getColor(R.color.text_primary)); parent.addView(this) }
-        val animation=spinner("Появление",listOf("Без анимации","Плавное","Сдвиг"),s.animation.ordinal)
+        val plate=spinner("Подложка",listOf("Без подложки","Тёмная","Акцентная"),s.resolvedPlate.ordinal)
+        plate.id=R.id.textBackgroundField
+        val animation=spinner("Появление",listOf("Без анимации","Плавное","Сдвиг","Лёгкое масштабирование"),s.animation.ordinal)
         animation.id=R.id.textAnimationField
         return StyleFields(position,font,size,color,plate,animation)
     }
@@ -242,6 +247,7 @@ class TextEditActivity:AppCompatActivity() {
     private fun editLayer(layer:TextLayer,existing:Boolean) {
         val p=session.state.value?.project ?: return
         val (scroll,parent)=dialogForm()
+        if(layer.kind==TextLayerKind.TITLE) parent.addView(label("До 180 символов Unicode, до трёх строк в кадре"))
         val text=field(parent,"Текст",layer.text,R.id.textContentField)
         val start=field(parent,"Начало, секунды",seconds(layer.startUs),R.id.textStartField,true)
         val end=field(parent,"Конец, секунды",seconds(layer.endUs),R.id.textEndField,true)
@@ -251,6 +257,9 @@ class TextEditActivity:AppCompatActivity() {
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val times=times(start,end,p.durationUs) ?: return@setOnClickListener
             if(text.text.isBlank()) { text.error="Введите текст"; return@setOnClickListener }
+            if(layer.kind==TextLayerKind.TITLE && TextLimits.codePoints(text.text.toString())>TextLimits.TITLE_CODE_POINTS) {
+                text.error="Заголовок: не более 180 символов Unicode"; return@setOnClickListener
+            }
             val updated=layer.copy(text=text.text.toString(),startUs=times.first,endUs=times.second,style=style.value())
             session.update(p.copy(layers=p.layers.filterNot { it.id==layer.id }+updated)); dialog.dismiss()
         } }; dialog.show()
@@ -261,12 +270,19 @@ class TextEditActivity:AppCompatActivity() {
         val text=field(parent,"Фраза",cue.text,R.id.textContentField)
         val start=field(parent,"Начало, секунды",seconds(cue.startUs),R.id.textStartField,true)
         val end=field(parent,"Конец, секунды",seconds(cue.endUs),R.id.textEndField,true)
+        if(cue.needsReview) parent.addView(label(if(cue.confidenceCalibrated && cue.confidence!=null)
+            "Низкая уверенность распознавания. Проверьте текст и время фразы." else
+            "Уверенность распознавания не подтверждена. Проверьте текст и время фразы."))
+        val reviewed=CheckBox(this).apply {
+            id=R.id.textReviewedField; this.text="Фраза проверена"; isChecked=cue.manuallyReviewed
+            setTextColor(getColor(R.color.text_primary)); parent.addView(this)
+        }
         val dialog=AlertDialog.Builder(this).setTitle("Исправить субтитр").setView(scroll).setNegativeButton("Отмена",null).setPositiveButton("Сохранить",null)
             .apply { if(existing) setNeutralButton("Удалить") { _,_ -> session.update(p.copy(captions=p.captions.filterNot { it.id==cue.id },captionsEdited=true)) } }.create()
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val times=times(start,end,p.durationUs) ?: return@setOnClickListener
             if(text.text.isBlank()) { text.error="Введите фразу"; return@setOnClickListener }
-            val updated=cue.copy(text=text.text.toString(),startUs=times.first,endUs=times.second)
+            val updated=cue.copy(text=text.text.toString(),startUs=times.first,endUs=times.second,manuallyReviewed=reviewed.isChecked)
             session.update(p.copy(captions=(p.captions.filterNot { it.id==cue.id }+updated).sortedBy { it.startUs },captionsEdited=true)); dialog.dismiss()
         } }; dialog.show()
     }

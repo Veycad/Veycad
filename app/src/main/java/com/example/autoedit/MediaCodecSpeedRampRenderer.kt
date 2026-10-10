@@ -815,7 +815,7 @@ object MediaCodecSpeedRampRenderer {
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, userTextTexture)
             userTextBitmap?.let { bitmap ->
                 bitmap.eraseColor(Color.TRANSPARENT)
-                TextLayerLayout.draw(Canvas(bitmap), requireNotNull(textProject), incomingFrame.outputTimeUs)
+                TextLayerLayout.draw(Canvas(bitmap), requireNotNull(textProject), incomingFrame.outputTimeUs,strict=true)
                 android.opengl.GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
                 onFrameProgress?.invoke((incomingFrame.outputTimeUs * 100 / textProject.durationUs).toInt())
             }

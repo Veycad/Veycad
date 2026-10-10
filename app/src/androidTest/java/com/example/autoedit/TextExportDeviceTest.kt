@@ -121,7 +121,8 @@ class TextExportDeviceTest {
         val source=File(folder,"source.mp4")
         TextAudioMuxer.mux(silent,PcmFile(raw,48000,2,96000,true),source,{})
         val project=TextEditProject(source.path,2_000_000,160,240,layers=listOf(
-            TextLayer("hook","Привет",0,1_000_000,TextStyle(darkPlate=false))))
+            TextLayer("hook","Привет",0,1_000_000,
+                TextStyle(font=TextFont.MONO,animation=TextAnimation.SCALE,plate=TextPlate.ACCENT),TextLayerKind.TITLE)))
         val result=File(folder,"result.mp4")
         TextVideoExporter.export(context,project,result,{}, {})
         assertEquals("Compatible AAC packets are copied without another lossy encode",audioPackets(source),audioPackets(result))
@@ -134,6 +135,11 @@ class TextExportDeviceTest {
             fun bright(bitmap:android.graphics.Bitmap,top:Int,bottom:Int):Int =
                 (top until bottom).sumOf { y -> (0 until bitmap.width).count { x -> Color.red(bitmap.getPixel(x,y))>210 } }
             assertTrue("Hook is visible in upper band",bright(active,20,80)>10)
+            val platePixel=active.getPixel(80,26)
+            assertTrue("Accent plate is burned into actual MP4",
+                kotlin.math.abs(Color.red(platePixel)-84)<30 &&
+                kotlin.math.abs(Color.green(platePixel)-39)<30 &&
+                kotlin.math.abs(Color.blue(platePixel)-164)<30)
             assertEquals("Hook ends before second frame",0,bright(after,20,80))
             assertEquals("Text is not vertically flipped",0,bright(active,160,220))
             File(context.filesDir,"text-test-active.png").outputStream().use { active.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
