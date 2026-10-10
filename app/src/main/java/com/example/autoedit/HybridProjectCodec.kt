@@ -12,7 +12,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Explicit primitive format: v2 adds camera phase, v3 source resets; project schema stays 1. */
+/** Explicit primitive format: v2 phase, v3 resets, v4 sources/visual/text; project schema stays 1. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
     fun encode(project: HybridProject): ByteArray {
         val bytes = ByteArrayOutputStream()
@@ -22,7 +22,9 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             list(project.assets) {
                 string(it.id); string(it.fileName); enum(it.kind); out.writeLong(it.durationUs)
                 string(it.contentHash); string(it.displayName)
+                optional(it.videoMetadata) { metadata -> videoMetadata(metadata) }
             }
+            optional(project.selectedVideos) { list(it) { selection -> selectedVideo(selection) } }
             val revisions = (listOf(project.original, project.current) + project.undo + project.redo).distinctBy { it.id }
             list(revisions) { revision(it) }
             out.writeLong(project.original.id); out.writeLong(project.current.id)
@@ -67,7 +69,11 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             require(input.readInt() == MAGIC) { "Not a hybrid project" }
             val format = formatVersion()
             val id = string(); val fps = input.readInt(); val next = input.readLong()
-            val assets = list { ProjectAsset(string(), string(), enum(), input.readLong(), string(), string()) }
+            val assets = list {
+                val asset = ProjectAsset(string(), string(), enum(), input.readLong(), string(), string())
+                if (format >= 4) asset.copy(videoMetadata = optional { videoMetadata() }) else asset
+            }
+            val selections = if (format >= 4) optional { list { selectedVideo() } } else null
             val revisions = list { revision(format) }
             require(revisions.map { it.id }.distinct().size == revisions.size)
             val canonical = revisions.associateBy { it.id }
@@ -77,7 +83,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             val exports = list { ProjectExportRef(input.readLong(), string(), ProjectExportSettings(
                 input.readInt(), input.readInt(), input.readInt(), input.readInt(), input.readInt())) }
             require(input.available() == 0) { "Trailing project data" }
-            return ProjectLoadResult(HybridProject(id, 1, fps, next, assets, original, current, undo, redo, exports), missing)
+            return ProjectLoadResult(HybridProject(id, 1, fps, next, assets, original, current, undo, redo, exports, selections), missing)
         }
     }
 
@@ -105,6 +111,33 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         fun nullableLong(value: Long?) = optional(value) { out.writeLong(it) }
         fun span(value: FrameSpan) { out.writeInt(value.start); out.writeInt(value.endExclusive) }
         fun curve(value: MontageGraph.SpeedRamp.CubicBezier) { with(value) { out.writeFloat(x1); out.writeFloat(y1); out.writeFloat(x2); out.writeFloat(y2) } }
+        fun videoMetadata(value: VideoSourceMetadata) = with(value) {
+            with(geometry) { out.writeInt(encodedWidth); out.writeInt(encodedHeight); out.writeInt(rotation); out.writeFloat(pixelAspectRatio) }
+            out.writeLong(sizeBytes); string(mime); optional(colorTransfer) { out.writeInt(it) }; out.writeBoolean(hasAudio)
+        }
+        fun selectedVideo(value: SelectedVideo) = with(value) {
+            string(id.value); string(assetId); enum(ownership)
+            optional(captureOrigin) { string(it.sessionId); out.writeInt(it.takeOrdinal); out.writeBoolean(it.recommended) }
+            string(displayName)
+        }
+        fun framing(value: FramingSettings) = with(value) {
+            enum(mode); out.writeFloat(centerX); out.writeFloat(centerY); out.writeFloat(zoom)
+        }
+        fun visuals(value: ProjectVisualSettings) = with(value) {
+            enum(aspect); out.writeBoolean(explicitlySelected)
+            list(framings.entries) { (key, settings) ->
+                string(key.sourceId.value); enum(key.aspect); enum(settings.mode)
+                framing(settings.manual); framing(settings.smartPerson); framing(settings.blurredFit)
+            }
+        }
+        fun textStyle(value: TextStyle) = with(value) {
+            enum(position); enum(font); out.writeFloat(sizeRatio); out.writeInt(color); out.writeBoolean(darkPlate); enum(animation)
+        }
+        fun textState(value: HybridTextState) = with(value) {
+            list(layers) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs); textStyle(it.style) }
+            list(captions) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs) }
+            textStyle(captionStyle); out.writeBoolean(captionsEdited); string(language)
+        }
         fun revision(value: HybridRevision) = with(value) {
             out.writeLong(id); nullableLong(parentId); graph(graph)
             list(clips) {
@@ -121,6 +154,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             with(style) { string(recipeId); out.writeInt(recipeVersion); enum(mode); out.writeBoolean(showAuthoredText) }
             list(lockedCutIds) { string(it) }
             out.writeBoolean(restoresAutomaticSources)
+            visuals(visualSettings); textState(textState)
         }
         fun clip(value: MontageGraph.Clip) = with(value) {
             string(id); out.writeLong(sourceStartMs); out.writeLong(sourceEndMs); out.writeLong(outputDurationMs)
@@ -201,8 +235,25 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         fun nullableLong(): Long? = optional { input.readLong() }
         fun span() = FrameSpan(input.readInt(), input.readInt())
         fun curve() = MontageGraph.SpeedRamp.CubicBezier(input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat())
+        fun videoMetadata() = VideoSourceMetadata(SourceGeometry(input.readInt(), input.readInt(), input.readInt(), input.readFloat()),
+            input.readLong(), string(), optional { input.readInt() }, input.readBoolean())
+        fun selectedVideo() = SelectedVideo(SourceId(string()), string(), enum(),
+            optional { CaptureOrigin(string(), input.readInt(), input.readBoolean()) }, string())
+        fun framing() = FramingSettings(enum(), input.readFloat(), input.readFloat(), input.readFloat())
+        fun visuals(): ProjectVisualSettings {
+            val aspect = enum<ProjectAspect>(); val explicit = input.readBoolean()
+            val framings = list { FramingKey(SourceId(string()), enum()) to
+                SourceFramingSettings(enum(), framing(), framing(), framing()) }
+            require(framings.map { it.first }.distinct().size == framings.size)
+            return ProjectVisualSettings(aspect, explicit, framings.toMap())
+        }
+        fun textStyle() = TextStyle(enum(), enum(), input.readFloat(), input.readInt(), input.readBoolean(), enum())
+        fun textState() = HybridTextState(
+            list { TextLayer(string(), string(), input.readLong(), input.readLong(), textStyle()) },
+            list { CaptionCue(string(), string(), input.readLong(), input.readLong()) },
+            textStyle(), input.readBoolean(), string())
         fun formatVersion(): Int = input.readInt().also {
-            require(it == 1 || it == 2 || it == FORMAT_VERSION) { "Unsupported hybrid format $it" }
+            require(it == 1 || it == 2 || it == 3 || it == FORMAT_VERSION) { "Unsupported hybrid format $it" }
         }
         fun revision(format: Int): HybridRevision {
             val id = input.readLong(); val parent = nullableLong(); val graph = graph()
@@ -210,7 +261,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
                 val clip = HybridClip(string(), string(), span(), sourceMap(), clip())
                 when (format) {
                     1 -> clip
-                    2, 3 -> clip.copy(originalFrameOffset = input.readInt())
+                    2, 3, 4 -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -221,10 +272,12 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             require(locked.distinct().size == locked.size)
             val resetsSources = when (format) {
                 1, 2 -> false
-                3 -> input.readBoolean()
+                3, 4 -> input.readBoolean()
                 else -> error("Unsupported hybrid format")
             }
-            return HybridRevision(id, parent, graph, clips, music, texts, style, locked.toSet(), resetsSources)
+            val visuals = if (format >= 4) visuals() else ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false)
+            val text = if (format >= 4) textState() else HybridTextState()
+            return HybridRevision(id, parent, graph, clips, music, texts, style, locked.toSet(), resetsSources, visuals, text)
         }
         fun clip() = MontageGraph.Clip(string(), input.readLong(), input.readLong(), input.readLong(), enum(), enum(), enum(),
             input.readFloat(), input.readLong(),
@@ -293,7 +346,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 3
+        private const val FORMAT_VERSION = 4
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024

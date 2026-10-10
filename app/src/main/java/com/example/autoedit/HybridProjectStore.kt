@@ -35,6 +35,9 @@ class HybridProjectStore(
         check(previous.result.project.current.id == expectedRevisionId) { "Project changed since it was loaded" }
         require(project.nextRevisionId >= previous.result.project.nextRevisionId) { "Revision IDs cannot be reused" }
         require(project.original.id == previous.result.project.original.id && project.fps == previous.result.project.fps)
+        require(project.selectedVideos == previous.result.project.selectedVideos) {
+            "Published selection bindings are immutable; inspect and fork to restore legacy metadata"
+        }
         val publishedAssets = previous.result.project.assets
         val publishedById = publishedAssets.associateBy { it.id }
         project.assets.forEach { asset ->

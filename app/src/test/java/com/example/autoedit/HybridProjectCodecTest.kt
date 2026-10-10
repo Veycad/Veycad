@@ -59,14 +59,14 @@ class HybridProjectCodecTest {
         assertEquals(revision, codec.decodeRevision(revisionBytes))
     }
 
-    @Test fun version3RoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
+    @Test fun version4RoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val base = storageProject()
         val revision = base.current.copy(id = 1, parentId = 0,
             clips = base.current.clips.map { it.copy(originalFrameOffset = -2) })
         val project = base.copy(current = revision, nextRevisionId = 2, undo = listOf(base.original))
         val encoded = codec.encode(project)
-        assertEquals(3, ByteBuffer.wrap(encoded).getInt(4))
+        assertEquals(4, ByteBuffer.wrap(encoded).getInt(4))
         val loaded = codec.decode(encoded)
         assertEquals(project, loaded)
         assertEquals(-2, loaded.current.clips.single().originalFrameOffset)
@@ -90,7 +90,7 @@ class HybridProjectCodecTest {
         }
     }
 
-    @Test fun openingVersion2StoreKeepsOldBlobsWhenSavingVersion3Reset() {
+    @Test fun openingVersion2StoreKeepsOldBlobsWhenSavingVersion4Reset() {
         val store = HybridProjectStore(temporary.newFolder())
         val dir = store.directory("project").apply { mkdirs() }
         val projectBytes = javaClass.getResourceAsStream("/hybrid-v2/project.bin")!!.use { it.readBytes() }
@@ -124,7 +124,7 @@ class HybridProjectCodecTest {
         assertEquals(reset.current, store.loadRevision("project", reset.current.id))
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val resetBlob = codec.encodeRevisions(listOf(reset.current)).getValue(reset.current.id)
-        assertEquals(3, ByteBuffer.wrap(resetBlob).getInt(4))
+        assertEquals(4, ByteBuffer.wrap(resetBlob).getInt(4))
         assertEquals(reset.current, codec.decodeRevision(resetBlob))
         val edited = HybridEditCommands.slipClip(reset, "right", 123_456)
         assertFalse(edited.current.restoresAutomaticSources)

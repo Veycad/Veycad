@@ -10,6 +10,15 @@ import java.security.MessageDigest
 class ProjectAssetStore(projectDirectory: File) {
     private val directory = ownedChild(projectDirectory, "sources")
 
+    /** New video imports require inspected facts; selection identity/labels stay in SelectedVideo. */
+    fun importVideo(source: MediaSource, pixelAspectRatio: Float): ProjectAsset {
+        val metadata = VideoSourceMetadata.fromInspected(source, pixelAspectRatio)
+        require(source.file.length() == source.sizeBytes) { "Source changed after inspection" }
+        val asset = import(source.file, ProjectAsset.Kind.VIDEO, source.durationUs)
+        require(asset.contentHash == source.fingerprint) { "Source changed after inspection" }
+        return asset.copy(displayName = asset.fileName, videoMetadata = metadata)
+    }
+
     fun import(source: File, kind: ProjectAsset.Kind, durationUs: Long): ProjectAsset {
         require(source.isFile && durationUs > 0)
         directory.mkdirs()
