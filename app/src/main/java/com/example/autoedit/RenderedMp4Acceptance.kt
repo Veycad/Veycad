@@ -68,7 +68,9 @@ object RenderedMp4Acceptance {
         val decodedSourceIndex: Int? = null,
         val decodedClipIndex: Int? = null,
         /** null is legacy/test evidence, never production proof of a fresh face measurement. */
-        val decodedFaceEvidence: DecodedFaceEvidence? = null
+        val decodedFaceEvidence: DecodedFaceEvidence? = null,
+        /** Actual render witness PTS; absent when the caller supplies no decoded source evidence. */
+        val decodedSourceTimeUs: Long? = null
     ) {
         init {
             require(outputTimeUs >= 0L)

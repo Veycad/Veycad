@@ -10,20 +10,22 @@ import java.io.File
 
 /** A real, decodable AVC clip generated on-device, independent of user footage. */
 internal object SyntheticVideo {
-    fun create(target: File, durationMs: Long = 3_000): File {
+    fun create(target: File, durationMs: Long = 3_000, width: Int = 160, height: Int = 240,
+        lumaBase: Int = 40): File {
         require(durationMs in 1_000..180_000)
-        if (target.isFile && target.length() > 0) {
+        require(width > 0 && height > 0 && width % 2 == 0 && height % 2 == 0 && lumaBase in 0..155)
+        if (lumaBase == 40 && target.isFile && target.length() > 0) {
             val valid = runCatching {
                 MediaMetadataRetriever().use { metadata ->
                     metadata.setDataSource(target.path)
-                    kotlin.math.abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - durationMs) <= 100
+                    kotlin.math.abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - durationMs) <= 100 &&
+                        metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() == width &&
+                        metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() == height
                 }
             }.getOrDefault(false)
             if (valid) return target
         }
         target.parentFile!!.mkdirs()
-        val width = 160
-        val height = 240
         val codec = MediaCodec.createEncoderByType("video/avc")
         val temporary = File(target.path + ".partial")
         val muxer = MediaMuxer(temporary.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
@@ -58,7 +60,7 @@ internal object SyntheticVideo {
                             inputEnded = true
                         } else {
                             val pixels = ByteArray(width * height * 3 / 2) { offset ->
-                                if (offset < width * height) (40 + frame % 100).toByte() else 128.toByte()
+                                if (offset < width * height) (lumaBase + frame % 100).toByte() else 128.toByte()
                             }
                             codec.getInputBuffer(index)!!.apply { clear(); put(pixels) }
                             codec.queueInputBuffer(index, 0, pixels.size, frame * 1_000_000L / 30, 0)
