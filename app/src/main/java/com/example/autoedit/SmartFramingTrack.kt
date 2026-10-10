@@ -199,6 +199,8 @@ internal class SmartFramingTrack private constructor(
                     lastStable = evaluate(i, entry.timeUs)
                 } else {
                     activeRecovery = null
+                    // Explicit ambiguity/unknown invalidates the person, including later holds.
+                    if (entry.forceCenter) lastStable = null
                     lastStable?.let {
                         anchors[i] = it
                         knots += it.sourceTimeUs + HOLD_US

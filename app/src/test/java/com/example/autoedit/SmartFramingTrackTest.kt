@@ -69,6 +69,27 @@ class SmartFramingTrackTest {
         assertEquals(.5f, absent.sample(0).centerX, 0f)
     }
 
+    @Test fun ambiguous_centering_cannot_resurrect_a_prior_person_during_later_mask_loss() {
+        assertForcedCenterInvalidatesHold(2)
+    }
+
+    @Test fun unknown_count_centering_cannot_resurrect_a_prior_person_during_later_mask_loss() {
+        assertForcedCenterInvalidatesHold(null)
+    }
+
+    private fun assertForcedCenterInvalidatesHold(count: Int?) {
+        val track = track(listOf(frame(0, .2f), frame(250_000, .2f)),
+            listOf(observation(0), observation(250_000, count), observation(400_000, 0)))
+        assertEquals(.2f, track.sample(0).centerX, .0001f)
+        assertEquals(.5f, track.sample(250_000).centerX, 0f)
+        assertEquals(if (count == null) SmartFramingStatus.UNKNOWN else SmartFramingStatus.AMBIGUOUS,
+            track.sample(250_000).status)
+        for (t in listOf(400_000L, 450_000L, 650_000L, 800_000L)) {
+            assertEquals("Old person must stay invalidated at $t", .5f, track.sample(t).centerX, 0f)
+            assertEquals(SmartFramingStatus.NO_PERSON, track.sample(t).status)
+        }
+    }
+
     @Test fun unreliable_mask_cannot_start_tracking() {
         val baseline = frame(0, .2f)
         for (rejected in listOf(baseline.copy(subjectQuality = .59f), baseline.copy(subjectOcclusion = .36f),
