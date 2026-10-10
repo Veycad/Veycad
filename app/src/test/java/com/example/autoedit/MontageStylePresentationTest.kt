@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MontageStylePresentationTest {
+    @Test fun style_selector_explains_the_result_in_familiar_language() {
+        assertEquals("Динамичный бит", MontageStylePresentation.forStyle(MontageStyleCatalog.fearStrobe).title)
+        assertEquals("Пульс под музыку", MontageStylePresentation.forStyle(MontageStyleCatalog.heartbeat).title)
+        assertEquals("Диалог двух сцен", MontageStylePresentation.forStyle(MontageStyleCatalog.dualityLoop).title)
+    }
+
     @Test fun active_products_have_distinct_owned_identity_and_grammar() {
         val copies = MontageStyleCatalog.available.map(MontageStylePresentation::forStyle)
         assertEquals(3, copies.map { it.symbol }.distinct().size)
@@ -14,11 +20,11 @@ class MontageStylePresentationTest {
             assertFalse(copy.selectorLabel.contains("живое появление", ignoreCase = true))
             assertTrue(copy.subtitle.length <= 40)
         }
-        assertTrue(MontageStylePresentation.forStyle(MontageStyleCatalog.heartbeat).subtitle.contains("повтор фразы"))
-        assertTrue(MontageStylePresentation.forStyle(MontageStyleCatalog.fearStrobe).subtitle.contains("Движение"))
-        assertTrue(MontageStylePresentation.forStyle(MontageStyleCatalog.fearStrobe).subtitle.contains("строб-акценты"))
+        assertTrue(MontageStylePresentation.forStyle(MontageStyleCatalog.heartbeat).tags.contains("Повторы"))
+        assertTrue(MontageStylePresentation.forStyle(MontageStyleCatalog.fearStrobe).tags.contains("Быстрые склейки"))
+        assertTrue(MontageStylePresentation.forStyle(MontageStyleCatalog.fearStrobe).tags.contains("Строб"))
         assertFalse(MontageStylePresentation.forStyle(MontageStyleCatalog.fearStrobe).subtitle.contains("белый финал"))
-        assertTrue(MontageStylePresentation.forStyle(MontageStyleCatalog.dualityLoop).subtitle.contains("Две связанные сцены"))
+        assertTrue(MontageStylePresentation.forStyle(MontageStyleCatalog.dualityLoop).tags.contains("2 видео"))
     }
 
     @Test fun heartbeat_and_fear_require_one_source_at_native_minimum_duration() {
@@ -59,8 +65,8 @@ class MontageStylePresentationTest {
     @Test fun active_music_placeholders_and_loading_copy_belong_to_selected_product() {
         MontageStyleCatalog.available.forEach { style ->
             val copy = MontageStylePresentation.forStyle(style)
-            assertTrue(copy.musicPlaceholder.contains(style.title))
-            assertTrue(copy.musicLoading.contains(style.title))
+            assertTrue(copy.musicPlaceholder.contains(copy.title))
+            assertTrue(copy.musicLoading.contains(copy.title))
             assertFalse(copy.musicPlaceholder.contains("фонк", ignoreCase = true))
             assertFalse(copy.musicLoading.contains("фонк", ignoreCase = true))
         }
@@ -79,10 +85,10 @@ class MontageStylePresentationTest {
     @Test fun restoring_a_paused_or_unknown_style_uses_heartbeat_presentation() {
         for (id in listOf(null, "sigma", "unknown", "upcoming")) {
             val copy = MontageStylePresentation.forStyle(MontageStyleCatalog.restore(id))
-            assertEquals("Heartbeat", copy.title)
+            assertEquals("Пульс под музыку", copy.title)
             assertEquals("♥", copy.symbol)
             assertEquals("1 видео · от 15 секунд", copy.sourceDisplay(emptyList()))
-            assertTrue(copy.musicPlaceholder.contains("Heartbeat"))
+            assertTrue(copy.musicPlaceholder.contains(copy.title))
         }
     }
 

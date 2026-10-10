@@ -43,7 +43,7 @@ class SettingsScreenTest {
     @Test fun clean_settings_show_owned_defaults_and_both_back_actions_keep_the_draft() {
         ui.launch()
         openSettings()
-        onView(withId(R.id.settingsStyleValue)).check(matches(withText("Heartbeat  ›")))
+        onView(withId(R.id.settingsStyleValue)).check(matches(withText("Пульс под музыку  ›")))
         onView(withId(R.id.settingsQualityValue)).check(matches(withText("720p  ›")))
         onView(withId(R.id.autoSaveSwitch)).check(matches(not(isChecked())))
         onView(withId(R.id.notificationSwitch)).check(matches(not(isChecked())))
@@ -69,20 +69,20 @@ class SettingsScreenTest {
         ui.click(R.id.defaultStyleSetting)
         choosePendingStyle("FEAR")
         onView(withText("Отмена")).inRoot(isDialog()).perform(click())
-        onView(withId(R.id.settingsStyleValue)).check(matches(withText("Heartbeat  ›")))
+        onView(withId(R.id.settingsStyleValue)).check(matches(withText("Пульс под музыку  ›")))
         assertEquals("heartbeat", stylePreferences().getString("selected", "heartbeat"))
 
         ui.click(R.id.defaultStyleSetting)
         choosePendingStyle("FEAR")
         onView(withText("Применить")).inRoot(isDialog()).perform(click())
-        ui.awaitText(R.id.settingsStyleValue, "FEAR")
+        ui.awaitText(R.id.settingsStyleValue, "Динамичный бит")
         assertEquals("fear_strobe", stylePreferences().getString("selected", null))
         ui.click(R.id.backFromSettingsButton)
         ui.awaitText(R.id.selectStyleButton, "FEAR")
         ui.recreate()
         ui.awaitText(R.id.selectStyleButton, "FEAR")
         openSettings()
-        onView(withId(R.id.settingsStyleValue)).check(matches(withText("FEAR  ›")))
+        onView(withId(R.id.settingsStyleValue)).check(matches(withText("Динамичный бит  ›")))
         assertEquals("fear_strobe", stylePreferences().getString("selected", null))
     }
 
