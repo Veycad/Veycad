@@ -1,7 +1,7 @@
 package com.veycad.app
 
 data class GalleryAnalysisProfile(
-    val analyzerVersion: Int = 2,
+    val analyzerVersion: Int = 3,
     val coarseIntervalUs: Long = 1_000_000L,
     val refineIntervalUs: Long = 250_000L
 ) {
@@ -11,7 +11,7 @@ data class GalleryAnalysisProfile(
 /** Regenerable, bounded measurements only. Source files and project lifetime belong to shared storage. */
 class GalleryAnalysisCache(private val maxEntries: Int = 20, private val maxMomentsPerEntry: Int = 128) {
     private data class Key(val fingerprint: String, val profile: GalleryAnalysisProfile)
-    private data class Entry(val durationUs: Long, val firstVideoPtsUs: Long, val moments: List<GalleryMoment>)
+    private data class Entry(val durationUs: Long, val bounds: VideoPresentationBounds, val moments: List<GalleryMoment>)
     private val entries = LinkedHashMap<Key, Entry>(16, .75f, true)
     init { require(maxEntries > 0 && maxMomentsPerEntry > 0) }
 
@@ -20,7 +20,7 @@ class GalleryAnalysisCache(private val maxEntries: Int = 20, private val maxMome
     @Synchronized
     fun load(source: MediaSource, profile: GalleryAnalysisProfile): List<GalleryMoment>? {
         val entry = entries[Key(source.fingerprint, profile)] ?: return null
-        if (entry.durationUs != source.durationUs || entry.firstVideoPtsUs != source.firstVideoPtsUs) return null
+        if (entry.durationUs != source.durationUs || entry.bounds != source.videoPresentationBounds) return null
         // Selection identity is never part of content reuse and must be rebound on every load.
         return entry.moments.map { it.copy(sourceId = source.id) }
     }
@@ -35,7 +35,7 @@ class GalleryAnalysisCache(private val maxEntries: Int = 20, private val maxMome
                 moment.endUs - moment.startUs in 500_000L..4_000_000L &&
                 moment.features.timeUs in moment.startUs until moment.endUs
         }) { "Gallery measurements must describe real, bounded source windows" }
-        entries[Key(source.fingerprint, profile)] = Entry(source.durationUs, source.firstVideoPtsUs, moments.toList())
+        entries[Key(source.fingerprint, profile)] = Entry(source.durationUs, requireNotNull(source.videoPresentationBounds), moments.toList())
         while (entries.size > maxEntries) entries.remove(entries.keys.first())
     }
 }

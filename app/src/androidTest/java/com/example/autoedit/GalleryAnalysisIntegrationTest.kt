@@ -36,15 +36,18 @@ class GalleryAnalysisIntegrationTest {
             val source = MediaInputInspector().inspect("vfr", file, file.name)
             val timing = videoTiming(file)
             val pts = timing.pts
+            val validatedEndUs = source.videoPresentationBounds?.endPtsUs
             Log.i("GalleryPtsFixture", "actualFirstUs=${pts.first()} actualLastUs=${pts.last()} " +
                 "trackDurationUs=${timing.declaredDurationUs} explicitVideoEosUs=$explicitVideoEosUs " +
                 "sourceDurationUs=${source.durationUs} sourceOriginUs=${source.firstVideoPtsUs} " +
-                "sourceEndUs=${source.videoEndPtsUs} sourceEndMinusExplicitEosUs=${source.videoEndPtsUs - explicitVideoEosUs} " +
+                "sourceEndUs=$validatedEndUs sourceEndMinusExplicitEosUs=${validatedEndUs?.minus(explicitVideoEosUs)} " +
                 "lastSampleFlags=${timing.lastSampleFlags}")
             assertTrue(pts.first() > 0)
             assertTrue(source.hasAudio)
             assertEquals(pts.first(), source.firstVideoPtsUs)
-            assertEquals(pts.first() + source.durationUs, source.videoEndPtsUs)
+            assertNotNull(source.videoPresentationBounds)
+            assertTrue(source.videoContentDurationUs >= 500_000)
+            assertTrue("Inspected endpoint exceeds independently authored EOS", source.videoEndPtsUs <= explicitVideoEosUs)
             assertTrue(pts.zipWithNext().map { it.second - it.first }.distinct().size > 1)
             val observed = mutableListOf<Long>()
             val requested = longArrayOf(pts.first() + 1, pts.last())
@@ -60,6 +63,7 @@ class GalleryAnalysisIntegrationTest {
             Log.i("GalleryPtsFixture", "maxMomentEndUs=${moments.maxOfOrNull { it.endUs }} " +
                 "momentsAfterExplicitVideoEos=${moments.count { it.endUs > explicitVideoEosUs }}")
             assertTrue(moments.isNotEmpty())
+            assertTrue("Moment exceeds independently authored EOS", moments.all { it.endUs <= explicitVideoEosUs })
             assertTrue(moments.all { it.features.timeUs in pts && it.startUs >= pts.first() && it.endUs <= source.videoEndPtsUs })
             // Neither boundary invents a frame for a request after the last real sample.
             assertThrows(IllegalStateException::class.java) {

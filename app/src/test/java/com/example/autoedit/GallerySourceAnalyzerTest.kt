@@ -6,6 +6,28 @@ import java.util.concurrent.CancellationException
 
 class GallerySourceAnalyzerTest {
     private val image = FloatArray(32 * 24) { if ((it % 32 / 3 + it / 32 / 4) % 2 == 0) .25f else .75f }
+    @Test fun nativeAuthoredEosDoesNotAcquireTheInitialEmptyEditTwice() {
+        // Independent values retained from exact87 native fixture; EOS was authored
+        // before muxing, not calculated from the inspected descriptor.
+        val authoredEosUs = 1_294_334L
+        val pts = LongArray(23) { i -> 120_000L + i * 42_000L + (i / 3) * 31_000L }
+        val source = mediaSource(durationUs = 1_294_300, firstVideoPtsUs = 120_000, endPtsUs = 1_294_300)
+        val moments = GallerySourceAnalyzer(frameReader = Frames(pts, image)).analyze(source) {}
+        assertTrue(moments.isNotEmpty())
+        assertTrue("Moment extends past independently authored native EOS", moments.all { it.endUs <= authoredEosUs })
+        assertEquals(1_294_300L, source.durationUs)
+        assertEquals(1_174_300L, source.videoContentDurationUs)
+    }
+    @Test fun unknownEndpointCannotBeAnalyzedOrBorrowAnExistingCacheEntry() {
+        val source = mediaSource(durationUs = 500_000)
+        val reader = Frames(longArrayOf(0, 466_666), image)
+        val analyzer = GallerySourceAnalyzer(frameReader = reader)
+        assertTrue(analyzer.analyze(source) {}.isNotEmpty())
+        assertThrows(IllegalArgumentException::class.java) {
+            analyzer.analyze(source.copy(videoPresentationBounds = null)) {}
+        }
+        assertEquals(2, reader.requests.size)
+    }
     private class Frames(val pts: LongArray, val image: FloatArray,
         val changeAt: Long? = null, val imageAt: ((Long) -> FloatArray)? = null) : GalleryFrameReader {
         val requests = mutableListOf<LongArray>()
@@ -37,7 +59,7 @@ class GallerySourceAnalyzerTest {
     @Test fun usesActualNonzeroVfrPtsAndRefinesLocally() {
         val pts = longArrayOf(120_000, 330_000, 610_000, 980_000, 1_280_000, 1_670_000, 2_230_000, 2_700_000)
         val reader = Frames(pts, image)
-        val source = mediaSource(durationUs = 2_780_000).copy(firstVideoPtsUs = 120_000)
+        val source = mediaSource(durationUs = 2_780_000, firstVideoPtsUs = 120_000)
         val moments = GallerySourceAnalyzer(frameReader = reader).analyze(source) {}
         assertTrue(moments.isNotEmpty())
         assertTrue(moments.all { it.features.timeUs in pts && it.startUs >= 120_000 && it.endUs <= 2_900_000 })
@@ -47,7 +69,7 @@ class GallerySourceAnalyzerTest {
 
     @Test fun nonzeroOriginKeepsEligibleHalfSecondContentOnRawPtsAxis() {
         for (pts in listOf(longArrayOf(5_000, 250_000, 495_000), longArrayOf(120_000, 353_333, 586_666))) {
-            val source = mediaSource(durationUs = 500_000).copy(firstVideoPtsUs = pts.first())
+            val source = mediaSource(durationUs = 500_000, firstVideoPtsUs = pts.first())
             val moments = GallerySourceAnalyzer(frameReader = Frames(pts, image)).analyze(source) {}
             assertTrue("Eligible shifted half-second content was lost", moments.isNotEmpty())
             assertTrue(moments.all { it.startUs == pts.first() && it.endUs == pts.first() + 500_000 &&

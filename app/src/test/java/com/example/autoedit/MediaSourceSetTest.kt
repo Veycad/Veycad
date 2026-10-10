@@ -50,12 +50,22 @@ class MediaSourceSetTest {
     }
 
     @Test fun measuredOriginProvidesOneCheckedRawEndBound() {
-        val source = mediaSource(durationUs = 500_000).copy(firstVideoPtsUs = 120_000)
+        val source = mediaSource(durationUs = 500_000, firstVideoPtsUs = 120_000)
         assertEquals(620_000L, source.videoEndPtsUs)
         assertEquals(500_000L, source.durationUs)
         assertThrows(IllegalArgumentException::class.java) { source.copy(firstVideoPtsUs = -1) }
         assertThrows(IllegalArgumentException::class.java) { source.copy(firstVideoPtsUs = Long.MAX_VALUE - 499_999) }
-        assertEquals(Long.MAX_VALUE, source.copy(firstVideoPtsUs = Long.MAX_VALUE - 500_000).videoEndPtsUs)
+        assertEquals(Long.MAX_VALUE, mediaSource(durationUs = 500_000,
+            firstVideoPtsUs = Long.MAX_VALUE - 500_000).videoEndPtsUs)
         GalleryImportPolicy.validate(MediaSourceSet(listOf(source)))
+        assertThrows(IllegalArgumentException::class.java) {
+            source.copy(videoPresentationBounds = VideoPresentationBounds(5_000, 620_000))
+        }
+        assertThrows(IllegalArgumentException::class.java) { VideoPresentationBounds(1, 1) }
+        assertThrows(IllegalArgumentException::class.java) { VideoPresentationBounds(1, 2, 2) }
+        // Constructor compatibility never turns a legacy duration into timing proof.
+        val legacy = source.copy(videoPresentationBounds = null)
+        assertEquals(500_000L, legacy.durationUs)
+        assertThrows(IllegalArgumentException::class.java) { legacy.videoEndPtsUs }
     }
 }

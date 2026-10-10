@@ -7,7 +7,7 @@ internal object GalleryMontageDirector {
         GalleryImportPolicy.validate(sources)
         // A beat-trimmed window consumes less output than its source window. Keep looking
         // through fresh footage until the actual graph is full, rather than padding it.
-        val selected = GalleryMomentSelector.selections(moments, sources, sources.items.sumOf { it.durationUs })
+        val selected = GalleryMomentSelector.selections(moments, sources, sources.items.sumOf { it.videoContentDurationUs })
         val sourceIndices = sources.items.mapIndexed { index, source -> source.id to index }.toMap()
         // Convert samples without overflowing an intermediate sampleIndex * 1_000_000.
         val beatsMs = audioMap.beats.mapNotNull { beat ->

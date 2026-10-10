@@ -46,14 +46,16 @@ class GalleryAnalysisCacheTest {
     }
 
     @Test fun shiftedSourceBoundsInvalidateReuseAndValidateStoredRawMoments() {
-        val source = mediaSource("shifted", 500_000).copy(firstVideoPtsUs = 120_000)
+        val source = mediaSource("shifted", 500_000, firstVideoPtsUs = 120_000)
         val moment = moments(source.id).single().copy(startUs = 120_000, endUs = 620_000,
             features = moments(source.id).single().features.copy(timeUs = 353_333))
         val cache = GalleryAnalysisCache()
         cache.store(source, listOf(moment))
         assertEquals(620_000L, cache.load(source)!!.single().endUs)
         assertEquals("other", cache.load(source.copy(id = "other"))!!.single().sourceId)
-        assertNull(cache.load(source.copy(firstVideoPtsUs = 5_000)))
+        assertNull(cache.load(mediaSource("shifted", 500_000, firstVideoPtsUs = 5_000)))
+        assertNull(cache.load(source.copy(videoPresentationBounds = VideoPresentationBounds(120_000, 619_999))))
+        assertNull(cache.load(source.copy(videoPresentationBounds = null)))
         assertThrows(IllegalArgumentException::class.java) {
             cache.store(source, listOf(moment.copy(startUs = 119_999)))
         }

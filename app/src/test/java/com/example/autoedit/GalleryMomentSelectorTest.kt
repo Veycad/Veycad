@@ -94,7 +94,8 @@ class GalleryMomentSelectorTest {
 internal fun gallerySources(count: Int, durationUs: Long = 20_000_000, originUs: Long = 0) =
     MediaSourceSet((0 until count).map { index -> MediaSource("s$index", File("selected-$index.mp4"),
         "selected-$index", durationUs, 1, 0, 720, 1280, "video/avc", 3, false,
-        index.toString(16).padStart(64, '0'), originUs) })
+        index.toString(16).padStart(64, '0'), originUs,
+        VideoPresentationBounds(originUs, originUs + durationUs)) })
 
 internal fun galleryMoment(id: String, startUs: Long, lengthUs: Long = 4_000_000,
     quality: Float = .8f, motion: Float = .5f, composition: Float = .5f,

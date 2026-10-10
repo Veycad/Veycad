@@ -5,6 +5,21 @@ import org.junit.Test
 
 class GalleryMontageDirectorTest {
     private val silence = AudioBeatMap(1_000, 60_000, null, emptyList(), emptyList())
+    @Test fun declaredInitialEditCannotExtendAnIndependentRawWindow() {
+        val sources = MediaSourceSet(listOf("one", "two").mapIndexed { index, id ->
+            mediaSource(id, durationUs = 505_000, firstVideoPtsUs = 5_000, endPtsUs = 505_000)
+                .copy(fingerprint = (if (index == 0) "a" else "b").repeat(64))
+        })
+        val moments = sources.items.mapIndexed { index, source ->
+            galleryMoment(source.id, 5_000, lengthUs = 500_000, hash = if (index == 0) 0 else -1) }
+        val graph = GalleryMontageDirector.direct(sources, moments, silence, 15_000)
+        assertEquals(1_000L, graph.outputDurationMs)
+        assertTrue(graph.clips.all { it.sourceStartMs == 5L && it.sourceEndMs == 505L })
+        assertTrue(HighQualityFramePlan.build(graph).frames.all { it.sourceTimeUs in 5_000 until 505_000 })
+        assertThrows(IllegalArgumentException::class.java) {
+            GalleryMontageDirector.direct(sources, moments.map { it.copy(endUs = 510_000) }, silence, 15_000)
+        }
+    }
 
     @Test fun shortfallDoesNotPadWithRepeats() {
         val sources = gallerySources(2, durationUs = 600_000)

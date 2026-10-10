@@ -26,7 +26,7 @@ class GallerySourceAnalyzer(
     fun analyze(source: MediaSource, checkCancelled: () -> Unit): List<GalleryMoment> {
         checkCancelled()
         require(source.isBaselineInput) { "Gallery analysis currently requires H.264/SDR" }
-        require(source.durationUs in 500_000L..GalleryImportPolicy.MAX_DURATION_US)
+        require(source.videoContentDurationUs in 500_000L..GalleryImportPolicy.MAX_DURATION_US)
         cache.load(source, profile)?.let { checkCancelled(); return it }
         val bounds = frameReader.bounds(source, checkCancelled)
         require(bounds.firstPtsUs == source.firstVideoPtsUs && bounds.lastPtsUs >= bounds.firstPtsUs &&
