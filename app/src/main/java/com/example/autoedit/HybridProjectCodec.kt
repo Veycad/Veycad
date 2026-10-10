@@ -87,9 +87,23 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         }
     }
 
+    /** A whole manifest/revision budget, never reset between lists or history entries. */
+    private class ItemBudget {
+        private var remaining = MAX_TOTAL_ITEMS
+
+        fun consume(count: Int) {
+            require(count in 0..MAX_ITEMS) { "Hybrid list exceeds $MAX_ITEMS entries" }
+            require(count <= remaining) {
+                "Hybrid payload exceeds $MAX_TOTAL_ITEMS generic collection entries across all revisions"
+            }
+            remaining -= count
+        }
+    }
+
     private class Writer(val out: DataOutputStream, val sidecars: AnalysisSidecarStore,
         val planes: IdentityHashMap<FloatArray, String> = IdentityHashMap(),
         val hashes: MutableSet<String> = hashSetOf()) {
+        private val itemBudget = ItemBudget()
         fun string(value: String) {
             val bytes = value.toByteArray(Charsets.UTF_8)
             require(bytes.size <= MAX_STRING_BYTES)
@@ -97,7 +111,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         }
         fun enum(value: Enum<*>) = string(value.name)
         fun <T> list(values: Collection<T>, write: (T) -> Unit) {
-            require(values.size <= MAX_ITEMS); out.writeInt(values.size); values.forEach(write)
+            itemBudget.consume(values.size); out.writeInt(values.size); values.forEach(write)
         }
         fun sourceMap(value: SourceTimeMap) {
             val count = value.points.size
@@ -209,7 +223,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         val missing = linkedSetOf<String>()
         private val arrays = mutableMapOf<String, FloatArray?>()
         private var arrayBytes = 0L
-        private var itemBudget = 100_000
+        private val itemBudget = ItemBudget()
         fun string(): String {
             val count = input.readInt()
             require(count in 0..MAX_STRING_BYTES && count <= input.available())
@@ -218,8 +232,8 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         inline fun <reified E : Enum<E>> enum(): E = enumValueOf(string())
         fun <T> list(read: () -> T): List<T> {
             val count = input.readInt()
-            require(count in 0..MAX_ITEMS && count <= input.available() && count <= itemBudget)
-            itemBudget -= count
+            itemBudget.consume(count)
+            require(count <= input.available())
             return List(count) { read() }
         }
         fun sourceMap(): SourceTimeMap {
@@ -351,5 +365,9 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024
         private const val MAX_ITEMS = 10_000
+        // 51 revisions with 2,000 layers + 2,000 cues need ~204k entries plus graph
+        // and reference lists. Keep a fixed allocation/work ceiling above that case;
+        // byte/string/sidecar bounds and the separate source-point budget still apply.
+        private const val MAX_TOTAL_ITEMS = 256 * 1024
     }
 }

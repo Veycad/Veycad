@@ -207,3 +207,157 @@ rendering/artistic/device acceptance is implied by these JVM checks.
 * Gain above 1 is preserved; renderer headroom/clipping policy is Task 8.
 * No currently known failing scoped checks. Independent review and required CI
   are the remaining concerns before integration acceptance.
+
+## Fix round 1 — I1 aggregate rich-history capacity
+
+Status: DONE_WITH_CONCERNS; I1 corrected and covered below, pending independent
+scoped re-review and required exact-commit CI. Base was
+`6ae1da73717c3524586f1f602cd51340a27fae82`. Read the full independent A1 review.
+The controller's modified
+`docs/superpowers/plans/2026-10-10-hybrid-integration-checkpoints.md` is excluded
+from this fix and its index/commit.
+
+Confirmed issue: writer checked only the per-list limit; reader additionally
+spent a hidden 100,000-entry aggregate budget. The demonstrated valid rich
+history was unsavable. Existing store preflight already protected CURRENT;
+this was **not corrupt publication**. No reset/manual/source-origin changes.
+
+### Decision and capacity contract
+
+Production change is confined to HybridProjectCodec: one private `ItemBudget`
+implementation is used by Writer.list and Reader.list. The aggregate capacity is
+**262,144 generic collection entries per entire manifest or standalone revision
+payload**, summed across every generic list and every retained revision. The
+counter does not reset between revisions. Per-list 10,000, manifest/revision
+16 MiB, string 1 MiB, analysis bounds, and pre-allocation available-byte checks
+remain. Source points continue to use their separate, symmetric fixed 12-byte
+point/manifest budget. No physical schema version or byte layout changed.
+
+The 256 Ki-entry ceiling supports both the requested 51 revisions x 2,000 cues
+(102,000 cue entries) and the explicitly tested 51 x (2,000 layers + 2,000 cues)
+(204,000 rich-text entries), leaving bounded room for their graph/reference
+lists. This is an aggregate capacity contract, not a promise that every
+combination of the per-list maximum and 50 undo commands fits. Unsupported
+aggregate errors explicitly say:
+
+```text
+Hybrid payload exceeds 262144 generic collection entries across all revisions
+```
+
+Cost: generic parsing/serialization work remains linear in bounded entries and
+encoded bytes, with one constant-time budget debit per list. The decoder's
+generic-entry ceiling increases by 2.62144x from 100,000, but remains fixed;
+there is no per-revision multiplier or unbounded parser. At most 262,144 generic
+list entries are materialized before rejection, in addition to the separately
+bounded source points and analysis arrays. Object/reference/header and decoded
+string overhead still adds to encoded size; the entry limit is not a byte-heap
+promise. No device peak-heap claim is made. Tests verified real 4.46 MB/12.10 MB
+payloads; unusually dense larger products are rejected. Writer now rejects at
+the same aggregate ceiling rather than producing a payload its reader refuses.
+
+### RED and GREEN
+
+Same task-local JAVA_HOME/ANDROID_HOME environment and assigned worktree as
+above. All Gradle processes were strictly sequential with `--max-workers=1`;
+no toolchain setting changes or daemon stops.
+
+Initial test attempt (before any production fix):
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.veycad.app.HybridCodecCapacityTest' --max-workers=1 *> '.superpowers/sdd/2026-10-10-hybrid-mode/a1-fix1-red.log'
+```
+
+Actual: BUILD FAILED in 14s, exit 1, XML 4 tests/4 failures/0 errors/0 skips.
+Three failures reproduced I1. The fourth was a test expectation mistake:
+truncated primitive input already throws EOFException, while the first test
+draft expected IllegalArgumentException. Corrected the expectation, retained
+that rejection coverage, and also made the preservation test start from the
+real original nextRevisionId=1 so later revisions are otherwise publishable.
+Initial XML is saved locally as `a1-fix1-initial-red.xml`.
+
+Confirmed RED after adding both-rich-lists coverage, still before production fix:
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.veycad.app.HybridCodecCapacityTest' --max-workers=1 *> '.superpowers/sdd/2026-10-10-hybrid-mode/a1-fix1-confirmed-red.log'
+```
+
+Actual: BUILD FAILED in 9s, exit 1, XML 5 tests/4 failures/0 errors/0 skips.
+`fullRichHistoryRoundTripsAllFiftyUndoCommands` threw from reader list budget;
+`fullRichHistoryCreatesSavesReopensAndRetainsRevisionSnapshots` threw in create
+preflight; `twoRichListsPerRevisionFitTheSameBoundedHistoryCapacity` failed the
+same decode path; `unsupportedAggregateIsRejectedByBothCodecsWithoutMovingCurrent`
+failed because the writer accepted the excessive aggregate. Malformed/per-list
+bounds test passed. Saved XML: `a1-fix1-confirmed-red.xml`.
+
+Focused GREEN after the shared-budget implementation:
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.veycad.app.HybridCodecCapacityTest' --max-workers=1 *> '.superpowers/sdd/2026-10-10-hybrid-mode/a1-fix1-green.log'
+```
+
+Actual: BUILD SUCCESSFUL in 31s, exit 0, 5 tests/0 failures/0 errors/0 skips.
+Then strengthened the test-only external writer's validity check and explicit
+malformed per-list reader coverage before the final covering run.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.veycad.app.HybridCodecCapacityTest' --tests 'com.veycad.app.HybridIntegrationA1Test' --tests 'com.veycad.app.HybridProjectTest' --tests 'com.veycad.app.HybridProjectCodecTest' --tests 'com.veycad.app.HybridProjectStoreTest' --tests 'com.veycad.app.HybridEditCommandsTest' --tests 'com.veycad.app.HybridCutConstraintsTest' --tests 'com.veycad.app.ProjectAssetStoreTest' --tests 'com.veycad.app.ProjectSourceImportTest' --tests 'com.veycad.app.ProjectFormatTest' --max-workers=1 *> '.superpowers/sdd/2026-10-10-hybrid-mode/a1-fix1-targeted.log'
+```
+
+Actual: BUILD SUCCESSFUL in 45s, `26 actionable tasks: 2 executed, 24 up-to-date`,
+exit 0. XML totals: **91 tests, 0 failures, 0 errors, 0 skips, 10 classes**.
+Counts: HybridCodecCapacityTest 5, HybridCutConstraintsTest 7,
+HybridEditCommandsTest 32, HybridIntegrationA1Test 11, HybridProjectCodecTest 11,
+HybridProjectStoreTest 8, HybridProjectTest 8, ProjectAssetStoreTest 2,
+ProjectFormatTest 4, ProjectSourceImportTest 3. XML was parsed after the owned
+process completed. Capacity suite runtime was 4.252 seconds in this run.
+
+Recorded capacity outputs:
+
+```text
+two rich lists: revisions=51, layers=2000, cues=2000, bytes=12097131
+rich history: current=50, undo=50, cues=2000, bytes=4458351
+unsupported aggregate: cues=306000, bytes=13434351, reason=Hybrid payload exceeds 262144 generic collection entries across all revisions
+```
+
+Test text/IDs differ from the review probe's 4,004,961-byte payload; counts,
+valid intervals and 51-revision history are the same required case. Both rich
+lists round-trip in 12,097,131 bytes below 16 MiB. Store coverage creates a full
+history, saves another core-allocated revision, reopens through a fresh store,
+loads original and export revision snapshots, and persists undo/redo state.
+
+The unsupported 306,000-cue payload is 13,434,351 bytes, also below 16 MiB. It is
+independently assembled from individually valid v4 revision blobs to exercise
+reader aggregate rejection even though the paired writer now refuses it. The
+same test helper successfully decodes the supported history, ruling out a broken
+test manifest. Both codecs reject the excessive aggregate. Store save leaves
+CURRENT, all prior manifest/revision files, their bytes and file set unchanged.
+Per-list overflow, malformed string/list counts, unknown physical version,
+truncation and over-limit byte array also reject. Existing source-map bounds and
+v1/v2/v3 fixture tests passed in the final run.
+
+### Review disposition and remaining work
+
+I1 is addressed in this scoped fix. No production/test semantics changed after
+the final covering run; only this report was appended afterwards. Reviewed the
+scoped staged diff and ran whitespace validation before commit.
+
+M1 remains explicitly assigned to runtime C's resource/lease ledger, recorded in
+`docs/hybrid-public-values-provenance.md`: a rejected inspected import may leave
+an unreferenced content-addressed file. Cleanup must prove a target is orphaned
+relative to selections/history/leases before deletion; never blindly delete an
+existing deduplicated file. This fix does not modify source import behavior.
+
+M2 remains disclosed: Gradle native-access warning is in final output; JDK 25
+source/target 8 deprecation warnings appeared on intermediate compilation.
+Pre-existing CompletedRenderStoreTest nullability warnings remain part of the
+earlier evidence; no tracked toolchain change was made. Git LF-to-CRLF notices
+are normalization advisories.
+
+Controller independently audited imported fields/defaults against the immutable
+owner sources and confirmed the existing MediaSource provenance SHA was already
+correct; no SHA correction was needed. No further DTO import changes occurred.
+
+Full local baseline/JVM/UI/emulator/device checks remain excluded by the current
+resource override. Independent scoped re-review and full exact-commit CI remain
+pending. No push/merge or peer changes. The unrelated controller plan edit stays
+uncommitted and outside this fix.

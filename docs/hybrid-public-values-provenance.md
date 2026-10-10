@@ -57,6 +57,21 @@ DTO validation at their core/storage boundary.
   rich text with automatic language. Original graphs, phases, source samples,
   reset events and normalized text are unchanged. Unknown versions fail without
   a write. `ProjectMusic.gain` accepts `0..2` without clamping.
+* Codec capacity is bounded per complete payload: at most 262,144 generic
+  collection entries across all lists and all retained revisions, and at most
+  10,000 entries in one list. Writer and reader use the same accounting. The
+  16 MiB manifest/revision limit, 1 MiB string limit, analysis allocation bounds
+  and separate fixed-width source-point budget still apply. This supports the
+  tested 51-revision history with 2,000 layers plus 2,000 captions per revision;
+  it does not promise an unlimited product of per-list sizes and history length.
+  A larger aggregate is rejected with the explicit capacity error before store
+  preflight can publish history or move CURRENT.
+
+Rejected inspected imports can currently leave an unreferenced content-addressed
+copy. Cleanup ownership is explicitly deferred to runtime C's resource/lease
+ledger: distinguish newly orphaned files from targets retained by any valid
+selection, history or lease. Never blindly delete a deduplicated target on an
+inspection mismatch. No selection or CURRENT is published by that rejection.
 
 Manual payload/backing/shared maps (A2), staging/factory assembly (B/Task 6),
 runtime leases (C), rendering, UI and STT remain separate tasks. The renderer
