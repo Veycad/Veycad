@@ -66,7 +66,8 @@ class TargetedInputTest(unittest.TestCase):
             output_sha256=hashlib.sha256(payloads["native-editor.mp4"]).hexdigest())
         run = {"id": identity.run_id, "run_attempt": 1, "head_sha": identity.head_sha,
                "status": "completed", "conclusion": "success", "event": "pull_request",
-               "pull_requests": [{"head": {"sha": identity.head_sha},
+               "pull_requests": [{"number": 18, "url": "https://api.github.com/repos/Veycad/Veycad/pulls/18",
+                                  "head": {"sha": identity.head_sha},
                                   "base": {"sha": identity.base_sha}}]}
         commit = {"sha": identity.checkout_sha,
                   "parents": [{"sha": identity.base_sha}, {"sha": identity.head_sha}]}
@@ -123,6 +124,24 @@ class TargetedInputTest(unittest.TestCase):
             api.prepare(archive, self.root / "out", run, commit, identity)
         commit["parents"][1]["sha"] = identity.head_sha
         run["id"] += 1
+        with self.assertRaisesRegex(ValueError, "source run"):
+            api.prepare(archive, self.root / "out", run, commit, identity)
+
+    def test_live_pr_head_and_base_can_advance_without_changing_source_run(self):
+        archive, identity, run, commit = self.fixture()
+        run["pull_requests"][0]["head"]["sha"] = "1" * 40
+        run["pull_requests"][0]["base"]["sha"] = "2" * 40
+        result = api.prepare(archive, self.root / "out", run, commit, identity)
+        self.assertEqual(identity.head_sha, result["source_provenance"]["head_sha"])
+        self.assertEqual(identity.base_sha, result["source_provenance"]["base_sha"])
+
+    def test_wrong_pr_association_and_fixed_run_head_fail(self):
+        archive, identity, run, commit = self.fixture()
+        run["pull_requests"][0]["number"] = 19
+        with self.assertRaisesRegex(ValueError, "PR association"):
+            api.prepare(archive, self.root / "out", run, commit, identity)
+        run["pull_requests"][0]["number"] = 18
+        run["head_sha"] = "3" * 40
         with self.assertRaisesRegex(ValueError, "source run"):
             api.prepare(archive, self.root / "out", run, commit, identity)
 

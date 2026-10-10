@@ -83,9 +83,11 @@ def prepare(archive: Path, destination: Path, run: dict, commit: dict,
             run.get("head_sha") == identity.head_sha and run.get("status") == "completed" and
             run.get("conclusion") == "success" and run.get("event") == "pull_request",
             "Unexpected source run/head/status")
-    require(any(pr.get("head", {}).get("sha") == identity.head_sha and
-                pr.get("base", {}).get("sha") == identity.base_sha
-                for pr in run.get("pull_requests", [])), "Unexpected source PR head/base")
+    # GitHub refreshes the nested PR head/base objects after later pushes. The
+    # fixed run head above and merge parents below bind the original two refs.
+    require(any(pr.get("number") == 18 and
+                pr.get("url") == "https://api.github.com/repos/Veycad/Veycad/pulls/18"
+                for pr in run.get("pull_requests", [])), "Unexpected source PR association")
     require(commit.get("sha") == identity.checkout_sha and
             [p.get("sha") for p in commit.get("parents", [])] ==
             [identity.base_sha, identity.head_sha], "Unexpected checkout merge parents")
