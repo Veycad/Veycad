@@ -39,7 +39,8 @@ object HighQualityFramePlan {
         val secondarySourceIndex: Int? = null,
         val secondaryAttachments: FrameAttachments? = null,
         /** Authored motion/effect clock, independent of the canonical source-map PTS. */
-        val originalOutputTimeUs: Long = outputTimeUs
+        val originalOutputTimeUs: Long = outputTimeUs,
+        val transitionEffectsAllowed: Boolean = true
     )
 
     data class Plan(val frames: List<Frame>, val durationUs: Long, val fps: Int) {
@@ -51,6 +52,8 @@ object HighQualityFramePlan {
         // DEFAULT_FPS or higher. Keeping the same scheduler makes proxy decisions representative.
         require(fps in 6..60)
         val editable = graph.editableTiming
+        val renderEffects = GpuEffectGraph(graph.renderNodes())
+        val renderOverlays = graph.renderOverlays()
         require(editable == null || editable.fps == fps) { "FPS differs from the saved editable grid" }
         val frameStepUs = 1_000_000.0 / fps
         val outputDurationUs = editable?.let { frameTimeUs(it.frameCount, fps) } ?: (graph.outputDurationMs * 1_000L)
@@ -68,6 +71,8 @@ object HighQualityFramePlan {
             } ?: 0)
                 .coerceIn(0, graph.clips.lastIndex)
             val clip = graph.clips[clipIndex]
+            val transition = graph.renderTransition(clip)
+            val transitionAllowed = clip.id !in graph.manualOverrides?.disabledTransitionClipIds.orEmpty()
             val clipStartUs = boundaries[clipIndex]
             val timing = editable?.clips?.get(clipIndex)
             val originalFrame = timing?.let { Math.addExact(it.visible.start, index.toLong() - it.startFrame) }
@@ -86,9 +91,12 @@ object HighQualityFramePlan {
             val sourceUs = animatedSourceUs
             val transitionDurationUs = (clip.transitionDurationMs
                 ?: TransitionTimeline.durationMs(clip.transitionIn)) * 1_000L
-            val transitionElapsedUs = outputUs - clipStartUs
-            val transitionProgress = if (transitionDurationUs > 0L && transitionElapsedUs <= transitionDurationUs) {
-                (transitionElapsedUs.toFloat() / transitionDurationUs).coerceIn(0f, 1f)
+            val transitionElapsedUs = timing?.let { if (it.phase != null) originalOutputUs - it.phase.startUs
+                else frameTimeUs(originalFrame!!, fps) } ?: (outputUs - clipStartUs)
+            val phaseDurationUs = timing?.transitionPhaseDurationUs ?: transitionDurationUs
+            val transitionProgress = if (transitionAllowed && phaseDurationUs > 0L && transitionElapsedUs >= 0L &&
+                transitionElapsedUs <= phaseDurationUs && (timing == null || outputUs - clipStartUs < transitionDurationUs)) {
+                (transitionElapsedUs.toFloat() / phaseDurationUs).coerceIn(0f, 1f)
             } else {
                 // A non-null negative sentinel tells TransitionTimeline that this frame came
                 // from the exact scheduler and is outside the window. Null remains legacy-test
@@ -108,29 +116,33 @@ object HighQualityFramePlan {
                     track.sample(sampleUs)
                 }
             fun scalar(parameter: String, fallback: Float): Float = sampleTrack(parameter)?.firstOrNull() ?: fallback
-            val transform = legacyTransform.copy(
+            val authoredTransform = legacyTransform.copy(
                 scale = scalar("transform.scale", legacyTransform.scale),
                 translateX = scalar("transform.translateX", legacyTransform.translateX),
                 translateY = scalar("transform.translateY", legacyTransform.translateY),
                 rotationDegrees = scalar("transform.rotationDegrees", legacyTransform.rotationDegrees)
             )
+            val transform = if (graph.manualOverrides != null && transition != MontageGraph.Transition.WHIP && clip.motion in setOf(MontageGraph.Motion.WHIP_LEFT,
+                MontageGraph.Motion.WHIP_RIGHT)) authoredTransform.copy(translateX = 0f, translateY = 0f, rotationDegrees = 0f)
+                else authoredTransform
             val grade = sampleTrack("grade.rgbaBias")
             val currentAttachments = if (graph.sourceAttachments.isNotEmpty()) graph.sourceAttachments
                 .firstOrNull { it.sourceIndex == clip.sourceIndex }?.timeline?.interpolated(sourceUs)
                 else graph.frameAttachments.interpolated(sourceUs)
             val frameAttachments = currentAttachments
             frames += Frame(
-                outputUs, sourceUs, clipIndex, progress, transform, clip.transitionIn,
+                outputUs, sourceUs, clipIndex, progress, transform, transition,
                 grade?.getOrNull(3) ?: clip.exposureBias,
                 grade?.getOrNull(0) ?: clip.redBias,
                 grade?.getOrNull(1) ?: clip.greenBias,
                 grade?.getOrNull(2) ?: clip.blueBias,
                 clip.flowStrength,
                 frameAttachments,
-                graph.effectGraph.sample(outputUs),
-                LayerCompositorModel.sampleAtUs(graph.overlays, outputUs),
+                renderEffects.sample(outputUs),
+                LayerCompositorModel.sampleAtUs(renderOverlays, outputUs),
                 transitionProgress,
-                sourceIndex = clip.sourceIndex, originalOutputTimeUs = originalOutputUs
+                sourceIndex = clip.sourceIndex, originalOutputTimeUs = originalOutputUs,
+                transitionEffectsAllowed = transitionAllowed
             )
             index++
         }
@@ -156,7 +168,7 @@ object HighQualityFramePlan {
             if (ReferenceMontageProfile.appliesTo(graph)) return@map frame
             if (frame.layer.secondaryTimelineStartMs == null) return@map frame
             // Removing one temporal layer must reveal any surviving lower layer, not erase it.
-            val layer = if (editable != null) LayerCompositorModel.sampleAtUs(graph.overlays.filter { overlay ->
+            val layer = if (editable != null) LayerCompositorModel.sampleAtUs(renderOverlays.filter { overlay ->
                 if (overlay.secondaryTimelineStartMs == null) true else {
                     val sample = LayerCompositorModel.sampleAtUs(listOf(overlay), frame.outputTimeUs)
                     sample.secondaryTimelineStartMs == null || secondaryFrame(sample) != null

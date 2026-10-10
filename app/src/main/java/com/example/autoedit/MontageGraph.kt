@@ -15,7 +15,8 @@ data class MontageGraph(
     val version: Int = CURRENT_VERSION,
     val editableTiming: EditableFrameTiming? = null,
     val manualMontageState: ManualMontageState? = null,
-    val sourceAttachments: List<SourceAttachments> = emptyList()
+    val sourceAttachments: List<SourceAttachments> = emptyList(),
+    val manualOverrides: ManualRenderOverrides? = null
 ) {
     init {
         require(sourceDurationMs > 0L && outputDurationMs > 0L && clips.isNotEmpty())

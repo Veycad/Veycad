@@ -5,6 +5,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RenderPassPlannerTest {
+    @Test fun legacyPassScheduleIsUnchanged() {
+        val base = graphWithHeavyEffects()
+        val legacy = RenderPassPlanner.plan(base, highCapabilities())
+        assertEquals(listOf("source", "transition", "foreground", "motion-blur", "depth",
+            "glow-extract", "glow-blur", "final", "encoder"), legacy.passes.map { it.id })
+        assertEquals(legacy, RenderPassPlanner.plan(base.copy(manualOverrides = ManualRenderOverrides()), highCapabilities()))
+        val disabled = base.copy(manualOverrides = ManualRenderOverrides(setOf("b", "c", "d"), setOf("glow", "glitch")))
+        val edited = RenderPassPlanner.plan(disabled, highCapabilities())
+        assertEquals(listOf("source", "encoder"), edited.passes.map { it.id })
+        assertTrue("layer-blend" in edited.passes.first().fusedOperations)
+    }
+
     @Test fun fuses_cheap_operations_but_keeps_blur_glow_and_depth_in_dedicated_passes() {
         val graph = graphWithHeavyEffects()
         val plan = RenderPassPlanner.plan(graph, highCapabilities())

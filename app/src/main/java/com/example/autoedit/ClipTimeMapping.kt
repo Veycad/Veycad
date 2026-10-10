@@ -80,12 +80,15 @@ data class EditableClipTiming(
     val endFrameExclusive: Long,
     val originFrameCount: Long = timeMap.frameCount,
     val phase: ClipPhase? = null,
-    val localTracks: List<ParameterTrack> = emptyList()
+    val localTracks: List<ParameterTrack> = emptyList(),
+    /** Authored phase denominator, independent of a clipped visible transition window. */
+    val transitionPhaseDurationUs: Long? = null
 ) {
     init {
         require(clipId.isNotBlank() && startFrame >= 0L)
         require(Math.subtractExact(endFrameExclusive, startFrame) == visible.count)
         require(originFrameCount in 1..Int.MAX_VALUE.toLong())
+        require(transitionPhaseDurationUs == null || transitionPhaseDurationUs >= 0)
         timeMap.validateVisible(visible)
     }
 }

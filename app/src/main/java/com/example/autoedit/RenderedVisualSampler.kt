@@ -45,6 +45,7 @@ internal object RenderedVisualSampler {
         decodedSourceTimes: Map<Long, Long> = emptyMap(),
         renderFps: Int = HighQualityFramePlan.DEFAULT_FPS,
         secondarySourceVisualMap: VisualEventMap? = null,
+        sourceFiles: List<File> = listOfNotNull(sourceFile),
         checkCancelled: () -> Unit = {}
     ): List<RenderedMp4Acceptance.VisualSample> {
         require(file.isFile && intervalUs > 0L)
@@ -63,8 +64,8 @@ internal object RenderedVisualSampler {
                 .enableRawSizeMask()
                 .build()
         )
-        val sourceRetriever = sourceFile?.takeIf(File::isFile)?.let { source ->
-            MediaMetadataRetriever().apply { setDataSource(source.absolutePath) }
+        val sourceRetrievers = sourceFiles.map { source ->
+            source.takeIf(File::isFile)?.let { MediaMetadataRetriever().apply { setDataSource(it.absolutePath) } }
         }
         try {
             extractor.setDataSource(file.absolutePath)
@@ -73,9 +74,8 @@ internal object RenderedVisualSampler {
             } ?: error("Rendered MP4 has no video track")
             extractor.selectTrack(trackIndex)
             val format = extractor.getTrackFormat(trackIndex)
-            val framing = sourceFile?.let { source -> VideoDisplayOrientation.cropForFile(source,
+            val framings = sourceFiles.map { source -> VideoDisplayOrientation.cropForFile(source,
                 format.getInteger(MediaFormat.KEY_WIDTH), format.getInteger(MediaFormat.KEY_HEIGHT)) }
-                ?: SourceFraming.Crop(1f, 1f)
             val mime = requireNotNull(format.getString(MediaFormat.KEY_MIME))
             format.setInteger(
                 MediaFormat.KEY_COLOR_FORMAT,
@@ -92,12 +92,12 @@ internal object RenderedVisualSampler {
                 sourceVisualMap,
                 faceDetector,
                 segmenter,
-                sourceRetriever,
+                sourceRetrievers,
                 intervalUs,
                 decodedSourceTimes,
                 renderFps,
                 secondarySourceVisualMap,
-                framing,
+                framings,
                 format.getInteger(MediaFormat.KEY_WIDTH).toFloat() / format.getInteger(MediaFormat.KEY_HEIGHT),
                 checkCancelled
             )
@@ -107,22 +107,24 @@ internal object RenderedVisualSampler {
             extractor.release()
             faceDetector.close()
             segmenter.close()
-            sourceRetriever?.release()
+            sourceRetrievers.forEach { it?.release() }
         }
     }
 
     internal fun withDecodedSourceTime(
         frame: HighQualityFramePlan.Frame,
         timeline: FrameAttachmentTimeline,
-        decodedUs: Long?
+        decodedUs: Long?,
+        sources: List<SourceAttachments> = emptyList(),
+        refreshAllTransitions: Boolean = false
     ): HighQualityFramePlan.Frame {
         if (decodedUs == null) return frame
         require(decodedUs >= 0L)
-        val attachments = if ((frame.clipIndex == 0 &&
+        val attachments = if (((frame.clipIndex == 0 || sources.isNotEmpty() || refreshAllTransitions) &&
             frame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY) ||
             frame.layer.kind == MontageGraph.OverlayKind.SUBJECT_STAGE ||
             frame.layer.kind == MontageGraph.OverlayKind.MIRROR_SLICE) {
-            timeline.interpolated(decodedUs)
+            MediaCodecSpeedRampRenderer.decodedAttachments(frame, decodedUs, timeline, sources)
         } else frame.attachments
         return frame.copy(sourceTimeUs = decodedUs, attachments = attachments)
     }
@@ -158,12 +160,12 @@ internal object RenderedVisualSampler {
         sourceVisualMap: VisualEventMap?,
         faceDetector: FaceDetector,
         segmenter: Segmenter,
-        sourceRetriever: MediaMetadataRetriever?,
+        sourceRetrievers: List<MediaMetadataRetriever?>,
         intervalUs: Long,
         decodedSourceTimes: Map<Long, Long>,
         renderFps: Int,
         secondarySourceVisualMap: VisualEventMap?,
-        framing: SourceFraming.Crop,
+        framings: List<SourceFraming.Crop>,
         outputAspect: Float,
         checkCancelled: () -> Unit
     ): List<RenderedMp4Acceptance.VisualSample> {
@@ -171,15 +173,17 @@ internal object RenderedVisualSampler {
         val bufferInfo = MediaCodec.BufferInfo()
         var inputEnded = false
         var outputEnded = false
-        val sampleTargetsUs = samplingTargets(graph, intervalUs)
-        val heartbeatTailStartUs = if (HeartbeatMontageProfile.appliesTo(graph))
+        val sampleTargetsUs = samplingTargets(graph, intervalUs, renderFps)
+        val heartbeatTailStartUs = if (graph.manualOverrides == null && HeartbeatMontageProfile.appliesTo(graph))
             HeartbeatPulseAudit.tailSamplingTargetsUs().first() - 1L else null
         var nextSampleIndex = 0
         var previous: Features? = null
         var previousOutputMask: FloatArray? = null
         var previousEntranceTravel: Float? = null
+        var previousMaskSource: Int? = null
         val framePlan = HighQualityFramePlan.build(graph,renderFps).frames.map { frame ->
-            withDecodedSourceTime(frame, graph.frameAttachments, decodedSourceTimes[frame.outputTimeUs])
+            withDecodedSourceTime(frame, graph.frameAttachments, decodedSourceTimes[frame.outputTimeUs], graph.sourceAttachments,
+                refreshAllTransitions = graph.manualOverrides != null)
         }
         var idleIterations = 0
         while (!outputEnded) {
@@ -217,7 +221,14 @@ internal object RenderedVisualSampler {
                         val image = decoder.getOutputImage(outputIndex)
                             ?: error("Decoder did not expose a YUV image at $ptsUs us")
                         val scheduledFrame = framePlan.minByOrNull { abs(it.outputTimeUs - ptsUs) }
-                        val authoredTransition = transitionAt(graph, ptsUs)
+                        val authoredTransition = transitionAt(scheduledFrame)
+                        val sourceRetriever = scheduledFrame?.sourceIndex?.let { sourceRetrievers.getOrNull(it) }
+                        val framing = scheduledFrame?.sourceIndex?.let { framings.getOrNull(it) } ?: SourceFraming.Crop(1f, 1f)
+                        if (previousMaskSource != scheduledFrame?.sourceIndex) {
+                            previousOutputMask = null
+                            previousEntranceTravel = null
+                        }
+                        previousMaskSource = scheduledFrame?.sourceIndex
                         val reentryProgress = scheduledFrame?.transitionProgress ?: -1f
                         val incomingMask = scheduledFrame?.attachments?.mask?.takeIf {
                             authoredTransition == MontageGraph.Transition.FOREGROUND_REENTRY &&
@@ -263,7 +274,7 @@ internal object RenderedVisualSampler {
                                 val subjectEnvelope = TransitionTimeline.blendFor(scheduledFrame)
                                     ?.foregroundReentry ?: 0f
                                 val entranceTravel = if (ReferenceMontageProfile.appliesTo(graph))
-                                    SigmaComposition.entranceTravel(scheduledFrame.outputTimeUs)
+                                    SigmaComposition.entranceTravel(scheduledFrame.originalOutputTimeUs)
                                 else ForegroundReentryMotion.verticalTravel(subjectEnvelope)
                                 val sigma = ReferenceMontageProfile.appliesTo(graph)
                                 exact.copy(values = SemanticMaskMetrics.transform(
@@ -333,7 +344,7 @@ internal object RenderedVisualSampler {
                             edgeLeakRatio = measurement.edgeLeakRatio
                             maskEvidence = measurement.evidence
                             val currentTravel = if (ReferenceMontageProfile.appliesTo(graph))
-                                SigmaComposition.entranceTravel(ptsUs) * (scheduledFrame?.transform?.scale ?: 1f)
+                                SigmaComposition.entranceTravel(scheduledFrame?.originalOutputTimeUs ?: ptsUs) * (scheduledFrame?.transform?.scale ?: 1f)
                                 else null
                             maskTemporalIou = previousOutputMask?.takeIf {
                                 measurement.evidence == RenderedMp4Acceptance.MaskEvidence.MEASURED &&
@@ -817,6 +828,7 @@ internal object RenderedVisualSampler {
     ): Boolean {
         require(timeUs >= 0L && renderFps > 0)
         if (isIntentionalFlash(layer)) return true
+        if (graph.manualOverrides != null) return false
         if (!HeartbeatMontageProfile.appliesTo(graph)) return false
         val frameDurationUs = (1_000_000L + renderFps - 1L) / renderFps
         return HeartbeatMontageProfile.pulses.any { pulse ->
@@ -831,8 +843,13 @@ internal object RenderedVisualSampler {
     ): Boolean = transition == MontageGraph.Transition.FOREGROUND_REENTRY &&
         progress?.let { it in 0f..FOREGROUND_DARK_STAGE_END } == true
 
-    internal fun samplingTargets(graph: MontageGraph, intervalUs: Long): List<Long> {
+    internal fun samplingTargets(graph: MontageGraph, intervalUs: Long,
+        renderFps: Int = graph.editableTiming?.fps ?: HighQualityFramePlan.DEFAULT_FPS): List<Long> {
         require(intervalUs > 0L)
+        if (graph.manualOverrides != null || graph.editableTiming != null) {
+            // A one-frame user cut/effect is still required evidence, regardless of QA cadence.
+            return HighQualityFramePlan.build(graph, renderFps).frames.map { it.outputTimeUs }
+        }
         val durationUs = graph.outputDurationMs * 1_000L
         val uniform = generateSequence(0L) { previous ->
             (previous + intervalUs).takeIf { it <= durationUs }
@@ -877,23 +894,9 @@ internal object RenderedVisualSampler {
             .toList()
     }
 
-    private fun transitionAt(graph: MontageGraph, timeUs: Long): MontageGraph.Transition {
-        var cursorUs = 0L
-        graph.clips.forEach { clip ->
-            val end = cursorUs + clip.outputDurationMs * 1_000L
-            if (timeUs in cursorUs until end) {
-                val transitionEnd = cursorUs +
-                    TransitionTimeline.durationMs(clip.transitionIn) * 1_000L
-                return if (timeUs <= transitionEnd) {
-                    clip.transitionIn
-                } else {
-                    MontageGraph.Transition.HARD_CUT
-                }
-            }
-            cursorUs = end
-        }
-        return MontageGraph.Transition.HARD_CUT
-    }
+    internal fun transitionAt(frame: HighQualityFramePlan.Frame?): MontageGraph.Transition =
+        if (frame != null && TransitionTimeline.blendFor(frame) != null) frame.transitionIn
+        else MontageGraph.Transition.HARD_CUT
 
     private const val FACE_EXPECTATION_TOLERANCE_US = 400_000L
     private const val FACE_TIMEOUT_MS = 900L
