@@ -120,7 +120,7 @@ export CUSTOM_MUSIC_CONTROL_SOURCES="$control_sources"
 cat >> "$base_workspace/app/build.gradle.kts" <<'KOTLIN'
 
 // Diagnostic test injection only; original production sources are unchanged.
-android.sourceSets.getByName("androidTest").java.srcDir(System.getenv("CUSTOM_MUSIC_CONTROL_SOURCES"))
+android.sourceSets.getByName("androidTest").kotlin.directories += System.getenv("CUSTOM_MUSIC_CONTROL_SOURCES")
 KOTLIN
 (
     cd "$base_workspace"
