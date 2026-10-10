@@ -112,7 +112,8 @@ object MediaCodecSpeedRampRenderer {
                 FearStrobeProfile.appliesTo(request.graph),
                 request.graph.metadata.generator == DualityLoopProfile.ID,
                 ReferenceMontageProfile.appliesTo(request.graph),
-                sourceFiles.map { VideoDisplayOrientation.cropForFile(it, request.width, request.height) }).also { glOwner = it }
+                sourceFiles.map { VideoDisplayOrientation.cropForFile(it, request.width, request.height) },
+                request.graph.sourceAttachments).also { glOwner = it }
             val muxer = MediaMuxer(videoOnlyFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxerOwner = it }
             val muxerState = MuxerState()
             encoder.start()
@@ -261,34 +262,33 @@ object MediaCodecSpeedRampRenderer {
     ) {
         require(frames.isNotEmpty())
         val incoming = decoders.selectIncoming(sourceIndex)
-        val temporal = if (frames.any { isTemporalLayer(it.layer.kind, sigmaProfile) }) {
-            decoders.selectOutgoing(sourceIndex)
-        } else {
-            null
-        }
-        val sourceDurationUs = if (temporal != null) decoders.sourceDurationUs(sourceIndex) else 0L
         if (!continueIncoming) incoming.beginRange(frames.first().sourceTimeUs)
-        var temporalActive = false
+        var temporalSource: Int? = null
+        var temporalTimeUs = -1L
         frames.forEach { frame ->
             check(incoming.advanceTo(frame.sourceTimeUs) {
                 gl.awaitIncomingDecoderFrame()
                 gl.updateIncomingTexture()
             }) { "Incoming decoder did not reach clip frame" }
-            val secondary = temporal?.takeIf { isTemporalLayer(frame.layer.kind, sigmaProfile) }?.let { decoder ->
+            val temporal = if (isTemporalLayer(frame.layer.kind, sigmaProfile))
+                decoders.selectOutgoing(frame.secondarySourceIndex ?: sourceIndex) else null
+            val secondary = temporal?.let { decoder ->
+                val secondaryIndex = frame.secondarySourceIndex ?: sourceIndex
                 val sourceTimeUs = temporalLayerSourceTimeUs(
                     frame,
-                    sourceDurationUs = sourceDurationUs
+                    sourceDurationUs = decoders.sourceDurationUs(secondaryIndex)
                 )
-                if (!temporalActive) decoder.beginRange(sourceTimeUs)
-                temporalActive = true
+                if (temporalSource != secondaryIndex || sourceTimeUs < temporalTimeUs) decoder.beginRange(sourceTimeUs)
+                temporalSource = secondaryIndex
+                temporalTimeUs = sourceTimeUs
                 check(decoder.advanceTo(sourceTimeUs) {
                     gl.awaitOutgoingDecoderFrame()
                     gl.updateOutgoingTexture()
                 }) { "Temporal layer decoder did not reach source frame" }
-                frame.copy(sourceTimeUs = sourceTimeUs)
+                temporalLayerFrame(frame, sourceTimeUs)
             }
             if (secondary == null) {
-                temporalActive = false
+                temporalSource = null
                 gl.draw(frame, incoming.rotationDegrees)
             } else {
                 gl.drawTemporalLayer(
@@ -318,6 +318,10 @@ object MediaCodecSpeedRampRenderer {
         frame: HighQualityFramePlan.Frame,
         sourceDurationUs: Long
     ): Long {
+        frame.secondarySourceTimeUs?.let { explicit ->
+            require(explicit in 0 until sourceDurationUs) { "Secondary PTS is outside its source" }
+            return explicit
+        }
         val fallbackOffsetUs = when (frame.layer.kind) {
             MontageGraph.OverlayKind.DOUBLE_EXPOSURE -> -420_000L
             MontageGraph.OverlayKind.MIRROR_SLICE -> 260_000L
@@ -329,9 +333,18 @@ object MediaCodecSpeedRampRenderer {
             .takeIf { it != 0L || frame.layer.heartbeatEcho }
             ?.times(1_000L)
             ?: fallbackOffsetUs
-        return (frame.secondarySourceTimeUs ?: (frame.sourceTimeUs + offsetUs))
+        return (frame.sourceTimeUs + offsetUs)
             .coerceIn(0L, (sourceDurationUs - 1L).coerceAtLeast(0L))
     }
+
+    internal fun temporalLayerFrame(frame: HighQualityFramePlan.Frame, sourceTimeUs: Long) = frame.copy(
+        sourceTimeUs = sourceTimeUs, sourceIndex = frame.secondarySourceIndex ?: frame.sourceIndex,
+        attachments = if (frame.secondarySourceIndex != null) frame.secondaryAttachments else frame.attachments)
+
+    internal fun decodedAttachments(frame: HighQualityFramePlan.Frame, actualPts: Long,
+        legacy: FrameAttachmentTimeline, sources: List<SourceAttachments>): FrameAttachments? =
+        if (sources.isNotEmpty()) sources.firstOrNull { it.sourceIndex == frame.sourceIndex }?.timeline?.interpolated(actualPts)
+        else legacy.interpolated(actualPts)
 
     private fun requestSourceDurationUs(file: File): Long = MediaMetadataRetriever().let { retriever ->
         try {
@@ -565,7 +578,8 @@ object MediaCodecSpeedRampRenderer {
         private val fearProfile: Boolean = false,
         private val dualityProfile: Boolean = false,
         private val sigmaProfile: Boolean = false,
-        private val sourceCrops: List<SourceFraming.Crop> = listOf(SourceFraming.Crop(1f, 1f))
+        private val sourceCrops: List<SourceFraming.Crop> = listOf(SourceFraming.Crop(1f, 1f)),
+        private val sourceAttachments: List<SourceAttachments> = emptyList()
     ) {
         private var display: android.opengl.EGLDisplay = EGL14.EGL_NO_DISPLAY
         private var context: android.opengl.EGLContext = EGL14.EGL_NO_CONTEXT
@@ -754,7 +768,7 @@ object MediaCodecSpeedRampRenderer {
                 incomingFrame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY ||
                     sigmaProfile
             ) {
-                attachmentTimeline.interpolated(actualPts)
+                decodedAttachments(incomingFrame, actualPts, attachmentTimeline, sourceAttachments)
             } else incomingFrame.attachments
             inspector.record(
                 incomingFrame.copy(attachments = attachments),
@@ -795,7 +809,7 @@ object MediaCodecSpeedRampRenderer {
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, openingTitleTexture)
             GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uOpeningTitleTexture"), 5)
-            val openingTitle = authoredTitle?.sampleAt?.invoke(incomingFrame.outputTimeUs)
+            val openingTitle = authoredTitle?.sampleAt?.invoke(incomingFrame.globalOutputTimeUs)
             GLES20.glUniform1f(
                 GLES20.glGetUniformLocation(program, "uOpeningTitle"),
                 openingTitle?.let { it.atlasRow + 1f } ?: 0f
@@ -867,7 +881,7 @@ object MediaCodecSpeedRampRenderer {
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uFinalFade"), incomingFrame.layer.finalFadeOpacity)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uSigmaProfile"), if (sigmaProfile) 1f else 0f)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uEntranceTravel"),
-                if (sigmaProfile) SigmaComposition.entranceTravel(incomingFrame.outputTimeUs)
+                if (sigmaProfile && incomingFrame.transitionEffectsAllowed) SigmaComposition.entranceTravel(incomingFrame.originalOutputTimeUs)
                 else ForegroundReentryMotion.verticalTravel(blend?.foregroundReentry ?: 0f))
             GLES20.glUniform3f(GLES20.glGetUniformLocation(program, "uLayerColour"), incomingFrame.layer.red, incomingFrame.layer.green, incomingFrame.layer.blue)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uLayerMode"), incomingFrame.layer.blendMode.ordinal.toFloat())
@@ -883,7 +897,9 @@ object MediaCodecSpeedRampRenderer {
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uDualityProfile"),
                 if (dualityProfile) 1f else 0f)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uOutputTime"),
-                incomingFrame.outputTimeUs / 1_000_000f)
+                incomingFrame.globalOutputTimeUs / 1_000_000f)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uOriginalTime"),
+                incomingFrame.originalOutputTimeUs / 1_000_000f)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uTextureProbe"), if (debugTextureProbe) 1f else 0f)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uFaceRegionProbe"), if (debugFaceRegionProbe) 1f else 0f)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uHeartbeatImagePivot"), if (debugHeartbeatImagePivot) 1f else 0f)
@@ -1361,6 +1377,7 @@ object MediaCodecSpeedRampRenderer {
         uniform float uDualityProfile;
         uniform float uSigmaProfile,uFinalFade,uEntranceTravel;
         uniform float uOutputTime;
+        uniform float uOriginalTime;
         uniform float uTextureProbe;
         uniform float uFaceRegionProbe;
         uniform float uHeartbeatImagePivot;
@@ -1413,8 +1430,8 @@ object MediaCodecSpeedRampRenderer {
                 float brightSource=clamp(-exposure/.24,0.,1.);
                 c=pow(c,vec3(mix(1.04,1.24,brightSource)));
                 c=clamp((c-.5)*mix(1.08,1.18,brightSource)+.5,0.,1.);
-                float cascade=step(5.1,uOutputTime)*(1.-step(16.8333,uOutputTime));
-                float opener=1.-step(3.6,uOutputTime);
+                float cascade=step(5.1,uOriginalTime)*(1.-step(16.8333,uOriginalTime));
+                float opener=1.-step(3.6,uOriginalTime);
                 c=clamp(c+vec3(.18)*brightSource*cascade*
                     smoothstep(vec3(.30),vec3(.72),c),0.,1.);
                 // A bright source graded down to FEAR's dark bed must retain texture in
@@ -1643,7 +1660,7 @@ object MediaCodecSpeedRampRenderer {
             float grain=(fract(sin(seed)*43758.5453)-.5)*.022;
             float vignette=smoothstep(.82,.20,length(vScreenTexCoord-vec2(.5)));
             base=clamp(base+scan+grain-(1.-vignette)*.045,0.,1.);
-            float opener=1.-step(3.6,uOutputTime);
+            float opener=1.-step(3.6,uOriginalTime);
             if(opener>.5){
                 // The reference opening has a cool, dense film surface even before the title.
                 vec3 toned=pow(base,vec3(1.30));

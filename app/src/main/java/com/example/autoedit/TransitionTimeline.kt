@@ -16,6 +16,7 @@ object TransitionTimeline {
     }
 
     fun blendFor(frame: HighQualityFramePlan.Frame): GpuTransitionModel.FrameBlend? {
+        if (!frame.transitionEffectsAllowed) return null
         if (frame.transitionIn !in setOf(
                 MontageGraph.Transition.WHIP,
                 MontageGraph.Transition.OCCLUSION,

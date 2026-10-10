@@ -5,6 +5,7 @@ import kotlin.math.sqrt
 
 /** Pure quality gate fed by decoded samples from the locally rendered MP4. */
 object RenderedMp4Acceptance {
+    enum class EvaluationPolicy { AUTOMATIC, MANUAL_TECHNICAL }
     enum class DecodedEffect { DOUBLE_EXPOSURE, MIRROR_SLICE, GLITCH }
     enum class MaskEvidence { NOT_REQUESTED, MEASURED, SOURCE_MASK_EMPTY, OUTPUT_MASK_EMPTY, INFERENCE_FAILED }
 
@@ -122,9 +123,12 @@ object RenderedMp4Acceptance {
         beatToleranceUs: Long = 85_000L,
         requireFaceEvidence: Boolean = false,
         decodedAudio: DecodedAudioQuality.Report? = null,
-        requireDecodedAudioEvidence: Boolean = false
+        requireDecodedAudioEvidence: Boolean = false,
+        policy: EvaluationPolicy = EvaluationPolicy.AUTOMATIC,
+        expectedDurationUs: Long = graph.outputDurationMs * 1_000L
     ): Report {
         require(samples.zipWithNext().all { (left, right) -> right.outputTimeUs > left.outputTimeUs })
+        val automatic = policy == EvaluationPolicy.AUTOMATIC
         val colourJump = maximumColourJump(graph, samples)
         val accentEvidence = authorAccentEvidence(graph, samples, reference.maximumAuthorAccentOffsetUs)
         val timeline = ReferenceMontageGrammar.timelineComparison(graph)
@@ -145,7 +149,7 @@ object RenderedMp4Acceptance {
             maximumBlackBlockScore = samples.maxOfOrNull { it.blackBlockScore } ?: 0f,
             referenceGrammarFit = ReferenceMontageGrammar.score(graph),
             maximumColourJumpTimeUs = colourJump.first,
-            durationErrorUs = abs(container.videoLastPtsUs - graph.outputDurationMs * 1_000L),
+            durationErrorUs = abs(container.videoLastPtsUs - expectedDurationUs),
             authorAccentHitRate = accentEvidence.hitRate,
             maximumAuthorAccentOffsetUs = accentEvidence.maximumOffsetUs,
             referenceTimelineRecall = timeline.recall,
@@ -165,9 +169,9 @@ object RenderedMp4Acceptance {
             addAll(container.integrityIssues.map { "container:$it" })
             if (container.videoMime != "video/avc") add("unexpected-video-codec:${container.videoMime}")
             if (container.audioMime != "audio/mp4a-latm") add("unexpected-audio-codec:${container.audioMime}")
-            if (metrics.beatHitRate < reference.minimumBeatHitRate) add("beat-hit-rate")
-            if (metrics.repeatedSourceRatio > reference.maximumRepeatedSourceRatio) add("repeated-source-moments")
-            if (graph.clips.drop(1).any { it.transitionIn in visibleTransitions } &&
+            if (automatic && metrics.beatHitRate < reference.minimumBeatHitRate) add("beat-hit-rate")
+            if (automatic && metrics.repeatedSourceRatio > reference.maximumRepeatedSourceRatio) add("repeated-source-moments")
+            if (automatic && graph.clips.drop(1).any { it.transitionIn in visibleTransitions } &&
                 metrics.transitionPeak < reference.minimumTransitionPeak) add("weak-rendered-transitions")
             if (metrics.avDriftUs > reference.maximumAvDriftUs) add("av-drift")
             if (metrics.durationErrorUs > reference.maximumDurationErrorUs) add("duration-mismatch")
@@ -206,9 +210,9 @@ object RenderedMp4Acceptance {
                 metrics.minimumMaskTemporalIou < reference.minimumMaskTemporalIou) {
                 add("foreground-mask-temporal-instability")
             }
-            if (!FearStrobeProfile.appliesTo(graph) &&
+            if ((!automatic || !FearStrobeProfile.appliesTo(graph)) &&
                 metrics.maximumBlackBlockScore > reference.maximumBlackBlockScore) add("black-block-artifact")
-            if (FearStrobeProfile.appliesTo(graph)) {
+            if (automatic && FearStrobeProfile.appliesTo(graph)) {
                 val fear = FearStrobeAudit.evaluate(samples)
                 if (fear.shutterFramesMatched != 30) add("fear-shutter-frame-mismatch")
                 if (!fear.finaleMatched) add("fear-finale-mismatch")
@@ -220,7 +224,7 @@ object RenderedMp4Acceptance {
                     add("fear-unexpected-black:${fear.unexpectedBlackFramesUs.joinToString("+")}")
                 }
             }
-            if (HeartbeatMontageProfile.appliesTo(graph)) {
+            if (automatic && HeartbeatMontageProfile.appliesTo(graph)) {
                 val heartbeat = HeartbeatPulseAudit.evaluate(samples)
                 if (heartbeat.matched != HeartbeatMontageProfile.pulses.size) {
                     add("heartbeat-pulse-mismatch:missing=${heartbeat.missing.joinToString("+")}:" +
@@ -232,7 +236,7 @@ object RenderedMp4Acceptance {
                         "offset=${heartbeat.tail.startOffsetUs ?: "unknown"}")
                 }
             }
-            if (DualityLoopProfile.appliesTo(graph)) {
+            if (automatic && DualityLoopProfile.appliesTo(graph)) {
                 val clips = graph.clips
                 if (clips.size != DualityLoopProfile.boundariesMs.size - 1) add("duality-clip-count")
                 if (setOf(0, 1) != clips.map { it.sourceIndex }.toSet()) add("duality-source-coverage")
@@ -247,15 +251,15 @@ object RenderedMp4Acceptance {
             }
             // This grammar describes Sigma's source/transition language. Heartbeat intentionally
             // reprises roles; FEAR and DUALITY have different authored cut structures.
-            if (ReferenceMontageProfile.appliesTo(graph) &&
+            if (automatic && ReferenceMontageProfile.appliesTo(graph) &&
                 metrics.referenceGrammarFit < reference.minimumReferenceGrammarFit) {
                 add("reference-grammar-fit")
             }
-            if (ReferenceMontageProfile.appliesTo(graph) &&
+            if (automatic && ReferenceMontageProfile.appliesTo(graph) &&
                 metrics.authorAccentHitRate < reference.minimumAuthorAccentHitRate) {
                 add("author-accent-miss:${accentEvidence.missedUs.joinToString("+")}")
             }
-            if (ReferenceMontageProfile.appliesTo(graph) &&
+            if (automatic && ReferenceMontageProfile.appliesTo(graph) &&
                 metrics.referenceTimelineRecall < reference.minimumReferenceTimelineRecall) {
                 add("reference-timeline-recall")
             }
@@ -263,7 +267,7 @@ object RenderedMp4Acceptance {
             // Keep reporting it as a diagnostic; Sigma uses a single live contour source.
             // Sigma's legacy MIRROR_SLICE slot is now a contour echo, not a mirrored seam.
             // Its old seam signature is diagnostic only, like the texture signature above.
-            if (ReferenceMontageProfile.appliesTo(graph) &&
+            if (automatic && ReferenceMontageProfile.appliesTo(graph) &&
                 metrics.decodedGlitchPeak < reference.minimumDecodedGlitchPeak) {
                 add("decoded-glitch-missing")
             }
@@ -280,7 +284,7 @@ object RenderedMp4Acceptance {
                         add("subject-stage-background-not-isolated")
                 }
             }
-            if (ReferenceMontageProfile.appliesTo(graph)) {
+            if (automatic && ReferenceMontageProfile.appliesTo(graph)) {
                 val missingRequiredEffects = timeline.missing.filter {
                     it.startsWith("opening:") || it.startsWith("layer:") || it.startsWith("effect:")
                 }
@@ -367,8 +371,10 @@ object RenderedMp4Acceptance {
         val intentionalWindows = ArrayList<LongRange>()
         var cursorUs = 0L
         graph.clips.forEachIndexed { index, clip ->
+            graph.editableTiming?.let { cursorUs = frameTimeUs(it.clips[index].startFrame, it.fps) }
             if (index > 0) {
-                val duration = TransitionTimeline.durationMs(clip.transitionIn) * 1_000L
+                val duration = (if (graph.editableTiming == null) TransitionTimeline.durationMs(clip.transitionIn)
+                    else clip.transitionDurationMs ?: TransitionTimeline.durationMs(clip.transitionIn)) * 1_000L
                 // A hard cut is supposed to change the plate instantly. Guard one QA interval
                 // around every authored boundary; otherwise a stylistically correct dark/bright
                 // cut is misreported as an intra-shot colour instability.
