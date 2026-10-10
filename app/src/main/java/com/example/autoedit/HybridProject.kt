@@ -50,7 +50,7 @@ data class ProjectStyle(val recipeId: String, val recipeVersion: Int, val mode: 
 class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
     clips: List<HybridClip>, val music: ProjectMusic, texts: List<TextItem>,
     val style: ProjectStyle, lockedCutIds: Set<String>,
-    /** Event on this revision only: RestoreAutomatic selected the original source windows. */
+    /** Event on this revision only: an explicit core reset selected the original source windows. */
     val restoresAutomaticSources: Boolean = false,
     val visualSettings: ProjectVisualSettings = ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false),
     val textState: HybridTextState = HybridTextState()) {

@@ -13,6 +13,7 @@ sealed interface ProjectCommand {
     data object Undo : ProjectCommand
     data object Redo : ProjectCommand
     data object RestoreAutomatic : ProjectCommand
+    data object RestoreMontage : ProjectCommand
 }
 
 object HybridEditCommands {
@@ -27,6 +28,7 @@ object HybridEditCommands {
         ProjectCommand.Undo -> undo(project)
         ProjectCommand.Redo -> redo(project)
         ProjectCommand.RestoreAutomatic -> restoreAutomatic(project)
+        ProjectCommand.RestoreMontage -> restoreMontage(project)
     }
 
     fun moveCut(project: HybridProject, cutId: String, targetFrame: Int): HybridProject = editValidation {
@@ -146,6 +148,70 @@ object HybridEditCommands {
 
     fun restoreAutomatic(project: HybridProject): HybridProject = commitRevision(project,
         project.original.copy(id = project.current.id, parentId = project.current.parentId), restoresAutomaticSources = true)
+
+    /** Explicit montage reset retains author content verbatim or rejects the entire edit. */
+    fun restoreMontage(project: HybridProject): HybridProject = editValidation {
+        val original = project.original
+        val current = project.current
+        val incomingIds = original.clips.drop(1).map { it.id }.toSet()
+        current.lockedCutIds.forEach { id ->
+            require(id in incomingIds) {
+                "Нельзя сбросить монтаж: закреплённая склейка $id отсутствует в исходном монтаже или становится первым клипом. Снимите её закрепление"
+            }
+        }
+        val frames = original.clips.last().span.endExclusive
+        val durationUs = ProjectClock(project.fps).timeUs(frames)
+        current.texts.forEach { item ->
+            require(item.span.endExclusive <= frames) {
+                "Нельзя сбросить монтаж: надпись ${item.id} выходит за конец исходного ролика. Сократите её интервал"
+            }
+        }
+        current.textState.layers.forEach { layer ->
+            require(layer.endUs <= durationUs) {
+                "Нельзя сбросить монтаж: текстовый слой ${layer.id} выходит за конец исходного ролика. Сократите его интервал"
+            }
+        }
+        current.textState.captions.forEach { cue ->
+            require(cue.endUs <= durationUs) {
+                "Нельзя сбросить монтаж: субтитр ${cue.id} выходит за конец исходного ролика. Сократите его интервал"
+            }
+        }
+        if (current.graph == original.graph && originalMontageSelected(project)) return@editValidation project
+        commitRevision(project, current.copy(graph = original.graph, clips = original.clips), restoresAutomaticSources = true)
+    }
+
+    // Author-only revisions clear the event, but do not change its selected source window.
+    // Prove selection only through retained, contiguous ancestry of complete original clips.
+    // A changed map/phase/identity or a gap ends proof, even if visible samples later match.
+    private fun originalMontageSelected(project: HybridProject): Boolean {
+        val budget = HybridSourceWindow.ComparisonBudget()
+        val byId = project.undo.associateBy { it.id }
+        var revision = project.current
+        repeat(project.undo.size + 1) {
+            // The model already validates every reset event's complete original clips.
+            if (revision.id == project.original.id || revision.restoresAutomaticSources) return true
+            val clips = revision.clips
+            val original = project.original.clips
+            if (clips.size != original.size) return false
+            budget.reserve(clips.size.toLong())
+            for (index in clips.indices) {
+                val selected = clips[index]
+                val expected = original[index]
+                if (selected === expected) continue
+                if (selected.sourceMap !== expected.sourceMap) budget.reserve(selected.sourceMap.points.size.toLong())
+                if (selected.original.speedRamp !== expected.original.speedRamp) {
+                    budget.reserve(selected.original.speedRamp.keyframes.size.toLong())
+                }
+                if (selected.original.transform !== expected.original.transform) {
+                    budget.reserve(selected.original.transform.keyframes.size.toLong())
+                }
+                if (selected != expected) return false
+            }
+            if (revision.parentId == project.original.id) return true
+            revision = byId[revision.parentId] ?: return false
+        }
+        return false
+    }
 
     private fun exactSlice(map: SourceTimeMap, from: Int, until: Int): SourceTimeMap {
         // Re-interpolating rounded endpoints changes unsaved fractional samples by 1 us.

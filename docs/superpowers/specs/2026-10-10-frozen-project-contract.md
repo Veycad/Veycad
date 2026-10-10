@@ -1,6 +1,6 @@
 # Общий снимок, leases и страницы анализа
 
-Статус: обязательный интеграционный контракт PR #15, реализации полного freeze/lazy reader ещё нет. Основание — одобренный гибридный режим и решение координатора сохранить общие проект, runtime и compilation authority. Preview/export получают один снимок; каждый не копирует все входные маски. Реализация: integration C (OS leases), task4 (compile snapshot), task5 (immutable semantic blob v2 и lazy reader), tasks11/13 (потребители и lifecycle).
+Статус: обязательный интеграционный контракт PR #15, реализации полного freeze/lazy reader ещё нет. Основание — одобренный гибридный режим и решение координатора сохранить общие проект, runtime и compilation authority. Preview/export получают один снимок; каждый не копирует все входные маски. Порядок реализации: integration C (OS leases), task5a (immutable semantic blob v2, frozen references и lazy reader), task4 (compile snapshot), task5b (style adapters), tasks11/13 (потребители и lifecycle). Части5a/5b проходят отдельные ревью; task5 полностью завершена после обеих. Eager `AnalysisBundle.frames` из первоначального плана заменён bounded reader ownership, чтобы task4 не получала mutable producer planes.
 
 ## Идентичность и handoff
 

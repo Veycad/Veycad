@@ -122,6 +122,8 @@ UI запускается через `tools/run_ui_tests.ps1` по сущест�
 
 ### Task 4: Общая компиляция и план кадров
 
+**Dependency ruling:** после integration A2/B/C выполнить сначала часть task5a: immutable semantic blob, frozen references и lazy reader из [общего контракта снимка](../specs/2026-10-10-frozen-project-contract.md). Затем task4 компилирует этот снимок; task5b добавляет style adapters поверх его identity mapping. Это разрывает зависимость task4 → reader → task5 → task4 без eager копий всех planes. Полная task5 завершена только после обеих частей.
+
 **Files:** Create `app/src/main/java/com/example/autoedit/HybridProjectCompiler.kt`, `HybridStyleTimeMap.kt`; Modify `HighQualityFramePlan.kt`, `MediaCodecSpeedRampRenderer.kt`; Test `app/src/test/java/com/example/autoedit/HybridProjectCompilerTest.kt`, `LiveDecoderTransitionPlanTest.kt` and existing tests that call `HighQualityFramePlan.build` (discover with `rg -l 'HighQualityFramePlan.build' app/src/test`).
 
 **Interfaces:**
@@ -146,7 +148,7 @@ UI запускается через `tools/run_ui_tests.ps1` по сущест�
 - `CompiledStylePlan(recipeId: String, authoredClock: HybridStyleTimeMap, authoredTextVisible: Boolean, events: List<StyleEvent>)`; events have stable IDs and explicit absolute/clip/cut/beat anchors.
 - `HybridStyleTimeMap.styleTimeUs(projectTimeUs: Long): Long`; monotonic piecewise map between authored and current anchor points, with verified bounds.
 - `HybridAnalysisResolver.ensure(assets: List<ProjectAsset>, requiredSourceWindows: Map<String,List<LongRange>>, checkCancelled: () -> Unit): AnalysisBundle`; keys include asset ID, content hash, PTS and analyzer version.
-- `AnalysisKey(assetId: String, contentHash: String, sourceTimeUs: Long, analyzerVersion: Int)`; `AnalysisBundle(frames: Map<AnalysisKey, FrameAttachments>, audioBeatMap: AudioBeatMap?)`. Resolver is constructed with `ProjectAssetStore` and local analyzer dependencies; it resolves media only through project ownership.
+- `AnalysisKey(assetId: String, contentHash: String, sourceTimeUs: Long, analyzerVersion: Int)`; `AnalysisBundle` закрепляет immutable blob references/readers и nullable `audioBeatMap`, а не eager `Map` всех `FrameAttachments`. Ownership, bounded pages и общий budget32MiB обязательны по [контракту снимка](../specs/2026-10-10-frozen-project-contract.md); точные signatures фиксируются при reviewed task5a. Resolver is constructed with `ProjectAssetStore` and local analyzer dependencies; it resolves media only through project ownership.
 
 - [ ] Write tests: `movedCutMovesWhipAndPulseTogether` checks every dependent event; `authoredRecipeIsNotAppliedTwiceAfterEdit` checks profile flags/context; `twoAssetsAtSamePtsUseDifferentMasks` proves namespace separation; `missingHandleAnalysisRejectsOrRecomputes` checks no implicit replacement of the transition; `unchangedProfilesSampleOriginalChoreography` compares title/pulse/echo sample values.
 - [ ] Run all three classes; confirm RED.
