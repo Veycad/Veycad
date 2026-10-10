@@ -6,6 +6,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.sqrt
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,6 +17,25 @@ import org.junit.runner.RunWith
 class CustomAudioDeviceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val directory get() = requireNotNull(context.getExternalFilesDir("custom-audio-evidence"))
+
+    @Test fun diagnostic_snapshot_preserves_planes_nulls_and_failed_audio_evidence() {
+        val plane = FrameAttachments.Plane(2, 1, floatArrayOf(.25f, .75f), .9f)
+        val encoded = CustomMusicEvidence.json(FrameAttachments(123_456, mask = plane)) as JSONObject
+        val decoded = JSONObject(encoded.toString())
+        assertEquals(123_456L, decoded.getLong("sourceTimeUs"))
+        assertTrue(decoded.has("depth") && decoded.isNull("depth"))
+        val values = decoded.getJSONObject("mask").getJSONArray("values")
+        assertEquals(2, values.length())
+        assertEquals(.75, values.getDouble(1), .000001)
+        val audio = DecodedAudioQuality.evaluate(floatArrayOf(.5f), 10, 1,
+            expectedDurationUs = 100_000, durationToleranceUs = 0, unclampedFloatEvidence = false)
+        val evidence = CustomMusicEvidence.json(audio) as JSONObject
+        assertFalse(evidence.getBoolean("unclampedFloatEvidence"))
+        assertEquals("audio-unclamped-headroom-unavailable", evidence.getJSONArray("issues").getString(0))
+        val transitions = CustomMusicEvidence.json(listOf(MontageGraph.Transition.WHIP, null)) as JSONArray
+        assertEquals("WHIP", transitions.getString(0))
+        assertTrue(transitions.isNull(1))
+    }
 
     @Test fun wav_seek_discards_the_intro_at_exact_pcm_frame_boundaries() {
         val file = SyntheticAudio.writeWave(File(directory, "seek.wav"))
@@ -97,10 +118,23 @@ class CustomAudioDeviceTest {
         val audio = SyntheticAudio.writeWave(File(directory, "editor.wav"))
         val video = SyntheticVideo.create(File(directory, "editor-source.mp4"), durationMs = 16_000)
         val output = File(directory, "native-editor.mp4")
+        val evidenceFile = File(directory, "native-editor-evidence.json")
+        evidenceFile.delete() // A failed rerun must not leave a previous report beside a new MP4.
         val result = VeycadAutomaticEditor.render(VeycadAutomaticEditor.Request(context, video,
             musicFile = audio, outputFile = output, style = EventMatchingDirector.Style.DYNAMIC,
             recipe = MontageStyleCatalog.Recipe.CUSTOM_MUSIC, width = 160, height = 240,
             bitrate = 200_000, musicStartUs = 15_000_000))
+        // Save before assertions, and before subsequent UI fixtures clear private inspector files.
+        val evidence = CustomMusicEvidence.save(result, video, audio, output, evidenceFile)
+        assertEquals(result.passedQualityGate, evidence.getBoolean("quality_gate"))
+        assertEquals(result.winner.samples.size, evidence.getJSONArray("visual_samples").length())
+        assertEquals(15_000_000L, evidence.getJSONObject("graph")
+            .getJSONObject("audioTrack").getLong("sourceStartUs"))
+        assertTrue("Missing decoded source clock; inspect saved native-editor-evidence.json",
+            evidence.getBoolean("decoded_source_clock_available"))
+        assertEquals(result.winner.frames, evidence.getInt("decoded_source_clock_entries"))
+        assertTrue("Incomplete/negative decoded PTS; inspect saved native-editor-evidence.json",
+            evidence.getBoolean("decoded_source_clock_complete"))
         assertTrue(output.isFile && output.length() > 0)
         assertTrue(result.winner.frames > 0)
         assertEquals(15_000_000L, result.winner.alternative.graph.audioTrack!!.sourceStartUs)

@@ -48,6 +48,25 @@ MediaExtractor/MediaCodec/GLES/AAC: сравнивает PCM при сдвиге
 MP4 и текстовые отчёты записываются в external files тестового пакета
 `com.veycad.app.uitest`, каталог `custom-audio-evidence`.
 
+Нативный сценарий сохраняет `native-editor-evidence.json` сразу после рендера,
+до проверок и очистки private inspector последующими UI-тестами. Отчёт содержит
+SHA256 исходника, музыки и итогового MP4, полный граф со смещением аудио,
+полный acceptance (метрики, пороги, issues и decoded audio), все VisualSamples,
+аудиокарту, visual events/observations и исходный inspector с planned/decoded PTS.
+`decoded_source_clock` связывает output PTS с измеренными source PTS; ключи —
+микросекунды в строковом виде. Тест проверяет число записей по числу кадров и
+неотрицательные PTS; отсутствие или неполнота clock отмечаются явно и вызывают
+ошибку после сохранения отчёта. `quality_gate` сохраняет исходное значение;
+диагностика не меняет QA-пороги и не делает отрицательный результат успешным.
+Это тестовый локальный snapshot, а не общий release-report и не художественная
+приёмка. Рефлексия сохраняет поля модели без округления и сокращения массивов.
+
+Для разбора `colour-jump` сопоставьте `maximumColourJumpTimeUs` с соседними
+VisualSamples, clip/overlay окнами графа и decoded source clock из inspector.
+Для `weak-rendered-transitions` проверьте каждый тип перехода и максимальный
+`transitionStrength` в его окне. Сначала нужен один такой нативный прогон;
+парный контроль или base/current сравнение нужны только при неясной причине.
+
 Обязательные проверки: `./gradlew clean baselineVerify` и
 `tools/run_ui_tests.ps1` на выделенном эмуляторе. Приёмку на физическом телефоне
 и на реальных треках со сменой темпа необходимо указывать отдельно в PR.
