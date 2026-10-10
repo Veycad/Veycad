@@ -17,7 +17,12 @@ class TextEditStore(private val directory: File) {
         val source = File(path)
         return "${source.canonicalPath}|${source.length()}|${source.lastModified()}"
     }
-    @Synchronized fun save(project: TextEditProject) {
+    @Synchronized fun resultPath(sourcePath: String): String? = runCatching {
+        val p = Properties().apply { target(sourcePath).inputStream().use { load(it) } }
+        if (p.getProperty("identity") != identity(sourcePath)) return null
+        p.getProperty("result")?.takeIf { File(it).isFile }
+    }.getOrNull()
+    @Synchronized fun save(project: TextEditProject, resultPath: String? = null) {
         directory.mkdirs()
         val p = Properties()
         fun put(key: String, value: Any) { p.setProperty(key, value.toString()) }
@@ -28,7 +33,9 @@ class TextEditStore(private val directory: File) {
         }
         put("version", 1); put("identity", identity(project.sourcePath)); put("source", project.sourcePath)
         put("duration", project.durationUs); put("width", project.width); put("height", project.height)
+        put("origin", project.sourceOriginUs)
         put("edited", project.captionsEdited); put("language", project.language)
+        (resultPath ?: this.resultPath(project.sourcePath))?.let { put("result", it) }
         style("captionStyle", project.captionStyle)
         put("layers", project.layers.size); put("captions", project.captions.size)
         project.layers.forEachIndexed { i, l ->
@@ -58,6 +65,6 @@ class TextEditStore(private val directory: File) {
                 TextLayer(get("l.$i.id"), get("l.$i.text"), get("l.$i.start").toLong(), get("l.$i.end").toLong(), style("l.$i.style"))
             }, List(get("captions").toInt().also { require(it in 0..100000) }) { i ->
                 CaptionCue(get("c.$i.id"), get("c.$i.text"), get("c.$i.start").toLong(), get("c.$i.end").toLong())
-            }, style("captionStyle"), get("edited").toBoolean(), get("language"))
+            }, style("captionStyle"), get("edited").toBoolean(), get("language"),p.getProperty("origin","0").toLong())
     }.getOrNull()
 }

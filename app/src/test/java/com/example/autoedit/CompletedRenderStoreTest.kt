@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CompletedRenderStoreTest {
+    @Test fun text_draft_link_is_durable_with_result_and_saved_flag() {
+        val root=createTempDirectory("text-result-link").toFile()
+        try {
+            val source=root.resolve("source.mp4").apply { writeBytes(byteArrayOf(1)) }
+            val entry=CompletedRenderStore.publish(root,root.resolve("text.mp4").apply { writeBytes(byteArrayOf(2)) },
+                "Текст",textSourcePath=source.path)
+            assertEquals(entry,CompletedRenderStore.latest(root))
+            CompletedRenderStore.markSaved(entry)
+            assertEquals(source.path,CompletedRenderStore.latest(root)!!.textSourcePath)
+        } finally { root.deleteRecursively() }
+    }
     @Test fun completed_result_survives_scratch_and_source_cleanup_and_restores_saved_state() {
         val root = createTempDirectory("completed-render").toFile()
         try {

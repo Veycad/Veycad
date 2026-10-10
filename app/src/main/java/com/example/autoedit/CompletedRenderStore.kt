@@ -9,10 +9,10 @@ import java.util.Properties
 internal object CompletedRenderStore {
     data class CaptureLink(val sessionId: String, val takeOrdinal: Int, val recommended: Boolean)
     data class Entry(val file: File, val summary: String, val saved: Boolean,
-        val captureLink: CaptureLink? = null)
+        val captureLink: CaptureLink? = null, val textSourcePath: String? = null)
 
     fun publish(filesDir: File, source: File, summary: String,
-        captureLink: CaptureLink? = null): Entry {
+        captureLink: CaptureLink? = null, textSourcePath: String? = null): Entry {
         require(source.isFile && source.length() > 0L) { "Готовый монтаж отсутствует или пуст" }
         val directory = File(filesDir, "completed-renders").apply { mkdirs() }
         val target = File(directory, source.name)
@@ -22,7 +22,7 @@ internal object CompletedRenderStore {
             source.copyTo(temporary, overwrite = true)
             // The metadata must be durable before the MP4 becomes visible. A crash after the
             // rename can then restore the capture link without losing the published result.
-            val entry = Entry(target, summary, false, captureLink)
+            val entry = Entry(target, summary, false, captureLink, textSourcePath)
             writeMetadata(entry)
             check(temporary.renameTo(target)) { "Не удалось сохранить готовый монтаж" }
             return entry
@@ -48,7 +48,7 @@ internal object CompletedRenderStore {
                         properties.getProperty("captureRecommended") == "true")
                 }.getOrNull()
                 Entry(file, properties.getProperty("summary", "Готовый монтаж"),
-                    properties.getProperty("saved") == "true", link)
+                    properties.getProperty("saved") == "true", link, properties.getProperty("textSourcePath"))
             }.getOrNull()
         }.orEmpty()
 
@@ -72,6 +72,7 @@ internal object CompletedRenderStore {
             Properties().apply {
                 setProperty("summary", entry.summary)
                 setProperty("saved", entry.saved.toString())
+                entry.textSourcePath?.let { setProperty("textSourcePath", it) }
                 entry.captureLink?.let { link ->
                     setProperty("captureSessionId", link.sessionId)
                     setProperty("captureTakeOrdinal", link.takeOrdinal.toString())

@@ -7,6 +7,18 @@ import org.junit.rules.TemporaryFolder
 
 class TextEditStoreTest {
     @get:Rule val folder = TemporaryFolder()
+    @Test fun publishedResultLinkSurvivesEditingAndStoreRecreation() {
+        val source=folder.newFile("linked.mp4").apply { writeText("source") }
+        val result=folder.newFile("result.mp4").apply { writeText("finished") }
+        val directory=folder.newFolder("linked-draft")
+        val project=TextEditProject(source.path,2_000_000,160,240)
+        TextEditStore(directory).save(project,result.path)
+        val restored=TextEditStore(directory)
+        restored.save(project.copy(language="ru"))
+        assertEquals(result.path,restored.resultPath(source.path))
+        source.appendText("replaced")
+        assertNull(restored.resultPath(source.path))
+    }
     @Test fun restoresCorrectionsAndCyrillicNewlines() {
         val source = folder.newFile("source.mp4").apply { writeText("fixture") }
         val store = TextEditStore(folder.newFolder("drafts"))
