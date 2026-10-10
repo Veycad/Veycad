@@ -12,12 +12,13 @@ SCRIPT = ROOT / "tools/run_custom_music_ci_tests.sh"
 FILES = (
     "editor-source.mp4", "editor.wav", "native-editor.mp4",
     "native-editor-evidence.json", "native-editor-report.txt",
+    "stream-clock.json", "stream-clock-copy.json", "selected-tail.mp4",
 )
 BASH = shutil.which("bash") or "C:/Program Files/Git/bin/bash.exe"
 
 
 class RetentionContractTest(unittest.TestCase):
-    def run_wrapper(self, ui_exit=0, missing=None, blocked_destination=False):
+    def run_wrapper(self, ui_exit=0, missing=None, blocked_destination=False, silent_missing=""):
         self.assertTrue(SCRIPT.is_file(), "CI must retain native files before emulator shutdown")
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -34,17 +35,22 @@ class RetentionContractTest(unittest.TestCase):
         # The real CLI is replaced because this host check must not start a device/build.
         injection.write_text("""
 pwsh() { return "$FAKE_UI_EXIT"; }
+git() { printf '%s\\n' 0123456789012345678901234567890123456789; }
 adb() {
     [[ "$#" == 5 && "$1" == "-s" && "$2" == "emulator-5556" && "$3" == "pull" ]] || return 90
     [[ "$4" == /sdcard/Android/data/com.veycad.app.uitest/files/custom-audio-evidence/* ]] || return 91
     local name
     name=$(basename -- "$4")
+    [[ "$name" != "$FAKE_SILENT_MISSING" ]] || return 0
     cp -- "$FAKE_DEVICE/$name" "$5"
 }
 """, encoding="utf-8")
         environment = os.environ.copy()
         environment.update(BASH_ENV=injection.as_posix(), FAKE_UI_EXIT=str(ui_exit),
-                           FAKE_DEVICE=source.as_posix(), LC_ALL="C")
+                           FAKE_DEVICE=source.as_posix(), LC_ALL="C",
+                           FAKE_SILENT_MISSING=silent_missing,
+                           GITHUB_RUN_ID="1234", GITHUB_RUN_ATTEMPT="2",
+                           GITHUB_SHA="fedcba9876543210fedcba9876543210fedcba98")
         destination = folder / "build/reports/ui-tests/custom-music-native"
         if blocked_destination:
             destination.parent.mkdir(parents=True)
@@ -54,10 +60,17 @@ adb() {
         return result, source, destination
 
     def assert_retained(self, source, destination, names=FILES):
-        self.assertEqual(set(names), {file.name for file in destination.iterdir()})
+        self.assertEqual(set(names) | {"ci-manifest.txt"}, {file.name for file in destination.iterdir()})
+        manifest = (destination / "ci-manifest.txt").read_text(encoding="utf-8")
+        self.assertIn("workflow_run_id=1234\nrun_attempt=2\n", manifest)
+        self.assertIn("checkout_sha=0123456789012345678901234567890123456789\n", manifest)
+        self.assertIn("github_sha=fedcba9876543210fedcba9876543210fedcba98\n", manifest)
         for name in names:
-            self.assertEqual(hashlib.sha256((source / name).read_bytes()).digest(),
-                             hashlib.sha256((destination / name).read_bytes()).digest())
+            digest = hashlib.sha256((source / name).read_bytes()).hexdigest()
+            self.assertEqual(digest, hashlib.sha256((destination / name).read_bytes()).hexdigest())
+            self.assertIn(digest + " *" + name + "\n", manifest)
+        for name in set(FILES) - set(names):
+            self.assertIn("MISSING " + name + "\n", manifest)
 
     def test_success_retains_exact_binary_files_and_failed_quality_gate(self):
         result, source, destination = self.run_wrapper()
@@ -87,6 +100,11 @@ adb() {
     def test_directory_failure_rejects_success_without_evidence(self):
         result, _, _ = self.run_wrapper(blocked_destination=True)
         self.assertEqual(1, result.returncode, result.stderr)
+
+    def test_successful_cli_without_required_file_is_not_successful_collection(self):
+        result, source, destination = self.run_wrapper(silent_missing=FILES[2])
+        self.assertNotEqual(0, result.returncode)
+        self.assert_retained(source, destination, tuple(name for name in FILES if name != FILES[2]))
 
 
 if __name__ == "__main__":

@@ -81,12 +81,20 @@ python tools/custom_music_tests/verify_fidelity.py <каталог-host-evidence
 Для разбора `colour-jump` сопоставьте `maximumColourJumpTimeUs` с соседними
 VisualSamples, clip/overlay окнами графа и decoded source clock из inspector.
 
-CI сохраняет пять синтетических файлов (`editor-source.mp4`, `editor.wav`,
-`native-editor.mp4`, `native-editor-evidence.json`, `native-editor-report.txt`)
+CI сохраняет восемь синтетических файлов (`editor-source.mp4`, `editor.wav`,
+`native-editor.mp4`, `native-editor-evidence.json`, `native-editor-report.txt`,
+`stream-clock.json`, `stream-clock-copy.json`, `selected-tail.mp4`)
 в `android-ui-reports` / `build/reports/ui-tests/custom-music-native/`.
 Wrapper `tools/run_custom_music_ci_tests.sh` выполняет существующий UI runner
 и копирует эти файлы до выключения эмулятора, даже при неуспешном gate.
 Он сохраняет exit code runner; отсутствие файла делает сбор evidence неуспешным.
+`ci-manifest.txt` фиксирует GitHub run/attempt, checkout SHA, GitHub SHA, статусы
+runner/сбора и SHA256 каждого файла; отсутствующие файлы помечены MISSING.
+Для PR GitHub SHA может быть merge commit; head SHA берётся из metadata данного
+Actions run. UI fixture cleanup очищает private files/cache, но не этот внешний
+каталог, поэтому сбор после фазы screens сохраняет файлы до shutdown.
+`stream-clock.json` намеренно заканчивается лишним `{}` для negative-теста
+reader; `stream-clock-copy.json` хранит валидную копию до этого изменения.
 Код QA и его пороги не меняются. Команда лёгкой host-проверки поведения:
 `python tools/custom_music_tests/test_ci_retention.py` (нужен Bash).
 
