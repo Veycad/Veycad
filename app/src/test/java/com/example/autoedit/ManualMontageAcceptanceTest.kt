@@ -4,6 +4,75 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ManualMontageAcceptanceTest {
+    @Test fun retainedWhipAndBlackoutNeedEvidenceInsideTheirOwnWindow() {
+        for (fps in listOf(30, 60)) for (type in listOf(MontageGraph.Transition.WHIP, MontageGraph.Transition.BLACKOUT)) {
+            val graph = transitionProject(fps, type).originalGraph.copy(manualOverrides = ManualRenderOverrides())
+            assertFalse("$type $fps absent", transitionReport(graph, fps) { 0f }.passed)
+            assertFalse("$type $fps other clip", transitionReport(graph, fps) { if (it.clipIndex == 1) 0f else .8f }.passed)
+            assertFalse("$type $fps outside retained window", transitionReport(graph, fps) {
+                if (it.clipIndex == 1 && TransitionTimeline.blendFor(it) == null) .8f else 0f
+            }.passed)
+            assertTrue("$type $fps present", transitionReport(graph, fps) { .2f }.passed)
+        }
+    }
+
+    @Test fun middleOneFrameFragmentUsesRetainedPhaseThresholdAtBothFpsAndFractionalBoundary() {
+        for (fps in listOf(30, 60)) for (fractional in listOf(false, true)) {
+            val project = transitionProject(fps, MontageGraph.Transition.WHIP, fractional)
+            val start = if (fps == 30) { if (fractional) 4L else 5L } else 9L
+            val graph = trimTransition(project, start, start + 1)
+            assertFalse(transitionReport(graph, fps) { 0f }.passed)
+            val report = transitionReport(graph, fps) { .02f }
+            assertTrue("fps=$fps fractional=$fractional ${report.issues}", report.passed)
+        }
+    }
+
+    @Test fun endpointDisabledAndFullyTrimmedTransitionsDoNotRequirePeak() {
+        for (fps in listOf(30, 60)) {
+            val project = transitionProject(fps, MontageGraph.Transition.WHIP)
+            val endpoint = trimTransition(project, 0, 1)
+            assertTrue(transitionReport(endpoint, fps) { 0f }.passed)
+            val disabled = project.originalGraph.copy(manualOverrides = ManualRenderOverrides(setOf("B")))
+            assertTrue(transitionReport(disabled, fps) { 0f }.passed)
+            val removed = trimTransition(project, fps.toLong(), fps.toLong() + 1)
+            assertTrue(transitionReport(removed, fps) { 0f }.passed)
+            val moved = (MontageTimelineEditor.prepare(project, TimelineCommand.Move("B", 0))
+                as TimelinePreparation.Prepared).candidate.graph
+            assertTrue(transitionReport(moved, fps) { 0f }.passed)
+        }
+    }
+
+    private fun transitionReport(graph: MontageGraph, fps: Int, strength: (HighQualityFramePlan.Frame) -> Float): ManualMontageAcceptance.Report {
+        val plan = HighQualityFramePlan.build(graph, fps)
+        val samples = plan.frames.map { frame -> RenderedMp4Acceptance.VisualSample(frame.outputTimeUs,
+            strength(frame), .5f, .5f, .5f, 0f, false, 0f, decodedSourceIndex = frame.sourceIndex, decodedClipIndex = frame.clipIndex) }
+        return ManualMontageAcceptance.evaluate(graph,
+            container().copy(videoLastPtsUs = plan.durationUs, audioLastPtsUs = plan.durationUs), samples,
+            DecodedAudioQuality.evaluate(FloatArray(plan.frames.size) { .1f }, fps, 1, plan.durationUs, 33_334, true), fps)
+    }
+
+    private fun trimTransition(project: EditableMontageProject, start: Long, end: Long): MontageGraph {
+        val startResult = MontageTimelineEditor.prepare(project, TimelineCommand.Trim("B", ClipEdge.START, start))
+        val adapter = if (startResult is TimelinePreparation.Prepared) project.copy(shared = project.shared.copy(
+            current = startResult.candidate.copy(id = 2, parentId = 1), nextRevisionId = 3)) else project
+        return (MontageTimelineEditor.prepare(adapter, TimelineCommand.Trim("B", ClipEdge.END, end))
+            as TimelinePreparation.Prepared).candidate.graph
+    }
+
+    private fun transitionProject(fps: Int, type: MontageGraph.Transition, fractional: Boolean = false): EditableMontageProject {
+        val base = ManualMontageFixtures.generatedGraph()
+        val graph = base.copy(clips = base.clips.mapIndexed { index, clip -> when (index) {
+            0 -> clip.copy(outputDurationMs = if (fractional) 1201 else 2000)
+            1 -> clip.copy(transitionIn = type)
+            else -> clip.copy(transitionIn = MontageGraph.Transition.HARD_CUT)
+        } }, outputDurationMs = if (fractional) 5201 else 6000, overlays = emptyList(), parameterTracks = emptyList())
+        fun asset(id: String, kind: ProjectAsset.Kind) = ProjectAsset(id, "$id.bin", kind, 10_000_000, "0".repeat(64), id)
+        return EditableMontageImporter.create("manual-qa", graph, MontageStyleCatalog.Recipe.DUALITY_LOOP,
+            ProjectExportSettings(720, 1280, fps, 5_000_000, 128_000),
+            listOf(asset("a", ProjectAsset.Kind.VIDEO), asset("b", ProjectAsset.Kind.VIDEO)),
+            asset("score", ProjectAsset.Kind.AUDIO), null)
+    }
+
     // A user-selected clip count must not be tested against the automatic DUALITY grammar.
     @Test fun manualClipCountIsNotAnAutomaticGrammarFailure() {
         val graph = graph()

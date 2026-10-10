@@ -173,7 +173,8 @@ internal object RenderedVisualSampler {
         val bufferInfo = MediaCodec.BufferInfo()
         var inputEnded = false
         var outputEnded = false
-        val sampleTargetsUs = samplingTargets(graph, intervalUs, renderFps)
+        val plan = HighQualityFramePlan.build(graph, renderFps)
+        val sampleTargetsUs = samplingTargets(graph, intervalUs, renderFps, plan)
         val heartbeatTailStartUs = if (graph.manualOverrides == null && HeartbeatMontageProfile.appliesTo(graph))
             HeartbeatPulseAudit.tailSamplingTargetsUs().first() - 1L else null
         var nextSampleIndex = 0
@@ -181,10 +182,11 @@ internal object RenderedVisualSampler {
         var previousOutputMask: FloatArray? = null
         var previousEntranceTravel: Float? = null
         var previousMaskSource: Int? = null
-        val framePlan = HighQualityFramePlan.build(graph,renderFps).frames.map { frame ->
+        val framePlan = plan.frames.map { frame ->
             withDecodedSourceTime(frame, graph.frameAttachments, decodedSourceTimes[frame.outputTimeUs], graph.sourceAttachments,
                 refreshAllTransitions = graph.manualOverrides != null)
         }
+        val frameIndex = RenderQaFrameIndex(framePlan)
         var idleIterations = 0
         while (!outputEnded) {
             checkCancelled()
@@ -220,7 +222,7 @@ internal object RenderedVisualSampler {
                         sampleTargetsUs.getOrNull(nextSampleIndex), heartbeatTailStartUs)) {
                         val image = decoder.getOutputImage(outputIndex)
                             ?: error("Decoder did not expose a YUV image at $ptsUs us")
-                        val scheduledFrame = framePlan.minByOrNull { abs(it.outputTimeUs - ptsUs) }
+                        val scheduledFrame = framePlan[frameIndex.nearest(ptsUs)]
                         val authoredTransition = transitionAt(scheduledFrame)
                         val sourceRetriever = scheduledFrame?.sourceIndex?.let { sourceRetrievers.getOrNull(it) }
                         val framing = scheduledFrame?.sourceIndex?.let { framings.getOrNull(it) } ?: SourceFraming.Crop(1f, 1f)
@@ -376,7 +378,7 @@ internal object RenderedVisualSampler {
                             subjectStageBackgroundLuma(current.pixels, mask)
                         }
                         val subjectStageBackgroundLoss = if (ReferenceMontageProfile.appliesTo(graph) &&
-                            expectedStageMask != null && scheduledFrame != null && scheduledFrame.layer.finalFadeOpacity < .01f) {
+                            expectedStageMask != null && scheduledFrame.layer.finalFadeOpacity < .01f) {
                             sourceLumaAtCamera(sourceRetriever, scheduledFrame, framing, outputAspect)?.let { source ->
                                 SigmaComposition.backgroundLoss(current.pixels, source, expectedStageMask)
                             }
@@ -844,11 +846,11 @@ internal object RenderedVisualSampler {
         progress?.let { it in 0f..FOREGROUND_DARK_STAGE_END } == true
 
     internal fun samplingTargets(graph: MontageGraph, intervalUs: Long,
-        renderFps: Int = graph.editableTiming?.fps ?: HighQualityFramePlan.DEFAULT_FPS): List<Long> {
+        renderFps: Int = graph.editableTiming?.fps ?: HighQualityFramePlan.DEFAULT_FPS,
+        plan: HighQualityFramePlan.Plan? = null): List<Long> {
         require(intervalUs > 0L)
         if (graph.manualOverrides != null || graph.editableTiming != null) {
-            // A one-frame user cut/effect is still required evidence, regardless of QA cadence.
-            return HighQualityFramePlan.build(graph, renderFps).frames.map { it.outputTimeUs }
+            return ManualQaSampling.targets(graph, plan ?: HighQualityFramePlan.build(graph, renderFps), intervalUs)
         }
         val durationUs = graph.outputDurationMs * 1_000L
         val uniform = generateSequence(0L) { previous ->
@@ -882,7 +884,8 @@ internal object RenderedVisualSampler {
             } + HeartbeatPulseAudit.tailSamplingTargetsUs().asSequence()
         } else emptySequence()
         val fearCheckpoints = if (FearStrobeProfile.appliesTo(graph)) {
-            HighQualityFramePlan.build(graph, FearStrobeProfile.REFERENCE_FPS).frames.asSequence()
+            (plan?.takeIf { it.fps == FearStrobeProfile.REFERENCE_FPS }
+                ?: HighQualityFramePlan.build(graph, FearStrobeProfile.REFERENCE_FPS)).frames.asSequence()
                 .map { it.outputTimeUs } + FearStrobeProfile.pulses.asSequence().flatMap { pulse ->
                 sequenceOf(pulse.startUs, (pulse.endUs - 1L).coerceAtLeast(pulse.startUs))
             } + FearStrobeProfile.scenes.asSequence().map { it.startUs }
