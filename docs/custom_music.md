@@ -105,3 +105,38 @@ reader; `stream-clock-copy.json` хранит валидную копию до �
 Обязательные проверки: `./gradlew clean baselineVerify` и
 `tools/run_ui_tests.ps1` на выделенном эмуляторе. Приёмку на физическом телефоне
 и на реальных треках со сменой темпа необходимо указывать отдельно в PR.
+# Точечная диагностика сохранённого MP4
+
+В workflow `Android UI` отдельный manual input `custom_music_targeted=true`
+запускает диагностику сохранённого синтетического MP4 из CI `38054343649`
+(artifact `11670925739`, исходный head `143a478a`). Обычный UI job при этом
+не запускается. Для PR/push и dispatch без этого input прежний UI gate сохранён.
+Локальные Gradle, эмулятор и рендер для этой диагностики не требуются.
+Saved-MP4 часть выполняет только decode; парный visual control делает
+два новых рендера на удалённом CI runner.
+
+`prepare_targeted_input.py` сверяет pinned ZIP, все восемь manifest SHA,
+source run/head/merge parents и полный исходный JSON. Из восьми фактических
+BLACKOUT PTS и ближайших соседей Inspector выбираются 16 уникальных запросов.
+Optional Android test source подключается только с
+`-PcustomMusicTargeted=true`; обычный APK тестов не содержит этого набора.
+MediaCodec последовательно читает сохранённый MP4 до EOS и записывает
+requested/actual PTS (явный допуск округления 1 мкс), codec/build и измеренные
+48×72 YUV luma grids. Это дополнительное свидетельство, не новый `transitionPeak`.
+
+Для проверки конкретного colour-jump тот же workflow передаёт один source
+и один frozen visual graph базовому и текущему renderer на одном эмуляторе.
+На обоих refs из графа убрана только `audioTrack`; все остальные поля и все
+64 mask planes сохраняются. Plane values передаются как lossless f32le с
+размерами, offsets и range SHA вместо большого JSON-дерева на Android.
+Одинаковый typed test loader подключается в базу только через test source set;
+production источники базы не меняются. Сравниваются 480 planned fingerprints,
+actual source clocks и decoded YUV hashes, а также 160 colour samples.
+При несовпадении diagnostic comparison завершается неуспешно и сохраняет отчёт.
+
+В `custom-music-targeted-reports` сохраняются входы, provenance, отчёты, XML,
+логи, APK hashes и manifest. Частичный отчёт сохраняется до assertion и до
+shutdown эмулятора. Исходные JSON/MP4, thresholds и `quality_gate=false`
+не меняются. Контроль относится к одному synthetic source/frozen graph;
+он не доказывает отсутствие регрессии всей функции (в базе нет CUSTOM_MUSIC),
+PCM_FLOAT headroom, приёмку на телефоне или человеческий просмотр.

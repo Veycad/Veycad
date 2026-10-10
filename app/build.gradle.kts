@@ -30,6 +30,11 @@ android {
     }
     testBuildType = "uiTest"
 
+    // Saved-MP4 diagnostics are opt-in and absent from the ordinary UI test APK/inventory.
+    if (providers.gradleProperty("customMusicTargeted").orNull == "true") {
+        sourceSets.getByName("androidTest").java.srcDir("src/customMusicDiagnostic/java")
+    }
+
     buildFeatures {
         buildConfig = true
     }
