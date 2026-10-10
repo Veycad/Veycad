@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import kotlin.math.floor
 import kotlin.math.abs

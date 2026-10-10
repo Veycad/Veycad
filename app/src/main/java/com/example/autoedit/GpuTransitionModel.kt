@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Renderer-neutral parameters for compositing outgoing and incoming frames in the same GL pass. */
 object GpuTransitionModel {

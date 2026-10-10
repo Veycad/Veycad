@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack

@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import android.content.Intent
 import android.os.SystemClock

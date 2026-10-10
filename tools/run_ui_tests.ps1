@@ -4,7 +4,7 @@ Runs every UI/integration test on a dedicated emulator and rejects incomplete re
 .EXAMPLE
 pwsh tools/run_ui_tests.ps1 -Serial emulator-5556 -AvdName AutoEditUi_API36
 .NOTES
-The emulator must already be running. Only com.example.autoedit.uitest is installed/reset.
+The emulator must already be running. Only com.veycad.app.uitest is installed/reset.
 Runtime permission tests run first with denied grants; all other tests run afterward.
 #>
 [CmdletBinding()]
@@ -17,8 +17,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $uiProjectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$uiPackage = 'com.example.autoedit.uitest'
-$uiPermissionClass = 'com.example.autoedit.RuntimePermissionsTest'
+$uiPackage = 'com.veycad.app.uitest'
+$uiPermissionClass = 'com.veycad.app.RuntimePermissionsTest'
 $uiWindows = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
 $uiNativeExtension = if ($uiWindows) { '.exe' } else { '' }
 $uiWrapper = Join-Path $uiProjectRoot $(if ($uiWindows) { 'gradlew.bat' } else { 'gradlew' })
@@ -100,7 +100,7 @@ function Invoke-UiPhase {
     Invoke-UiAdb @('shell', 'run-as', $uiPackage, 'rm', '-f', 'files/ui-test-results.xml') | Out-Null
     $uiResult = Invoke-UiNative -Executable $uiAdb -EchoOutput -Arguments @(
         '-s', $Serial, 'shell', 'am', 'instrument', '-w', '-r',
-        '-e', 'listener', 'com.example.autoedit.UiXmlRunListener',
+        '-e', 'listener', 'com.veycad.app.UiXmlRunListener',
         '-e', $SelectionArgument, $uiPermissionClass,
         "$uiPackage.test/androidx.test.runner.AndroidJUnitRunner"
     )

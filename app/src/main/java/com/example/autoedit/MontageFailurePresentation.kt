@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** User-facing copy only: search outcomes keep their diagnostic types and evidence scope. */
 internal object MontageFailurePresentation {

@@ -340,7 +340,7 @@ def capture_cache(adb: str, serial: str | None, source_sha256: str, cache_versio
         if not serial or serial.strip() != serial:
             raise ValueError("explicit device serial must not be empty or padded")
         command.extend(["-s", serial])
-    command.extend(["exec-out", "run-as", "com.example.autoedit", "cat",
+    command.extend(["exec-out", "run-as", "com.veycad.app", "cat",
                     "cache/full-video-analysis/" + name])
     completed = subprocess.run(command, capture_output=True, check=True, timeout=30)
     report = parse_cache(completed.stdout, source_sha256, cache_version, profile)

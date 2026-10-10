@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import java.util.concurrent.CancellationException
 import org.junit.Assert.*

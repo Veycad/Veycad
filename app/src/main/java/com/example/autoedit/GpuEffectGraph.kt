@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Ordered GPU post-processing graph shared by preview/export schedules. */
 data class GpuEffectGraph(val nodes: List<Node> = emptyList()) {

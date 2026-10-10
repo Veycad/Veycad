@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Bounded exact-source sampling for selected live entrances, not the entire video. */
 internal object OpeningMatteRefinement {

@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.autoedit"
+    namespace = "com.veycad.app"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.autoedit"
+        applicationId = "com.veycad.app"
         minSdk = 26
         targetSdk = 36
         versionCode = 17
@@ -154,7 +154,7 @@ val verifySecurityContract by tasks.registering {
         }
         val requiredPrivateProviders = setOf(
             "androidx.core.content.FileProvider",
-            "com.example.autoedit.MulticlassMatteProvider"
+            "com.veycad.app.MulticlassMatteProvider"
         )
         requiredPrivateProviders.forEach { provider ->
             check(providerExports[provider] == "false") {
@@ -171,8 +171,8 @@ val verifySecurityContract by tasks.registering {
                 .getNamedItemNS(androidNamespace, "name")?.nodeValue.orEmpty()
         }.map { name ->
             when {
-                name.startsWith(".") -> "com.example.autoedit$name"
-                "." !in name -> "com.example.autoedit.$name"
+                name.startsWith(".") -> "com.veycad.app$name"
+                "." !in name -> "com.veycad.app.$name"
                 else -> name
             }
         }.toSet()

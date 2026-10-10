@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Neutral source diagnostics, NOT a count of distinct shots or a material acceptance gate. */
 internal object SourceDiversitySummary {

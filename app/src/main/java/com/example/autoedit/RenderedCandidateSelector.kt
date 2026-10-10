@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Ranks real decoded candidate MP4 reports; authored graph confidence alone cannot win. */
 object RenderedCandidateSelector {

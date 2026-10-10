@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import android.graphics.ImageFormat
 import android.graphics.Bitmap

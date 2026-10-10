@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

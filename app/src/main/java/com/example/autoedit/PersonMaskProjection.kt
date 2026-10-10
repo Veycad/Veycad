@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Full-frame mask texels and motion pixels share normalized FOV, with pixel-center coordinates.
  * This is geometric sampling only, not proof of person identity or mask accuracy.

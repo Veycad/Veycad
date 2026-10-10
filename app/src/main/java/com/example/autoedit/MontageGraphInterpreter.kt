@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /**
  * Converts a renderer-neutral graph into timeline coordinates. Both a future preview player and

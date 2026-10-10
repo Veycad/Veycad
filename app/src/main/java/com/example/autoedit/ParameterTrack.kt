@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /**
  * Renderer-neutral animation channel. Unlike the legacy transform and speed classes, the same

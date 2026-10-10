@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Immutable, Android-free edit contract shared by preview and export. */
 data class MontageGraph(

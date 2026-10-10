@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Post-export contract, independent of Media3/MediaCodec implementation details. */
 object ExportContract {

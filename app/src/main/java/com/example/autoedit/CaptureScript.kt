@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Capture instructions are authored suggestions, never evidence that a movement occurred. */
 internal data class CaptureScript(

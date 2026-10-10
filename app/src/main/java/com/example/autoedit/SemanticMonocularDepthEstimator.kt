@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /**
  * Local single-frame semantic depth for editorial parallax. This is deliberately not labelled a

@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Decoded-frame audit for the two shutter blocks and the terminal white/black phrase. */
 internal object FearStrobeAudit {

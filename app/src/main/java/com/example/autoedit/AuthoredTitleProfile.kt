@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Renderer-facing title description shared by fixed choreography profiles. */
 internal object AuthoredTitleProfile {
