@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Product-owned copy only: no Android views, rendering policy or acceptance decisions. */
 internal object MontageStylePresentation {

@@ -356,7 +356,7 @@ class CacheSnapshotTest(unittest.TestCase):
             raw, report, call = self.capture(root)
             self.assertEqual(raw, (root / "snapshot.bin.gz").read_bytes())
             self.assertEqual(["adb.exe", "-s", "emulator-5554", "exec-out", "run-as",
-                              "com.example.autoedit", "cat", "cache/full-video-analysis/" +
+                              "com.veycad.app", "cat", "cache/full-video-analysis/" +
                               cache_file_name(SOURCE_SHA, 18, SEMANTICS_PROFILE)], call.args[0])
             self.assertEqual(hashlib.sha256(raw).hexdigest(), report["cache_sha256"])
             self.assertEqual(str(root / "snapshot.bin.gz"), report["snapshot_file"])
@@ -410,7 +410,7 @@ class CacheSnapshotTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             raw, report, call = self.capture(root, snapshot=False, serial=None)
-            self.assertEqual(["adb.exe", "exec-out", "run-as", "com.example.autoedit", "cat",
+            self.assertEqual(["adb.exe", "exec-out", "run-as", "com.veycad.app", "cat",
                               "cache/full-video-analysis/" +
                               cache_file_name(SOURCE_SHA, 18, SEMANTICS_PROFILE)], call.args[0])
             self.assertEqual(parse_cache(raw, SOURCE_SHA, 18, SEMANTICS_PROFILE), report)

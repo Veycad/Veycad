@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** GLSL contract for the owned two-source compositor; consumed by the GLES export/preview backend. */
 object GpuTransitionShader {

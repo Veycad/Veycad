@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** FEAR's minimum source-motion support; not proof of all cascade roles or continuous optical flow. */
 internal object FearOpeningEvidence {

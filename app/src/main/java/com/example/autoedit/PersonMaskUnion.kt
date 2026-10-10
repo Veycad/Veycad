@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Reject accessory hallucinations weakly attached to the observed person silhouette. */
 internal object PersonMaskUnion {

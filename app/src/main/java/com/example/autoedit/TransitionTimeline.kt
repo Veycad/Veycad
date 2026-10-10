@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /**
  * One authoritative transition window shared by the GL renderer and tests.  The input is the

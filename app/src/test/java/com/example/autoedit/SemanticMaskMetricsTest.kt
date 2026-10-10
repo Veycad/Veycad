@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
 import org.junit.Assert.assertEquals

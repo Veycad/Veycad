@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Pure temporal contract for feeding both live decoders during a transition. */
 internal object LiveDecoderTransitionPlan {

@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import java.io.File
 import org.junit.Assert.*

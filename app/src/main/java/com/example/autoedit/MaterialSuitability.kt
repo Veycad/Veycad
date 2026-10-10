@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** A material limitation, distinct from a codec crash or a failed encoded-MP4 quality gate. */
 internal open class MaterialRejectedException(

@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Center-crop in display-oriented source coordinates; never stretches the source image. */
 internal object SourceFraming {

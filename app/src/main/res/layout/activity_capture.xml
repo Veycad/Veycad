@@ -30,7 +30,7 @@
             <androidx.camera.view.PreviewView android:id="@+id/capturePreview" android:layout_width="match_parent" android:layout_height="match_parent" />
             <VideoView android:id="@+id/capturePlayback" android:layout_width="match_parent" android:layout_height="match_parent"
                 android:layout_gravity="center" android:visibility="gone" />
-            <com.example.autoedit.CaptureFrameOverlay android:id="@+id/captureFrameOverlay" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
+            <com.veycad.app.CaptureFrameOverlay android:id="@+id/captureFrameOverlay" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
             <TextView android:id="@+id/captureClock" android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_gravity="top|start" android:layout_margin="12dp" android:padding="10dp" android:background="@drawable/panel_surface"
                 android:textColor="@color/text_primary" android:textSize="12sp" android:textStyle="bold" />

@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Revision metadata makes every render reproducible and gives drafts a migration boundary. */
 data class NleProjectMetadata(

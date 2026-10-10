@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Product styles are montage recipes, not colour filters or director alternatives. */
 internal object MontageStyleCatalog {

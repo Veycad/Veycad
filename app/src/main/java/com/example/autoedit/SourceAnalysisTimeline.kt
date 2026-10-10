@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Analysis observations use actual video timestamps, never a container-only tail clock. */
 internal object SourceAnalysisTimeline {

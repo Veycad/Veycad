@@ -16,7 +16,7 @@ import org.junit.runner.Result;
 
 /** Selected regression mutations in an isolated class loader. Never edits source or class files. */
 public class TestMutationCheck {
-    private static final String PREFIX = "com.example.autoedit.";
+    private static final String PREFIX = "com.veycad.app.";
     record Mutation(String label, String target, String method, String mode,
                     ConstantDesc from, ConstantDesc to, String test) {}
 

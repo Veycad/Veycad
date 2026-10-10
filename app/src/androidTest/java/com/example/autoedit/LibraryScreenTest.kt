@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import android.widget.LinearLayout
 import android.widget.TextView

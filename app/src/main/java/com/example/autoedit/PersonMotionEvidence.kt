@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Bridges actual local pixel correspondence, person mask, and independently supported camera. */
 internal object PersonMotionEvidence {

@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Narrow decoded evidence; passing this audit does not accept an edit or its musical rhythm. */
 internal object HeartbeatPulseAudit {

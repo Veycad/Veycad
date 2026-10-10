@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Deterministic render topology chosen before allocating GLES textures or decoder surfaces. */
 object RenderPassPlanner {

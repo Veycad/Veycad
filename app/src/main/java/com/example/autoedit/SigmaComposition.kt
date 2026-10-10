@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Sigma's measured entrance and scene-preserving composition rules. */
 internal object SigmaComposition {

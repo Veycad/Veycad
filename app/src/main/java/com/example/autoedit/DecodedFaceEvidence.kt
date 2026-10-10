@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Evidence from one actual decoded image, never a confidence carried from an earlier image. */
 data class DecodedFaceEvidence(

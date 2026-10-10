@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import kotlin.math.abs
 import org.junit.Assert.*

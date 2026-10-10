@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Measurement availability is separate from a measured contour defect. */
 internal object DecodedMaskEvidence {

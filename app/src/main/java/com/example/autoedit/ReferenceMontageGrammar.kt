@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Structural comparison against the reusable, non-copyrighted reference montage card. */
 object ReferenceMontageGrammar {

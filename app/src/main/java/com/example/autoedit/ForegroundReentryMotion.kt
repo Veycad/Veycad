@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Shared CPU description of the authored live cutout entrance used by GLES and decoded QA. */
 internal object ForegroundReentryMotion {

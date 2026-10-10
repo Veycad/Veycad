@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Source capabilities, not montage styles or a claim that a measurement succeeded. */
 internal enum class SourceAnalysisProfile(val cacheToken: String, val requestsCorrespondence: Boolean) {

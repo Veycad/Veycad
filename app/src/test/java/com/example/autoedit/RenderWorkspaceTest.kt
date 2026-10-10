@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals

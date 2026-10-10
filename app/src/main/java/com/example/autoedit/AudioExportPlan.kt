@@ -1,4 +1,4 @@
-package com.example.autoedit
+package com.veycad.app
 
 /** Timestamp contract for AAC muxing: audio is looped/cut to exactly the video graph duration. */
 object AudioExportPlan {
