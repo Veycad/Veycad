@@ -6,6 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LiveDecoderTransitionPlanTest {
+    @Test fun transitionKeepsNSourceIndicesAndClampsOnlyOutgoingSourceAtItsEof() {
+        val previous = listOf(frame(0, 800_000, -1f), frame(33_333, 900_000, -1f))
+            .map { it.copy(sourceIndex = 19) }
+        val current = listOf(frame(66_667, 2_000_000, 0f), frame(100_000, 2_040_000, .5f))
+            .map { it.copy(sourceIndex = 7) }
+        val window = requireNotNull(LiveDecoderTransitionPlan.forClip(previous, current, 950_000))
+        assertEquals(listOf(19, 19), window.outgoing.map { it.sourceIndex })
+        assertEquals(listOf(7, 7), window.incoming.map { it.sourceIndex })
+        assertEquals(listOf(900_000L, 949_999L), window.outgoing.map { it.sourceTimeUs })
+        assertEquals(listOf(2_000_000L, 2_040_000L), window.incoming.map { it.sourceTimeUs })
+    }
     @Test fun outgoing_decoder_continues_forward_instead_of_replaying_previous_tail() {
         val previous = (0 until 12).map { index -> frame(index * 33_333L, 1_000_000L + index * 40_000L, -1f) }
         val current = (0 until 10).map { index -> frame(

@@ -36,6 +36,45 @@ internal object RenderedVisualSampler {
     private const val SAMPLE_WIDTH = 48
     private const val SAMPLE_HEIGHT = 72
 
+    /** QA keeps one source retriever; a twenty-video request does not retain twenty decoders. */
+    private class SourceReference(private val files: List<File?>) : AutoCloseable {
+        private var selectedIndex: Int? = null
+        private var selected: MediaMetadataRetriever? = null
+        private var crops: List<SourceFraming.Crop?> = emptyList()
+
+        fun prepareCrops(width: Int, height: Int, checkCancelled: () -> Unit) {
+            crops = files.map { file ->
+                checkCancelled()
+                file?.let { VideoDisplayOrientation.cropForFile(it, width, height) }
+            }
+        }
+
+        fun crop(index: Int?): SourceFraming.Crop = index?.let(crops::getOrNull) ?: SourceFraming.Crop(1f, 1f)
+
+        fun retriever(index: Int?): MediaMetadataRetriever? {
+            if (index == selectedIndex) return selected
+            close()
+            val file = index?.let(files::getOrNull) ?: return null
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(file.absolutePath)
+            } catch (error: Throwable) {
+                runCatching { retriever.release() }
+                throw error
+            }
+            selectedIndex = index
+            selected = retriever
+            return retriever
+        }
+
+        override fun close() {
+            val previous = selected
+            selected = null
+            selectedIndex = null
+            previous?.release()
+        }
+    }
+
     fun sample(
         file: File,
         graph: MontageGraph,
@@ -45,69 +84,69 @@ internal object RenderedVisualSampler {
         decodedSourceTimes: Map<Long, Long> = emptyMap(),
         renderFps: Int = HighQualityFramePlan.DEFAULT_FPS,
         secondarySourceVisualMap: VisualEventMap? = null,
-        checkCancelled: () -> Unit = {}
+        checkCancelled: () -> Unit = {},
+        sourceFiles: List<File?> = listOf(sourceFile),
+        sourceVisualMaps: List<VisualEventMap?> = listOf(sourceVisualMap, secondarySourceVisualMap)
     ): List<RenderedMp4Acceptance.VisualSample> {
         require(file.isFile && intervalUs > 0L)
+        require(sourceFiles.size <= GalleryImportPolicy.MAX_FILES)
+        checkCancelled()
         val extractor = MediaExtractor()
         var decoder: MediaCodec? = null
-        val faceDetector = FaceDetection.getClient(
-            FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-                .build()
-        )
-        val segmenter = Segmentation.getClient(
-            SelfieSegmenterOptions.Builder()
-                .setDetectorMode(SelfieSegmenterOptions.SINGLE_IMAGE_MODE)
-                .enableRawSizeMask()
-                .build()
-        )
-        val sourceRetriever = sourceFile?.takeIf(File::isFile)?.let { source ->
-            MediaMetadataRetriever().apply { setDataSource(source.absolutePath) }
-        }
+        var faceDetector: FaceDetector? = null
+        var segmenter: Segmenter? = null
+        val sourceReference = SourceReference(sourceFiles.toList())
         try {
+            faceDetector = FaceDetection.getClient(
+                FaceDetectorOptions.Builder()
+                    .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                    .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+                    .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+                    .build()
+            )
+            segmenter = Segmentation.getClient(
+                SelfieSegmenterOptions.Builder()
+                    .setDetectorMode(SelfieSegmenterOptions.SINGLE_IMAGE_MODE)
+                    .enableRawSizeMask()
+                    .build()
+            )
             extractor.setDataSource(file.absolutePath)
             val trackIndex = (0 until extractor.trackCount).firstOrNull { index ->
                 extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
             } ?: error("Rendered MP4 has no video track")
             extractor.selectTrack(trackIndex)
             val format = extractor.getTrackFormat(trackIndex)
-            val framing = sourceFile?.let { source -> VideoDisplayOrientation.cropForFile(source,
-                format.getInteger(MediaFormat.KEY_WIDTH), format.getInteger(MediaFormat.KEY_HEIGHT)) }
-                ?: SourceFraming.Crop(1f, 1f)
+            sourceReference.prepareCrops(format.getInteger(MediaFormat.KEY_WIDTH),
+                format.getInteger(MediaFormat.KEY_HEIGHT), checkCancelled)
             val mime = requireNotNull(format.getString(MediaFormat.KEY_MIME))
             format.setInteger(
                 MediaFormat.KEY_COLOR_FORMAT,
                 MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible
             )
-            decoder = MediaCodec.createDecoderByType(mime).apply {
-                configure(format, null, null, 0)
-                start()
-            }
+            decoder = MediaCodec.createDecoderByType(mime)
+            decoder.configure(format, null, null, 0)
+            decoder.start()
             return decode(
                 extractor,
                 decoder,
                 graph,
-                sourceVisualMap,
+                sourceVisualMaps.toList(),
                 faceDetector,
                 segmenter,
-                sourceRetriever,
+                sourceReference,
                 intervalUs,
                 decodedSourceTimes,
                 renderFps,
-                secondarySourceVisualMap,
-                framing,
                 format.getInteger(MediaFormat.KEY_WIDTH).toFloat() / format.getInteger(MediaFormat.KEY_HEIGHT),
                 checkCancelled
             )
         } finally {
             runCatching { decoder?.stop() }
-            decoder?.release()
-            extractor.release()
-            faceDetector.close()
-            segmenter.close()
-            sourceRetriever?.release()
+            runCatching { decoder?.release() }
+            runCatching { extractor.release() }
+            runCatching { faceDetector?.close() }
+            runCatching { segmenter?.close() }
+            runCatching { sourceReference.close() }
         }
     }
 
@@ -143,8 +182,13 @@ internal object RenderedVisualSampler {
         frame: HighQualityFramePlan.Frame,
         primary: VisualEventMap?,
         secondary: VisualEventMap?
+    ): Float = expectedFaceConfidence(frame, listOf(primary, secondary))
+
+    internal fun expectedFaceConfidence(
+        frame: HighQualityFramePlan.Frame,
+        sources: List<VisualEventMap?>
     ): Float {
-        val source = when (frame.sourceIndex) { 0 -> primary; 1 -> secondary; else -> null }
+        val source = sources.getOrNull(frame.sourceIndex)
         return source?.observations
             ?.minByOrNull { abs(it.sourceTimeUs - frame.sourceTimeUs) }
             ?.takeIf { abs(it.sourceTimeUs - frame.sourceTimeUs) <= FACE_EXPECTATION_TOLERANCE_US }
@@ -155,15 +199,13 @@ internal object RenderedVisualSampler {
         extractor: MediaExtractor,
         decoder: MediaCodec,
         graph: MontageGraph,
-        sourceVisualMap: VisualEventMap?,
+        sourceVisualMaps: List<VisualEventMap?>,
         faceDetector: FaceDetector,
         segmenter: Segmenter,
-        sourceRetriever: MediaMetadataRetriever?,
+        sourceReference: SourceReference,
         intervalUs: Long,
         decodedSourceTimes: Map<Long, Long>,
         renderFps: Int,
-        secondarySourceVisualMap: VisualEventMap?,
-        framing: SourceFraming.Crop,
         outputAspect: Float,
         checkCancelled: () -> Unit
     ): List<RenderedMp4Acceptance.VisualSample> {
@@ -217,6 +259,8 @@ internal object RenderedVisualSampler {
                         val image = decoder.getOutputImage(outputIndex)
                             ?: error("Decoder did not expose a YUV image at $ptsUs us")
                         val scheduledFrame = framePlan.minByOrNull { abs(it.outputTimeUs - ptsUs) }
+                        val sourceRetriever = sourceReference.retriever(scheduledFrame?.sourceIndex)
+                        val framing = sourceReference.crop(scheduledFrame?.sourceIndex)
                         val authoredTransition = transitionAt(graph, ptsUs)
                         val reentryProgress = scheduledFrame?.transitionProgress ?: -1f
                         val incomingMask = scheduledFrame?.attachments?.mask?.takeIf {
@@ -239,7 +283,7 @@ internal object RenderedVisualSampler {
                         val faceCanBeJudged = authoredTransition !in FACE_TRANSITION_EXCLUSIONS &&
                             !authoredBlackFade && !authoredFlash && !authoredFearTitle && !authoredDefocus
                         val faceExpected = scheduledFrame?.let { scheduled ->
-                            expectedFaceConfidence(scheduled, sourceVisualMap, secondarySourceVisualMap) >= .65f
+                            expectedFaceConfidence(scheduled, sourceVisualMaps) >= .65f
                         } == true && faceCanBeJudged
                         // Every face-expected QA sample is measured on THIS decoded image. Extra
                         // FEAR/Heartbeat samples and post-cut frames cannot borrow earlier faces.
@@ -674,7 +718,7 @@ internal object RenderedVisualSampler {
         retriever: MediaMetadataRetriever?, frame: HighQualityFramePlan.Frame, framing: SourceFraming.Crop,
         outputAspect: Float
     ): FloatArray? {
-        if (retriever == null || frame.sourceIndex != 0) return null
+        if (retriever == null) return null
         val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             retriever.getScaledFrameAtTime(frame.sourceTimeUs, MediaMetadataRetriever.OPTION_CLOSEST, 480, 480)
         } else {

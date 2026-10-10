@@ -92,7 +92,9 @@ object VeykadRenderInspector {
         val maskSourceTimeUs: Long? = null,
         val defocus: Float = 0f,
         val faceRegion: FrameAttachments.FaceRegion? = null,
-        val effectiveSourceSpeed: Float? = null
+        val effectiveSourceSpeed: Float? = null,
+        val sourceIndex: Int = 0,
+        val secondarySourceIndex: Int? = null
     )
 
     data class Summary(
@@ -129,7 +131,8 @@ object VeykadRenderInspector {
             dualDecoder: Boolean,
             secondarySourceTimeUs: Long? = null,
             decodedSourceTimeUs: Long? = null,
-            decodedSecondarySourceTimeUs: Long? = null
+            decodedSecondarySourceTimeUs: Long? = null,
+            secondarySourceIndex: Int? = null
         ) {
             val clip = graph.clips[frame.clipIndex]
             val speedTrack = graph.parameterTracks.firstOrNull {
@@ -146,6 +149,8 @@ object VeykadRenderInspector {
             frames += FrameEvidence(
                 outputTimeUs = frame.outputTimeUs,
                 sourceTimeUs = frame.sourceTimeUs,
+                sourceIndex = frame.sourceIndex,
+                secondarySourceIndex = secondarySourceIndex,
                 clipIndex = frame.clipIndex,
                 transition = frame.transitionIn,
                 dualDecoder = dualDecoder,
@@ -537,6 +542,8 @@ object VeykadRenderInspector {
         put("summary", summaryJson(summary))
         put("frames", JSONArray(evidence.map { frame -> JSONObject().apply {
             put("output_us", frame.outputTimeUs); put("source_us", frame.sourceTimeUs)
+            put("source_index", frame.sourceIndex)
+            put("secondary_source_index", frame.secondarySourceIndex ?: JSONObject.NULL)
             put("decoded_source_us", frame.decodedSourceTimeUs ?: JSONObject.NULL)
             put("mask_source_us", frame.maskSourceTimeUs ?: JSONObject.NULL)
             put("decoded_secondary_source_us", frame.decodedSecondarySourceTimeUs ?: JSONObject.NULL)
