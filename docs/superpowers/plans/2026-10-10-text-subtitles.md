@@ -95,7 +95,7 @@
 
 **Общий store:** #15; text types — #12; этот поток реализует adapters/coordinator.
 
-- [ ] Ключ transcript включает ordered fingerprints, graph/source map, audio mode/settings и model hash. Styling/ручные cues не меняют этот ключ.
+- [ ] Ключ transcript включает ordered fingerprints, graph/source map, audio mode/settings, model hash и requested recognition language (`ru`/`en`/`auto`). Detected language хранится отдельно и не заменяет requested `auto` в ключе. Styling/ручные cues не меняют этот ключ. Подробный outcome и допустимые raw word intervals закреплены в [совместном контракте](../specs/2026-10-10-speech-result-integration-contract.md).
 - [ ] Сохранять raw результат и правки в общей ревизии; ни один cache path не заменяет долговечный asset.
 - [ ] compose → STT → segment/save → mix/video/text → QA → atomic publish. Ошибка сохраняет прошлый MP4 и редактируемый draft, временный PCM удаляется finally.
 - [ ] Re-export из общей ревизии без нового video analysis/STT. Source deletion делает недоступность редактирования явной, MP4 остаётся; старый MP4 без sources редактируется как готовое видео, не как восстановленный исходный монтаж.
