@@ -35,18 +35,19 @@ object HybridEditCommands {
         val left = project.current.clips[index - 1]
         val right = project.current.clips[index]
         if (targetFrame == right.span.start) return@editValidation project
-        require(targetFrame in HybridCutConstraints.range(project, cutId)) {
+        val budget = HybridSourceWindow.ComparisonBudget()
+        require(targetFrame in HybridCutConstraints.range(project, cutId, budget)) {
             "Граница вне доступного диапазона исходников или окна перехода"
         }
         val delta = targetFrame - right.span.start
         val leftMap: SourceTimeMap
         val rightMap: SourceTimeMap
         if (delta > 0) {
-            leftMap = HybridSourceWindow(project, left).extendRight(delta)
+            leftMap = HybridSourceWindow(project, left, budget).extendRight(delta)
             rightMap = exactSlice(right.sourceMap, delta, right.span.length)
         } else {
             leftMap = exactSlice(left.sourceMap, 0, left.span.length + delta)
-            rightMap = HybridSourceWindow(project, right).extendLeft(-delta)
+            rightMap = HybridSourceWindow(project, right, budget).extendLeft(-delta)
         }
         val phase = right.originalFrameOffset.toLong() + delta
         require(phase in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) { "Смещение фазы клипа слишком велико" }

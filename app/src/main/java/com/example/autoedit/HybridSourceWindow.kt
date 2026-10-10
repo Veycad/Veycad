@@ -3,41 +3,78 @@ package com.veycad.app
 import java.math.BigInteger
 
 /** Resolves hidden samples in the same output-phase coordinates as the current visible map. */
-internal class HybridSourceWindow(project: HybridProject, private val clip: HybridClip) {
+internal class HybridSourceWindow(project: HybridProject, private val clip: HybridClip,
+    private val comparisonBudget: ComparisonBudget) {
     private data class Backing(val clip: HybridClip, val slipUs: Long, val automatic: Boolean)
 
-    // Redo is deliberately excluded: a new branch must not borrow a later editorial curve.
-    private val backing: List<Backing> = (listOf(project.original to true) + project.undo.asReversed().map { it to false })
-        .mapNotNull { (revision, automatic) -> revision.clips.firstOrNull {
-            it.id == clip.id && it.assetId == clip.assetId && sameSourceDescriptor(it)
-        }?.let { it to automatic } }
-        .distinctBy { it.first }
-        .mapNotNull { (saved, automatic) -> slipFrom(saved)?.let { Backing(saved, it, automatic) } }
+    /** One reservation pool for both range windows and the ensuing edit, not per map. */
+    internal class ComparisonBudget {
+        private var remaining = 1_000_000L
 
-    private fun sameSourceDescriptor(saved: HybridClip): Boolean {
-        val a = clip.original
+        fun reserve(count: Long) {
+            require(count in 0..remaining) {
+                "Для проверки сохранённых карт требуется слишком много сравнений; правка недоступна"
+            }
+            remaining -= count
+        }
+    }
+
+    // Follow only contiguous selected ancestry. Matching the retained overlap against an
+    // arbitrary older curve cannot prove which hidden samples were selected. Redo and gaps
+    // must not supply backing, and a rewrite ends provenance even if older overlaps match.
+    private val backing: List<Backing> = buildList {
+        if (project.current.id == project.original.id) {
+            add(Backing(clip, 0, true))
+        } else {
+            val undoById = project.undo.associateBy { it.id }
+            var parentId = project.current.parentId
+            var selected = clip
+            var shift = 0L
+            while (parentId != null) {
+                val revision = if (parentId == project.original.id) project.original else undoById[parentId] ?: break
+                comparisonBudget.reserve(revision.clips.size.toLong())
+                val saved = revision.clips.firstOrNull { it.id == selected.id } ?: break
+                if (saved.assetId != selected.assetId || !sameSourceDescriptor(selected, saved)) break
+                val delta = slipFrom(selected, saved) ?: break
+                shift = Math.addExact(shift, delta)
+                add(Backing(saved, shift, revision.id == project.original.id))
+                selected = saved
+                parentId = revision.parentId
+            }
+        }
+    }
+
+    private fun sameSourceDescriptor(selected: HybridClip, saved: HybridClip): Boolean {
+        val a = selected.original
         val b = saved.original
+        if (a.speedRamp !== b.speedRamp) comparisonBudget.reserve(a.speedRamp.keyframes.size.toLong())
         return a.id == b.id && a.sourceIndex == b.sourceIndex && a.sourceStartMs == b.sourceStartMs &&
             a.sourceEndMs == b.sourceEndMs && a.outputDurationMs == b.outputDurationMs && a.speedRamp == b.speedRamp
     }
 
-    private fun slipFrom(saved: HybridClip): Long? {
-        val phase = clip.originalFrameOffset.toLong()
+    private fun slipFrom(selected: HybridClip, saved: HybridClip): Long? {
+        val phase = selected.originalFrameOffset.toLong()
         val savedPhase = saved.originalFrameOffset.toLong()
-        if (phase == savedPhase && clip.sourceMap === saved.sourceMap) return 0
+        if (phase == savedPhase && selected.sourceMap === saved.sourceMap) return 0
         val start = maxOf(phase, savedPhase)
-        val end = minOf(phase + clip.span.length, savedPhase + saved.span.length)
+        val end = minOf(phase + selected.span.length, savedPhase + saved.span.length)
         // One coincident visible sample cannot establish a hidden curve's provenance.
         if (end - start < 2) return null
-        val shift = clip.sourceMap.sample((start - phase).toInt()) - saved.sourceMap.sample((start - savedPhase).toInt())
-        val currentPoints = clip.sourceMap.points
+        comparisonBudget.reserve(1)
+        val shift = selected.sourceMap.sample((start - phase).toInt()) - saved.sourceMap.sample((start - savedPhase).toInt())
+        val currentPoints = selected.sourceMap.points
         val savedPoints = saved.sourceMap.points
-        if (phase == savedPhase && currentPoints.size == savedPoints.size && currentPoints.indices.all {
+        if (phase == savedPhase && currentPoints.size == savedPoints.size) {
+            comparisonBudget.reserve(currentPoints.size.toLong())
+            if (currentPoints.indices.all {
                 currentPoints[it].localFrame == savedPoints[it].localFrame &&
                     currentPoints[it].sourceTimeUs - savedPoints[it].sourceTimeUs == shift
             }) return shift
+        }
+        // Reserve the entire overlap before enumeration, including sparse Int.MAX spans.
+        comparisonBudget.reserve(end - start + 1)
         for (frame in start..end) {
-            if (clip.sourceMap.sample((frame - phase).toInt()) - saved.sourceMap.sample((frame - savedPhase).toInt()) != shift) return null
+            if (selected.sourceMap.sample((frame - phase).toInt()) - saved.sourceMap.sample((frame - savedPhase).toInt()) != shift) return null
         }
         return shift
     }
@@ -81,8 +118,8 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
                 }
             }
         }
-        // The immutable automatic map proves the baseline extent. For external clips a
-        // pruned trim may conceal another curve: durable backing belongs to integration A.
+        // Only a verified chain to the automatic map proves its baseline extent. After
+        // a rewrite or pruned ancestry, durable backing belongs to integration A/A2.
         val original = backing.firstOrNull { it.automatic }
         require(original != null) { "Сохранённая карта скрытых кадров недоступна; расширение клипа невозможно" }
         val frame = phaseFrame - original.clip.originalFrameOffset.toLong()

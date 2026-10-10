@@ -2,15 +2,18 @@ package com.veycad.app
 
 object HybridCutConstraints {
     fun range(project: HybridProject, cutId: String): IntRange =
-        rangeWithHistory(project.current, cutId, project.assets, project.fps, project)
+        range(project, cutId, HybridSourceWindow.ComparisonBudget())
+
+    internal fun range(project: HybridProject, cutId: String, budget: HybridSourceWindow.ComparisonBudget): IntRange =
+        rangeWithHistory(project.current, cutId, project.assets, project.fps, project, budget)
 
     /** Absolute output boundaries. Manual locks constrain automatic rebuilds, not further manual edits. */
     /** Without project history this overload can only continue the current map's edge. */
     fun range(revision: HybridRevision, cutId: String, assets: List<ProjectAsset>, fps: Int): IntRange =
-        rangeWithHistory(revision, cutId, assets, fps, null)
+        rangeWithHistory(revision, cutId, assets, fps, null, HybridSourceWindow.ComparisonBudget())
 
     private fun rangeWithHistory(revision: HybridRevision, cutId: String, assets: List<ProjectAsset>, fps: Int,
-        project: HybridProject?): IntRange = editValidation {
+        project: HybridProject?, budget: HybridSourceWindow.ComparisonBudget): IntRange = editValidation {
         ProjectClock(fps)
         val index = revision.clips.indexOfFirst { it.id == cutId }
         require(index > 0) { "Склейка не найдена: $cutId" }
@@ -36,7 +39,7 @@ object HybridCutConstraints {
             boundary + Int.MAX_VALUE.toLong() - right.originalFrameOffset)
         if (first > last) return@editValidation IntRange.EMPTY
         if (first < boundary) {
-            val window = project?.let { HybridSourceWindow(it, right) }
+            val window = project?.let { HybridSourceWindow(it, right, budget) }
             val frames = maxExtension((boundary - first).toInt()) { count ->
                 val points = right.sourceMap.points
                 if (window != null) window.canExtendLeft(count)
@@ -46,7 +49,7 @@ object HybridCutConstraints {
             first = maxOf(first, boundary - frames)
         }
         if (last > boundary) {
-            val window = project?.let { HybridSourceWindow(it, left) }
+            val window = project?.let { HybridSourceWindow(it, left, budget) }
             val frames = maxExtension((last - boundary).toInt()) { count ->
                 val points = left.sourceMap.points
                 if (window != null) window.canExtendRight(count, leftDuration)

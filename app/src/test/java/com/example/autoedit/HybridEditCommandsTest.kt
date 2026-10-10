@@ -1,5 +1,6 @@
 package com.veycad.app
 
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -105,6 +106,96 @@ class HybridEditCommandsTest {
                 restored.current.clips[1].sourceMap.sample(frame))
             assertEquals(0, restored.current.clips[1].originalFrameOffset)
         }
+    }
+
+    @Test fun sameIdExternalCurveSurvivesTrimSlipAndCodecOrStoreReopen() {
+        for (useStore in listOf(false, true)) for (slip in listOf(0L, 123_456L)) {
+            val base = nonlinearProject()
+            val store = HybridProjectStore(temporary.newFolder())
+            val sources = File(store.directory(base.id), "sources").apply { mkdirs() }
+            base.assets.forEach { File(sources, it.fileName).writeText("fixture source") }
+            store.create(base)
+            val right = base.current.clips[1]
+            val selectedMap = SourceTimeMap(right.sourceMap.points.mapIndexed { index, point ->
+                if (index == 0) point.copy(sourceTimeUs = 300_000) else point
+            })
+            val selected = HybridEditCommands.commitRevision(base, base.current.copy(clips = listOf(
+                base.current.clips[0], right.copy(sourceMap = selectedMap), base.current.clips[2])))
+            store.save(selected, base.current.id)
+            val trimmed = HybridEditCommands.moveCut(selected, "right", 42)
+            store.save(trimmed, selected.current.id)
+            val slipped = HybridEditCommands.slipClip(trimmed, "right", slip)
+            if (slipped !== trimmed) store.save(slipped, trimmed.current.id)
+            val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
+            val reopened = if (useStore) store.load(base.id) else codec.decode(codec.encode(slipped))
+            val restored = HybridEditCommands.moveCut(reopened, "right", 30)
+            for (frame in 0..30) assertEquals("store=$useStore slip=$slip frame=$frame",
+                selectedMap.sample(frame) + slip, restored.current.clips[1].sourceMap.sample(frame))
+            store.save(restored, reopened.current.id)
+            assertEquals(restored, store.load(base.id))
+        }
+    }
+
+    @Test fun provenanceComparisonBudgetIsSharedAcrossBothClipsAndEntireHistory() {
+        val length = 10_000
+        var project = editProject(length = length)
+        repeat(50) { index ->
+            val knot = 100 + index
+            val map = SourceTimeMap(listOf(SourceTimeMap.Point(0, 500_000),
+                SourceTimeMap.Point(knot, 500_000L + knot * 100L), SourceTimeMap.Point(length, 1_500_000)))
+            project = HybridEditCommands.commitRevision(project, project.current.copy(clips = project.current.clips.map {
+                if (it.id == "left" || it.id == "right") it.copy(sourceMap = map) else it
+            }))
+        }
+        assertEquals(50, project.undo.size)
+        rejected { HybridCutConstraints.range(project, "right") }
+    }
+
+    @Test fun provenanceComparisonBudgetAlsoIncludesTheFinalExtension() {
+        val length = 7_000
+        var project = editProject(length = length)
+        repeat(50) { index ->
+            val knot = 7 * (100 + index)
+            val map = SourceTimeMap(listOf(SourceTimeMap.Point(0, 500_000),
+                SourceTimeMap.Point(knot, 500_000L + knot * 1_000L / 7), SourceTimeMap.Point(length, 1_500_000)))
+            project = HybridEditCommands.commitRevision(project, project.current.copy(clips = project.current.clips.map {
+                if (it.id == "left" || it.id == "right") it.copy(sourceMap = map) else it
+            }))
+        }
+        assertTrue(length + 1 in HybridCutConstraints.range(project, "right"))
+        val error = assertThrows(HybridEditRejected::class.java) {
+            HybridEditCommands.moveCut(project, "right", length + 1)
+        }
+        assertTrue(error.reason.contains("сравнений"))
+    }
+
+    @Test(timeout = 5_000) fun hugeSparseEquivalentMapRejectsBeforeEnumeratingItsFrameExtent() {
+        val length = 715_827_882
+        val base = editProject(length = length)
+        val right = base.current.clips[1].copy(sourceMap = SourceTimeMap(listOf(
+            SourceTimeMap.Point(0, 500_000), SourceTimeMap.Point(length / 2, 1_000_000),
+            SourceTimeMap.Point(length, 1_500_000))))
+        val selected = HybridEditCommands.commitRevision(base, base.current.copy(clips = listOf(
+            base.current.clips[0], right, base.current.clips[2])))
+        val error = assertThrows(HybridEditRejected::class.java) { HybridCutConstraints.range(selected, "right") }
+        assertTrue(error.reason.contains("сравнений"))
+    }
+
+    @Test fun sameIdHiddenCurveCannotCrossPrunedAncestryOrBorrowRedo() {
+        val base = nonlinearProject()
+        val right = base.current.clips[1]
+        val selectedMap = SourceTimeMap(right.sourceMap.points.mapIndexed { index, point ->
+            if (index == 0) point.copy(sourceTimeUs = 300_000) else point
+        })
+        val selected = HybridEditCommands.commitRevision(base, base.current.copy(clips = listOf(
+            base.current.clips[0], right.copy(sourceMap = selectedMap), base.current.clips[2])))
+        val trimmed = HybridEditCommands.moveCut(selected, "right", 42)
+        val branch = trimmed.copy(undo = listOf(base.original),
+            redo = listOf(selected.current.copy(id = 3, parentId = 2)), nextRevisionId = 4)
+        rejected { HybridEditCommands.moveCut(branch, "right", 30) }
+        var pruned = trimmed
+        repeat(51) { pruned = HybridEditCommands.putText(pruned, title("$it")) }
+        rejected { HybridEditCommands.moveCut(pruned, "right", 30) }
     }
 
     @Test fun savedHeldSamplesCanBeRestoredWithoutInventingNewFrozenFrames() {
