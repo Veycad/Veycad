@@ -98,20 +98,23 @@ object MediaCodecSpeedRampRenderer {
         videoOnlyFile.delete()
         val inspector = VeykadRenderInspector.Collector(request.graph, plan.frames.size)
         val encoder = createEncoder(request)
-        val inputSurface = encoder.createInputSurface()
-        val gl = GlSession(inputSurface, request.width, request.height, inspector, request.renderPlan,
-            request.graph.frameAttachments, request.debugTextureProbe, request.debugProbeIncomingOnBothUnits,
-            request.debugHeartbeatImagePivot, request.debugFaceRegionProbe,
-            AuthoredTitleProfile.forGraph(request.graph),
-            HeartbeatMontageProfile.appliesTo(request.graph),
-            FearStrobeProfile.appliesTo(request.graph),
-            request.graph.metadata.generator == DualityLoopProfile.ID,
-            ReferenceMontageProfile.appliesTo(request.graph),
-            sourceFiles.map { VideoDisplayOrientation.cropForFile(it, request.width, request.height) })
-        val muxer = MediaMuxer(videoOnlyFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        val muxerState = MuxerState()
+        var inputSurface: Surface? = null
+        var glOwner: GlSession? = null
+        var muxerOwner: MediaMuxer? = null
         var decoders: DecoderSession? = null
         val frameCount = try {
+            val encoderSurface = encoder.createInputSurface().also { inputSurface = it }
+            val gl = GlSession(encoderSurface, request.width, request.height, inspector, request.renderPlan,
+                request.graph.frameAttachments, request.debugTextureProbe, request.debugProbeIncomingOnBothUnits,
+                request.debugHeartbeatImagePivot, request.debugFaceRegionProbe,
+                AuthoredTitleProfile.forGraph(request.graph),
+                HeartbeatMontageProfile.appliesTo(request.graph),
+                FearStrobeProfile.appliesTo(request.graph),
+                request.graph.metadata.generator == DualityLoopProfile.ID,
+                ReferenceMontageProfile.appliesTo(request.graph),
+                sourceFiles.map { VideoDisplayOrientation.cropForFile(it, request.width, request.height) }).also { glOwner = it }
+            val muxer = MediaMuxer(videoOnlyFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxerOwner = it }
+            val muxerState = MuxerState()
             encoder.start()
             decoders = DecoderSession(sourceFiles, gl.incomingDecodeSurface, gl.outgoingDecodeSurface)
             request.context?.let { context ->
@@ -185,12 +188,13 @@ object MediaCodecSpeedRampRenderer {
             request.onPassesExecuted?.invoke(gl.executedPasses())
             plan.frames.size
         } finally {
-            decoders?.release()
+            runCatching { decoders?.release() }
             runCatching { encoder.stop() }
-            encoder.release()
-            gl.release()
-            runCatching { muxer.stop() }
-            muxer.release()
+            runCatching { encoder.release() }
+            runCatching { glOwner?.release() }
+            runCatching { inputSurface?.release() }
+            runCatching { muxerOwner?.stop() }
+            runCatching { muxerOwner?.release() }
         }
         if (request.audioFile != null) {
             AacEncoderMuxer.muxMusicFile(
@@ -236,8 +240,13 @@ object MediaCodecSpeedRampRenderer {
             setInteger(MediaFormat.KEY_FRAME_RATE, request.fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
-        return MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).apply {
-            configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        try {
+            encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            return encoder
+        } catch (error: Throwable) {
+            runCatching { encoder.release() }
+            throw error
         }
     }
 
@@ -374,7 +383,12 @@ object MediaCodecSpeedRampRenderer {
         private var outgoingIndex = 0
         var incoming = DecoderCursor(files[0], incomingSurface)
             private set
-        var outgoing = DecoderCursor(files[0], outgoingSurface)
+        var outgoing = try {
+            DecoderCursor(files[0], outgoingSurface)
+        } catch (error: Throwable) {
+            incoming.release()
+            throw error
+        }
             private set
 
         fun sourceDurationUs(sourceIndex: Int): Long = sourceDurationsUs[sourceIndex]
@@ -398,14 +412,15 @@ object MediaCodecSpeedRampRenderer {
         }
 
         fun release() {
-            outgoing.release()
-            incoming.release()
+            runCatching { outgoing.release() }
+            runCatching { incoming.release() }
         }
     }
 
     private class DecoderCursor(file: File, private val outputSurface: Surface) {
         private val extractor = MediaExtractor()
-        private val decoder: MediaCodec
+        private lateinit var decoder: MediaCodec
+        private var released = false
         val rotationDegrees: Int
         private var inputEnded = false
         private var outputEnded = false
@@ -414,19 +429,24 @@ object MediaCodecSpeedRampRenderer {
         private var currentTexturePtsUs = Long.MIN_VALUE
 
         init {
-            extractor.setDataSource(file.absolutePath)
-            val track = (0 until extractor.trackCount).firstOrNull {
-                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
-            } ?: error("No video track")
-            rotationDegrees = MediaMetadataRetriever().let { retriever ->
-                try { retriever.setDataSource(file.absolutePath); retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0 }
-                finally { retriever.release() }
+            try {
+                extractor.setDataSource(file.absolutePath)
+                val track = (0 until extractor.trackCount).firstOrNull {
+                    extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+                } ?: error("No video track")
+                rotationDegrees = MediaMetadataRetriever().let { retriever ->
+                    try { retriever.setDataSource(file.absolutePath); retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0 }
+                    finally { retriever.release() }
+                }
+                extractor.selectTrack(track)
+                val format = extractor.getTrackFormat(track)
+                decoder = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME) ?: error("No video mime"))
+                decoder.configure(format, outputSurface, null, 0)
+                decoder.start()
+            } catch (error: Throwable) {
+                release()
+                throw error
             }
-            extractor.selectTrack(track)
-            val format = extractor.getTrackFormat(track)
-            decoder = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME) ?: error("No video mime"))
-            decoder.configure(format, outputSurface, null, 0)
-            decoder.start()
         }
 
         /** Starts one independently directed source range without recreating MediaCodec. */
@@ -486,7 +506,13 @@ object MediaCodecSpeedRampRenderer {
         }
 
         fun release() {
-            runCatching { decoder.stop() }; decoder.release(); extractor.release()
+            if (released) return
+            released = true
+            if (::decoder.isInitialized) {
+                runCatching { decoder.stop() }
+                runCatching { decoder.release() }
+            }
+            runCatching { extractor.release() }
         }
     }
 
@@ -541,73 +567,79 @@ object MediaCodecSpeedRampRenderer {
         private val sigmaProfile: Boolean = false,
         private val sourceCrops: List<SourceFraming.Crop> = listOf(SourceFraming.Crop(1f, 1f))
     ) {
-        private val display: android.opengl.EGLDisplay
-        private val context: android.opengl.EGLContext
-        private val surface: android.opengl.EGLSurface
-        private val incomingInput: DecoderInput
-        private val outgoingInput: DecoderInput
-        private val program: Int
-        private val postProgram: Int
-        private val maskTexture: Int
-        private val depthTexture: Int
-        private val flowTexture: Int
-        private val openingTitleTexture: Int
+        private var display: android.opengl.EGLDisplay = EGL14.EGL_NO_DISPLAY
+        private var context: android.opengl.EGLContext = EGL14.EGL_NO_CONTEXT
+        private var surface: android.opengl.EGLSurface = EGL14.EGL_NO_SURFACE
+        private lateinit var incomingInput: DecoderInput
+        private lateinit var outgoingInput: DecoderInput
+        private var program = 0
+        private var postProgram = 0
+        private var maskTexture = 0
+        private var depthTexture = 0
+        private var flowTexture = 0
+        private var openingTitleTexture = 0
         private val positionBuffer: FloatBuffer
         private val texBuffer: FloatBuffer
-        private val sceneTarget: OffscreenTarget?
-        private val motionTarget: OffscreenTarget?
-        private val depthTarget: OffscreenTarget?
-        private val glowTargetA: OffscreenTarget?
-        private val glowTargetB: OffscreenTarget?
+        private var sceneTarget: OffscreenTarget? = null
+        private var motionTarget: OffscreenTarget? = null
+        private var depthTarget: OffscreenTarget? = null
+        private var glowTargetA: OffscreenTarget? = null
+        private var glowTargetB: OffscreenTarget? = null
+        private var released = false
         private val passExecutions = linkedMapOf<RenderPassPlanner.PassKind, Int>()
         private var heartbeatTextureLogged = false
         private val fearPivotByClip = mutableMapOf<Int, Pair<Float, Float>>()
 
         init {
-            display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
-            check(display != EGL14.EGL_NO_DISPLAY)
-            val version = IntArray(2); check(EGL14.eglInitialize(display, version, 0, version, 1))
-            // EGL_RECORDABLE_ANDROID is mandatory on a number of Qualcomm/Mali devices when the
-            // window surface belongs to a MediaCodec encoder rather than a regular View.
-            val configAttrs = intArrayOf(EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8,
-                EGL14.EGL_ALPHA_SIZE, 8, EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-                EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT, EGL_RECORDABLE_ANDROID, 1, EGL14.EGL_NONE)
-            val configs = arrayOfNulls<android.opengl.EGLConfig>(1); val count = IntArray(1)
-            check(EGL14.eglChooseConfig(display, configAttrs, 0, configs, 0, 1, count, 0) && count[0] > 0)
-            val contextAttrs = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE)
-            context = EGL14.eglCreateContext(display, configs[0], EGL14.EGL_NO_CONTEXT, contextAttrs, 0)
-            check(context != EGL14.EGL_NO_CONTEXT)
-            surface = EGL14.eglCreateWindowSurface(display, configs[0], encoderSurface, intArrayOf(EGL14.EGL_NONE), 0)
-            check(surface != EGL14.EGL_NO_SURFACE)
-            makeCurrent()
-            incomingInput = DecoderInput(0)
-            outgoingInput = DecoderInput(1)
-            program = createProgram(VERTEX_SHADER, TRANSITION_FRAGMENT_SHADER)
-            postProgram = createProgram(POST_VERTEX_SHADER, POST_FRAGMENT_SHADER)
-            maskTexture = create2dTexture()
-            depthTexture = create2dTexture()
-            flowTexture = create2dTexture()
-            openingTitleTexture = createOpeningTitleTexture(authoredTitle)
-            positionBuffer = floatBuffer(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
-            // SurfaceTexture's matrix owns the decoder-to-GL orientation. These coordinates must
-            // remain unflipped or Samsung CameraX masters are rendered upside down.
-            texBuffer = floatBuffer(VideoDisplayOrientation.externalOesTextureCoordinates())
-            val hasMotionPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.DIRECTIONAL_BLUR }
-            val hasDepthPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.DEPTH_COMPOSITE }
-            val hasGlowPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.GLOW_EXTRACT }
-            val requiresOffscreen = hasMotionPass || hasDepthPass || hasGlowPass
-            sceneTarget = if (requiresOffscreen) createOffscreenTarget(width, height) else null
-            motionTarget = renderPlan.passes.firstOrNull {
-                it.kind == RenderPassPlanner.PassKind.DIRECTIONAL_BLUR
-            }?.let { createOffscreenTarget(scaled(width, it.resolutionScale), scaled(height, it.resolutionScale)) }
-            depthTarget = renderPlan.passes.firstOrNull {
-                it.kind == RenderPassPlanner.PassKind.DEPTH_COMPOSITE
-            }?.let { createOffscreenTarget(scaled(width, it.resolutionScale), scaled(height, it.resolutionScale)) }
-            val glowScale = renderPlan.passes.firstOrNull {
-                it.kind == RenderPassPlanner.PassKind.GLOW_EXTRACT
-            }?.resolutionScale
-            glowTargetA = glowScale?.let { createOffscreenTarget(scaled(width, it), scaled(height, it)) }
-            glowTargetB = glowScale?.let { createOffscreenTarget(scaled(width, it), scaled(height, it)) }
+            try {
+                display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+                check(display != EGL14.EGL_NO_DISPLAY)
+                val version = IntArray(2); check(EGL14.eglInitialize(display, version, 0, version, 1))
+                // EGL_RECORDABLE_ANDROID is mandatory on a number of Qualcomm/Mali devices when the
+                // window surface belongs to a MediaCodec encoder rather than a regular View.
+                val configAttrs = intArrayOf(EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8,
+                    EGL14.EGL_ALPHA_SIZE, 8, EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                    EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT, EGL_RECORDABLE_ANDROID, 1, EGL14.EGL_NONE)
+                val configs = arrayOfNulls<android.opengl.EGLConfig>(1); val count = IntArray(1)
+                check(EGL14.eglChooseConfig(display, configAttrs, 0, configs, 0, 1, count, 0) && count[0] > 0)
+                val contextAttrs = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE)
+                context = EGL14.eglCreateContext(display, configs[0], EGL14.EGL_NO_CONTEXT, contextAttrs, 0)
+                check(context != EGL14.EGL_NO_CONTEXT)
+                surface = EGL14.eglCreateWindowSurface(display, configs[0], encoderSurface, intArrayOf(EGL14.EGL_NONE), 0)
+                check(surface != EGL14.EGL_NO_SURFACE)
+                makeCurrent()
+                incomingInput = DecoderInput(0)
+                outgoingInput = DecoderInput(1)
+                program = createProgram(VERTEX_SHADER, TRANSITION_FRAGMENT_SHADER)
+                postProgram = createProgram(POST_VERTEX_SHADER, POST_FRAGMENT_SHADER)
+                maskTexture = create2dTexture()
+                depthTexture = create2dTexture()
+                flowTexture = create2dTexture()
+                openingTitleTexture = createOpeningTitleTexture(authoredTitle)
+                positionBuffer = floatBuffer(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
+                // SurfaceTexture's matrix owns the decoder-to-GL orientation. These coordinates must
+                // remain unflipped or Samsung CameraX masters are rendered upside down.
+                texBuffer = floatBuffer(VideoDisplayOrientation.externalOesTextureCoordinates())
+                val hasMotionPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.DIRECTIONAL_BLUR }
+                val hasDepthPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.DEPTH_COMPOSITE }
+                val hasGlowPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.GLOW_EXTRACT }
+                val requiresOffscreen = hasMotionPass || hasDepthPass || hasGlowPass
+                sceneTarget = if (requiresOffscreen) createOffscreenTarget(width, height) else null
+                motionTarget = renderPlan.passes.firstOrNull {
+                    it.kind == RenderPassPlanner.PassKind.DIRECTIONAL_BLUR
+                }?.let { createOffscreenTarget(scaled(width, it.resolutionScale), scaled(height, it.resolutionScale)) }
+                depthTarget = renderPlan.passes.firstOrNull {
+                    it.kind == RenderPassPlanner.PassKind.DEPTH_COMPOSITE
+                }?.let { createOffscreenTarget(scaled(width, it.resolutionScale), scaled(height, it.resolutionScale)) }
+                val glowScale = renderPlan.passes.firstOrNull {
+                    it.kind == RenderPassPlanner.PassKind.GLOW_EXTRACT
+                }?.resolutionScale
+                glowTargetA = glowScale?.let { createOffscreenTarget(scaled(width, it), scaled(height, it)) }
+                glowTargetB = glowScale?.let { createOffscreenTarget(scaled(width, it), scaled(height, it)) }
+            } catch (error: Throwable) {
+                release()
+                throw error
+            }
         }
 
         val decodeSurface: Surface get() = incomingInput.surface
@@ -897,8 +929,14 @@ object MediaCodecSpeedRampRenderer {
         }
 
         fun release() {
-            runCatching { incomingInput.release(); outgoingInput.release() }
-            runCatching {
+            if (released) return
+            released = true
+            val current = context != EGL14.EGL_NO_CONTEXT && runCatching { makeCurrent() }.isSuccess
+            if (::incomingInput.isInitialized) runCatching { incomingInput.release(current) }
+            if (::outgoingInput.isInitialized) runCatching { outgoingInput.release(current) }
+            if (current) runCatching {
+                GLES20.glUseProgram(0)
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
                 GLES20.glDeleteTextures(
                     4,
                     intArrayOf(maskTexture, depthTexture, flowTexture, openingTitleTexture),
@@ -908,7 +946,13 @@ object MediaCodecSpeedRampRenderer {
                 GLES20.glDeleteProgram(postProgram)
                 listOfNotNull(sceneTarget, motionTarget, depthTarget, glowTargetA, glowTargetB).forEach(::releaseTarget)
             }
-            EGL14.eglDestroySurface(display, surface); EGL14.eglDestroyContext(display, context); EGL14.eglReleaseThread(); EGL14.eglTerminate(display)
+            if (display != EGL14.EGL_NO_DISPLAY) {
+                EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+                if (surface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, surface)
+                if (context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display, context)
+                EGL14.eglTerminate(display)
+            }
+            EGL14.eglReleaseThread()
         }
 
         private fun makeCurrent() { check(EGL14.eglMakeCurrent(display, surface, surface, context)) }
@@ -1081,6 +1125,10 @@ object MediaCodecSpeedRampRenderer {
             blend: GpuTransitionModel.FrameBlend?,
             attachments: FrameAttachments?
         ) {
+            val motionTarget = this.motionTarget
+            val depthTarget = this.depthTarget
+            val glowTargetA = this.glowTargetA
+            val glowTargetB = this.glowTargetB
             var current = scene
             val motionAmount = blend?.directionalBlur ?: 0f
             if (motionTarget != null && motionAmount > .0001f) {
@@ -1195,10 +1243,22 @@ object MediaCodecSpeedRampRenderer {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + textureUnit)
                 createExternalTexture()
             }
-            private val surfaceTexture = SurfaceTexture(texture).apply {
-                setOnFrameAvailableListener { synchronized(frameLock) { frameAvailable = true; frameLock.notifyAll() } }
+            private lateinit var surfaceTexture: SurfaceTexture
+            val surface: Surface
+
+            init {
+                try {
+                    surfaceTexture = SurfaceTexture(texture)
+                    surfaceTexture.setOnFrameAvailableListener {
+                        synchronized(frameLock) { frameAvailable = true; frameLock.notifyAll() }
+                    }
+                    surface = Surface(surfaceTexture)
+                } catch (error: Throwable) {
+                    if (::surfaceTexture.isInitialized) runCatching { surfaceTexture.release() }
+                    GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
+                    throw error
+                }
             }
-            val surface = Surface(surfaceTexture)
 
             fun awaitFrame() = synchronized(frameLock) {
                 val deadline = System.nanoTime() + 2_000_000_000L
@@ -1217,26 +1277,14 @@ object MediaCodecSpeedRampRenderer {
             }
             fun timestampUs(): Long = surfaceTexture.timestamp / 1_000L
             fun transformMatrix(): FloatArray = FloatArray(16).also(surfaceTexture::getTransformMatrix)
-            fun release() { surface.release(); surfaceTexture.release(); GLES20.glDeleteTextures(1, intArrayOf(texture), 0) }
+            fun release(current: Boolean) {
+                runCatching { surface.release() }
+                runCatching { surfaceTexture.release() }
+                if (current) GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
+            }
         }
         private fun floatBuffer(values: FloatArray): FloatBuffer = ByteBuffer.allocateDirect(values.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(values); position(0) }
-        private fun createProgram(vertex: String, fragment: String): Int {
-            fun shader(type: Int, source: String) = GLES20.glCreateShader(type).also { id ->
-                GLES20.glShaderSource(id, source)
-                GLES20.glCompileShader(id)
-                val status = IntArray(1)
-                GLES20.glGetShaderiv(id, GLES20.GL_COMPILE_STATUS, status, 0)
-                check(status[0] == GLES20.GL_TRUE) {
-                    val stage = if (type == GLES20.GL_VERTEX_SHADER) "vertex" else "fragment"
-                    "$stage shader compile failed: ${GLES20.glGetShaderInfoLog(id)}"
-                }
-            }
-            return GLES20.glCreateProgram().also { id ->
-                GLES20.glAttachShader(id, shader(GLES20.GL_VERTEX_SHADER, vertex)); GLES20.glAttachShader(id, shader(GLES20.GL_FRAGMENT_SHADER, fragment)); GLES20.glLinkProgram(id)
-                checkProgram(id)
-            }
-        }
-        private fun checkProgram(id: Int) { val status = IntArray(1); GLES20.glGetProgramiv(id, GLES20.GL_LINK_STATUS, status, 0); check(status[0] == GLES20.GL_TRUE) { GLES20.glGetProgramInfoLog(id) } }
+        private fun createProgram(vertex: String, fragment: String): Int = GlesProgram.create(vertex, fragment)
     }
 
     private const val VERTEX_SHADER = "attribute vec4 aPosition; attribute vec4 aTexCoord; uniform mat4 uTransform,uIncomingTexMatrix,uOutgoingTexMatrix; uniform vec2 uIncomingCrop,uOutgoingCrop; varying vec2 vIncomingTexCoord,vOutgoingTexCoord,vScreenTexCoord,vSemanticTexCoord,vOutputTexCoord; void main() { gl_Position = uTransform * aPosition; vec2 incoming=vec2(.5)+(aTexCoord.xy-vec2(.5))*uIncomingCrop; vec2 outgoing=vec2(.5)+(aTexCoord.xy-vec2(.5))*uOutgoingCrop; vIncomingTexCoord = (uIncomingTexMatrix * vec4(incoming,0.,1.)).xy; vOutgoingTexCoord = (uOutgoingTexMatrix * vec4(outgoing,0.,1.)).xy; vScreenTexCoord=incoming; vSemanticTexCoord=vec2(incoming.x,1.0-incoming.y); vOutputTexCoord=aTexCoord.xy; }"
