@@ -21,10 +21,10 @@ internal object SourceFraming {
         outputWidth: Int, outputHeight: Int, pixelAspectRatio: Float = 1f): Crop {
         require(encodedWidth > 0 && encodedHeight > 0 && outputWidth > 0 && outputHeight > 0)
         require(rotation in setOf(0, 90, 180, 270) && pixelAspectRatio > 0f && pixelAspectRatio.isFinite())
-        val encodedAspect = encodedWidth.toFloat() * pixelAspectRatio / encodedHeight
-        val sourceAspect = if (rotation % 180 == 0) encodedAspect else 1f / encodedAspect
-        val outputAspect = outputWidth.toFloat() / outputHeight
-        return if (sourceAspect > outputAspect) Crop(outputAspect / sourceAspect, 1f)
-        else Crop(1f, sourceAspect / outputAspect)
+        val rect = FramingPlan.sampleForAspect(
+            SourceGeometry(encodedWidth, encodedHeight, rotation, pixelAspectRatio),
+            outputWidth.toDouble() / outputHeight, FramingSettings(FramingMode.MANUAL)
+        ).foregroundSource
+        return Crop(rect.right - rect.left, rect.bottom - rect.top)
     }
 }

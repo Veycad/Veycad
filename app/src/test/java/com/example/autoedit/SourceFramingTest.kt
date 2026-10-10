@@ -7,7 +7,7 @@ class SourceFramingTest {
     @Test fun cropped_source_has_output_aspect_for_every_orientation_and_format() {
         for ((width, height) in listOf(1920 to 1080, 1440 to 1080, 1080 to 1080, 1080 to 1920)) {
             for (rotation in listOf(0, 90, 180, 270)) {
-                for ((outputWidth, outputHeight) in listOf(720 to 1280, 720 to 720)) {
+                for ((outputWidth, outputHeight) in listOf(719 to 1277, 1277 to 719, 719 to 719, 719 to 899)) {
                     val crop = SourceFraming.crop(width, height, rotation, outputWidth, outputHeight)
                     val aspect = if (rotation % 180 == 0) width.toFloat() / height else height.toFloat() / width
                     assertEquals(outputWidth.toFloat() / outputHeight, aspect * crop.x / crop.y, .00001f)
