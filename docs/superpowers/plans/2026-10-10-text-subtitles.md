@@ -10,6 +10,15 @@
 
 **Spec:** [Подтверждённая спецификация](../specs/2026-10-10-text-subtitles-design.md).
 
+**Execution notes:** План исполняется в этом чате. JVM-модель, часы, окна,
+outcome/parser/integrity и регрессии проходили RED→GREEN. Первые UI-сценарии
+добавлены после начальной реализации экрана: pre-implementation RED для всего
+UI не заявляется. Отдельный device-RED воспроизвёл откат A→B при recreation,
+подмену первой аудиодорожки и ошибку длительности при ненулевом PTS. UI-RED также проверил доступность
+кнопок через прокрутку и привёл к переносу системных отступов за пределы ScrollView.
+Подготовка модели размещена в основном `app/build.gradle.kts`: отдельный
+подключаемый `.gradle.kts` вызывал падение UAST Android lint.
+
 ## Global Constraints
 
 - Все изменения остаются в `codex/text-subtitles`, PR 12; слияние вручную.
@@ -37,10 +46,10 @@
 
 **Interfaces:** `TextEditProject(sourcePath:String, durationUs:Long, width:Int, height:Int, layers:List<TextLayer>, captions:List<CaptionCue>, captionStyle:TextStyle)`; `activeLayers(timeUs:Long):List<TextLayer>`; `TextEditStore(directory:File).save(project)` / `load(sourcePath:String):TextEditProject?`; `CaptionSegmenter.merge(existing:List<CaptionCue>, incoming:List<CaptionCue>, durationUs:Long):List<CaptionCue>`.
 
-- [ ] Написать тесты: заголовок короткого видео ограничен 800000 us; интервал исключает end; неверное время отклонено; кириллица/переносы и исправления переживают сохранение; разные файлы не смешиваются; дубликат окна не повторяется.
-- [ ] Запустить `:app:testDebugUnitTest --tests '*TextEdit*Test' --tests '*CaptionSegmenterTest'`; ожидается отказ из-за отсутствующих классов.
-- [ ] Реализовать immutable-модель, валидацию, Properties-черновик с атомарной заменой и явной версией, объединение пересекающихся фраз.
-- [ ] Повторить тесты; ожидается PASS. Просмотреть diff и создать `feat(text): добавить модель текста и устойчивый черновик`.
+- [x] Написать тесты: заголовок короткого видео ограничен 800000 us; интервал исключает end; неверное время отклонено; кириллица/переносы и исправления переживают сохранение; разные файлы не смешиваются; дубликат окна не повторяется.
+- [x] Запустить `:app:testDebugUnitTest --tests '*TextEdit*Test' --tests '*CaptionSegmenterTest'`; ожидается отказ из-за отсутствующих классов.
+- [x] Реализовать immutable-модель, валидацию, Properties-черновик с атомарной заменой и явной версией, объединение пересекающихся фраз.
+- [x] Повторить тесты; ожидается PASS. Просмотреть diff и создать `feat(text): добавить модель текста и устойчивый черновик`.
 
 ### Task 2: Раскладка и экспорт с исходным звуком
 
@@ -48,23 +57,23 @@
 
 **Interfaces:** `TextLayerLayout.draw(canvas:Canvas, project:TextEditProject, timeUs:Long)`; `TextVideoGeometry.oriented(width:Int,height:Int,rotation:Int):Pair<Int,Int>`; `TextPcmDecoder.decode(source:File, directory:File, sampleRate:Int, channels:Int, checkCancelled:()->Unit):PcmFile`; `TextAudioMuxer.mux(video:File, pcm:PcmFile, output:File, checkCancelled:()->Unit)`; `TextVideoExporter.export(context:Context,project:TextEditProject,output:File,checkCancelled:()->Unit,onProgress:(Int)->Unit)`.
 
-- [ ] Написать независимые проверки ориентации 90/270 и PCM-времени: 500 ms задержки дают 8000 mono-сэмплов тишины при 16 kHz; короткая дорожка не повторяется. Device-тест экспортирует цветовой видеофикстур с надписью и проверяет пиксели, аудио и длительность.
-- [ ] Запустить JVM/device-тесты; зафиксировать RED до реализации.
-- [ ] Реализовать общую Canvas-раскладку и дополнительную RGBA-текстуру поверх итогового GLES-кадра. Прямой граф из одного клипа 1× не использует монтажную приёмку рецептов.
-- [ ] Декодировать PCM потоково на диск по фактическим PTS; ограничить RAM буфером. Кодировать звук в AAC потоково; добавить тишину до длительности видео, без loop.
-- [ ] Проверить настоящий экспорт на эмуляторе, запустить JVM-серию; ожидается PASS. Коммит `feat(text): экспортировать текст с сохранением исходного звука`.
+- [x] Написать независимые проверки ориентации 90/270 и PCM-времени: 500 ms задержки дают 8000 mono-сэмплов тишины при 16 kHz; короткая дорожка не повторяется. Device-тест экспортирует цветовой видеофикстур с надписью и проверяет пиксели, аудио и длительность.
+- [x] Запустить JVM/device-тесты; зафиксировать RED до реализации.
+- [x] Реализовать общую Canvas-раскладку и дополнительную RGBA-текстуру поверх итогового GLES-кадра. Прямой граф из одного клипа 1× не использует монтажную приёмку рецептов.
+- [x] Декодировать PCM потоково на диск по фактическим PTS; ограничить RAM буфером. Кодировать звук в AAC потоково; добавить тишину до длительности видео, без loop.
+- [x] Проверить настоящий экспорт на эмуляторе, запустить JVM-серию; ожидается PASS. Коммит `feat(text): экспортировать текст с сохранением исходного звука`.
 
 ### Task 3: Настоящий локальный STT
 
-**Files:** Create `SpeechTranscriber.kt`, `WhisperSpeechTranscriber.kt`, `WhisperNative.kt`, `app/src/main/cpp/CMakeLists.txt`, `whisper_jni.cpp`, `app/speech-assets.gradle.kts`, `app/src/main/assets/licenses/whisper.txt`; modify `app/build.gradle.kts`; tests `SpeechWindowTest.kt`, `WhisperDeviceTest.kt`.
+**Files:** Create `SpeechTranscriber.kt`, `WhisperSpeechTranscriber.kt`, `WhisperNative.kt`, `app/src/main/cpp/CMakeLists.txt`, `whisper_jni.cpp`, `app/src/main/assets/licenses/whisper.txt`; modify `app/build.gradle.kts` (including verified model assets task); tests `SpeechWindowTest.kt`, `WhisperDeviceTest.kt`.
 
 **Interfaces:** `SpeechTranscriber.transcribe(context:Context, source:File, language:String, checkCancelled:()->Unit,onProgress:(Int)->Unit):List<CaptionCue>`; native `open(modelPath:String):Long`, `recognize(handle:Long,samples:FloatArray,language:String,cancel:NativeCancellation):Array<String>`, `close(handle:Long)`.
 
-- [ ] Написать тесты границ окон и удаления дубликатов; device-тест: настоящий bundled base распознаёт короткую EN-фикстуру и не выдаёт фразу на тишине.
-- [ ] Запустить тесты и зафиксировать RED. Закрепить whisper.cpp commit `48f628a84833905ee4a0658ee6d4a5c915ce1997` и model revision/checksum после чтения метаданных поставщика.
-- [ ] Подключить CPU JNI, 16 KiB alignment, отмену и release в finally; модель в assets проверяется на сборке и при первой распаковке.
-- [ ] Читать PCM окнами до 30 с, переносить временные метки в абсолютные PTS, отбрасывать пустые/безречевые результаты и объединять перекрытия.
-- [ ] Собрать ARM64/ARMv7 и test x86_64, запустить device-тесты; ожидается реальное распознавание. Коммит `feat(subtitles): добавить локальное распознавание Whisper`.
+- [x] Написать тесты границ окон и удаления дубликатов; device-тест: настоящий bundled base распознаёт короткую EN-фикстуру и не выдаёт фразу на тишине.
+- [x] Запустить тесты и зафиксировать RED. Закрепить whisper.cpp commit `48f628a84833905ee4a0658ee6d4a5c915ce1997` и model revision/checksum после чтения метаданных поставщика.
+- [x] Подключить CPU JNI, 16 KiB alignment, отмену и release в finally; модель в assets проверяется на сборке, при распаковке и перед каждым открытием кэша.
+- [x] Читать PCM окнами до 30 с, переносить временные метки в абсолютные PTS, отбрасывать пустые/безречевые результаты и объединять перекрытия.
+- [x] Собрать ARM64/ARMv7 и test x86_64, запустить device-тесты; ожидается реальное распознавание. Коммит `feat(subtitles): добавить локальное распознавание Whisper`.
 
 ### Task 4: Экран и подключение двух сценариев
 
@@ -72,10 +81,10 @@
 
 **Interfaces:** `TextEditActivity.open(context:Context, file:File?=null)`; `TextEditSession` owns import/STT/export jobs and observable state; Activity never owns worker resources. State contains project, busy/progress/error/result and cancellation.
 
-- [ ] Написать device-сценарий: вход через главное меню и готовый MP4; добавить заголовок и плашку; изменить оформление и время; восстановить черновик; отменить работу; экспортировать.
-- [ ] Запустить и зафиксировать RED. Реализовать предпросмотр с общей раскладкой, три раздела, seek к фразам, все настройки из спецификации и confirmation только для замены исправленного STT.
-- [ ] Добавить главный вход и кнопку готового результата; импорт независим от стиля. Восстанавливать сохранённый проект и прерванные задания, писать изменения атомарно.
-- [ ] Запустить device/JVM-проверки; ожидается PASS. Коммит `feat(ui): добавить редактор текста и автосубтитров`.
+- [x] Написать device-сценарий: вход через главное меню и готовый MP4; добавить заголовок и плашку; изменить оформление и время; восстановить черновик; отменить работу; экспортировать.
+- [x] Запустить и зафиксировать RED. Реализовать предпросмотр с общей раскладкой, три раздела, seek к фразам, все настройки из спецификации и confirmation только для замены исправленного STT.
+- [x] Добавить главный вход и кнопку готового результата; импорт независим от стиля. Восстанавливать сохранённый проект и прерванные задания, писать изменения атомарно.
+- [x] Запустить device/JVM-проверки; ожидается PASS. Коммит `feat(ui): добавить редактор текста и автосубтитров`.
 
 ### Task 5: Полная проверка и PR
 
@@ -83,7 +92,19 @@
 
 **Interfaces:** Final feature uses all contracts above. Publication uses `CompletedRenderStore`; previous source/result never overwritten.
 
-- [ ] Запустить `clean baselineVerify`, соответствующие UI/device-тесты и собрать APK всех объявленных ABI; ожидается PASS без ослабления gates.
-- [ ] Проверить MP4: читаемая кириллица, time boundaries, оригинальный звук, ориентация и длительность. Зафиксировать доступные устройства; не заявлять Samsung-проверку без устройства.
-- [ ] Провести свежий обзор всего изменения через отдельного reviewer согласно executing-plans; исправления подтверждать RED→GREEN.
-- [ ] Обновить PR 12 вокруг фактической реализации, результатов и оставшейся человеческой приёмки; push без force. Сохранить draft, если аппаратная или визуальная приёмка не завершена.
+- [x] Запустить `clean baselineVerify`, соответствующие UI/device-тесты и собрать APK всех объявленных ABI; ожидается PASS без ослабления gates.
+- [x] Проверить MP4: читаемая кириллица, time boundaries, оригинальный звук, ориентация и длительность. Зафиксировать доступные устройства; не заявлять Samsung-проверку без устройства.
+- [x] Провести свежий обзор всего изменения через отдельного reviewer согласно executing-plans; исправления подтверждать RED→GREEN.
+- [x] Подготовить обновление PR 12 вокруг фактической реализации, результатов и оставшейся человеческой приёмки. Опубликовать итоговый пакет этого плана push без force; сохранить draft для аппаратной и визуальной приёмки.
+
+## Итог выполнения
+
+Проверенный код: `a2e36bd60f756cf374673562d8323d71698fd474`. Clean gate прошёл:
+655 JVM, 255 Python, lint 0 ошибок / 26 предупреждений, APK трёх ABI. Все 12
+уникальных feature-device сценариев прошли в сериях 8 export/STT + 4 UI;
+производственный APK между сериями не менялся. После тестовой правки навигации
+повторён baseline и собран test APK. Полная остановка процесса вручную проверила
+восстановление исправленного черновика и результата. Точные границы этих проверок,
+SHA-256 APK и открытая приёмка A25 приведены в [протоколе](../../testing/text-subtitles.md).
+Результат удалённых CI последнего коммита фиксируется в PR; локальные результаты
+не подменяют CI или одобрение слияния.
