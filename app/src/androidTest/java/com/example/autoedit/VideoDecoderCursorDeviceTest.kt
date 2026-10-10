@@ -59,17 +59,24 @@ class VideoDecoderCursorDeviceTest {
         }
     }
 
-    @Test fun eos_keeps_last_valid_texture_at_30_and_60_fps() {
+    @Test fun final_sample_target_then_beyond_eos_keeps_last_valid_texture_at_30_and_60_fps() {
         for (fps in listOf(30, 60)) {
             val file = fixture(fps)
+            val finalSamplePtsUs = samples(file).pts.last()
             DisplayHarness().use { display ->
                 VideoDecoderCursor(file, display.inputSurface).use { cursor ->
                     cursor.beginRange(0)
-                    assertTrue(cursor.advanceTo(4_000_000) { display.awaitTexture() })
-                    assertEquals(samples(file).pts.last(), cursor.currentTexturePtsUs)
-                    val pixels = display.draw(cursor, 4_000_000)
+                    // EOS may accompany this nonempty output, rather than a later empty buffer.
+                    assertTrue(cursor.advanceTo(finalSamplePtsUs) { display.awaitTexture() })
+                    assertEquals(finalSamplePtsUs, cursor.currentTexturePtsUs)
+                    val pixels = display.draw(cursor, finalSamplePtsUs)
                     val callbacks = display.textureCallbacks
+                    assertTrue(cursor.advanceTo(4_000_000) { display.awaitTexture() })
+                    assertEquals(finalSamplePtsUs, cursor.currentTexturePtsUs)
+                    assertEquals(callbacks, display.textureCallbacks)
+                    assertEquals(pixels, display.draw(cursor, 4_000_000))
                     assertTrue(cursor.advanceTo(5_000_000) { display.awaitTexture() })
+                    assertEquals(finalSamplePtsUs, cursor.currentTexturePtsUs)
                     assertEquals(callbacks, display.textureCallbacks)
                     assertEquals(pixels, display.draw(cursor, 5_000_000))
                     cursor.beginRange(217_777)

@@ -139,6 +139,9 @@ internal class VideoDecoderCursor(
                     val render = info.size > 0
                     decoder.releaseOutputBuffer(outputIndex, render)
                     checkCancelled()
+                    // EOS can accompany the final nonempty output. Record it before the target
+                    // fast return so a subsequent beyond-final request retains this texture.
+                    outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                     if (render) {
                         onTextureFrame()
                         hasDecodedTexture = true
@@ -146,7 +149,6 @@ internal class VideoDecoderCursor(
                         checkCancelled()
                         if (info.presentationTimeUs >= targetUs) return true
                     }
-                    outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                 }
             }
         }
