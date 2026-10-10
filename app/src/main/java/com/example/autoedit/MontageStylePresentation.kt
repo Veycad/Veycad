@@ -8,9 +8,12 @@ internal object MontageStylePresentation {
         val subtitle: String,
         val sourceCount: Int,
         val minimumSourceDurationMs: Long?,
-        val unavailableLabel: String? = null
+        val unavailableLabel: String? = null,
+        val profileName: String = title,
+        val tags: List<String> = emptyList()
     ) {
-        val selectorLabel: String get() = "$symbol   $title\n$subtitle"
+        val selectorLabel: String get() = "$symbol   $title\n" +
+            if (profileName == title) subtitle else "$profileName · $subtitle"
         val addSourceLabel: String get() = if (sourceCount == 2) "Добавить 2 видео" else "Добавить видео"
         val sourceHint: String get() {
             unavailableLabel?.let { return it }
@@ -19,9 +22,9 @@ internal object MontageStylePresentation {
             else "1 видео · от $seconds секунд"
         }
         val musicPlaceholder: String get() = unavailableLabel?.let { "♫ $it" }
-            ?: "♫ Музыка для $title подберётся автоматически"
+            ?: "♫ Музыка для стиля «$title» подберётся автоматически"
         val musicLoading: String get() = unavailableLabel?.let { "♫ $it" }
-            ?: "♫ Подбираю музыку для $title…"
+            ?: "♫ Подбираю музыку для стиля «$title»…"
 
         fun sourceDisplay(names: List<String>): String = when {
             names.isEmpty() -> sourceHint
@@ -47,22 +50,38 @@ internal object MontageStylePresentation {
         orderedSources.take(style.sourceCount)
 
     fun forStyle(style: MontageStyleCatalog.Style): Copy {
-        val (symbol, subtitle) = when (style.recipe) {
-            MontageStyleCatalog.Recipe.SIGMA -> "🔒" to style.unavailableLabel
-            MontageStyleCatalog.Recipe.HEARTBEAT -> "♥" to "Пульс · повтор фразы · чёрный финал"
-            MontageStyleCatalog.Recipe.FEAR_STROBE -> "⚡" to "Движение · склейки · строб-акценты"
-            MontageStyleCatalog.Recipe.DUALITY_LOOP -> "↔" to "Две связанные сцены · перекличка"
-            null -> "○" to style.description
+        val tags = when (style.recipe) {
+            MontageStyleCatalog.Recipe.HEARTBEAT -> listOf("Ритмичный", "Эхо", "Повторы")
+            MontageStyleCatalog.Recipe.FEAR_STROBE -> listOf("Быстрые склейки", "Строб", "Экшен")
+            MontageStyleCatalog.Recipe.DUALITY_LOOP -> listOf("Спокойное начало", "Контраст", "2 видео")
+            else -> emptyList()
         }
+        val title = when (style.recipe) {
+            MontageStyleCatalog.Recipe.HEARTBEAT -> "Пульс под музыку"
+            MontageStyleCatalog.Recipe.FEAR_STROBE -> "Динамичный бит"
+            MontageStyleCatalog.Recipe.DUALITY_LOOP -> "Диалог двух сцен"
+            else -> style.title
+        }
+        val symbol = when (style.recipe) {
+            MontageStyleCatalog.Recipe.SIGMA -> "🔒"
+            MontageStyleCatalog.Recipe.HEARTBEAT -> "♥"
+            MontageStyleCatalog.Recipe.FEAR_STROBE -> "⚡"
+            MontageStyleCatalog.Recipe.DUALITY_LOOP -> "↔"
+            null -> "○"
+        }
+        val subtitle = if (style.recipe == MontageStyleCatalog.Recipe.SIGMA) style.unavailableLabel
+            else tags.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: style.description
         return Copy(
-            symbol, style.title, subtitle, style.sourceCount,
+            symbol, title, subtitle, style.sourceCount,
             minimumSourceDurationMs = when {
                 !style.available -> null
                 style.recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP ->
                     DualityLoopProfile.MINIMUM_SOURCE_DURATION_MS
                 else -> EditDurationPolicy.MINIMUM_MS
             },
-            unavailableLabel = style.unavailableLabel.takeIf { !style.available }
+            unavailableLabel = style.unavailableLabel.takeIf { !style.available },
+            profileName = style.title,
+            tags = tags
         )
     }
 }
