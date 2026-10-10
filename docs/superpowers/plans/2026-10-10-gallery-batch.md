@@ -1,5 +1,18 @@
 # Пакетный монтаж из галереи Implementation Plan
 
+> Согласование интеграции 2026-10-10: модель проекта/ID/ревизий, долговечные assets, ProjectClock/SourceTimeMap и общий store принадлежат PR #15 (`codex/hybrid-mode-design`, исходная основа `74b58038`). Текст/editor/layout/STT принадлежат PR #12 (Whisper за SpeechTranscriber). Эта запись заменяет самостоятельный EditProjectStore и второй clock/snapshot как источник истины в первоначальных G1/G3 ниже; требования импорта, сохранности, exact timing и проверки экспорта сохраняются. Адаптеры реализуются поверх закоммиченных проверенных контрактов владельцев. [План текста #14](2026-10-10-text-subtitles.md) обновлён для общей интеграции.
+
+## Уточнение задач общей основы
+
+- G1A: MediaSource/MediaSourceSet/GalleryImportPolicy и MediaInputInspector, независимые от хранилища. IDs и порядок выбора сохраняются, даже если общий asset store дедуплицирует одинаковое содержимое.
+- G1B: URI → ограниченный copy/hash → owned ProjectAsset → атомарный source draft envelope под общим project ID. До graph/music не создавать фиктивный HybridRevision. Все per-file errors, cancellation/rollback, неизвестный размер URI, свободное место и лимиты первоначального G1 остаются обязательными.
+- Договориться с владельцем #15 о pre-render draft, lease, delete-sources без удаления опубликованного MP4 и durable migration marker. Envelope хранит source metadata/order, а не конкурирующую пользовательскую модель. Последующий граф переводит тот же ID в настоящий общий проект.
+- G2 сохраняет полный список источников в движке и максимум два decoder cursor; существующие capture/one/two-source адаптеры сохраняются.
+- G3 сохраняет точный legacy PTS и долговечные graph/attachments/capture links через общую ревизию, SourceTimeMap и store #15. MontageTimeMap/RenderProjectSnapshot допустимы только как adapters/views общего состояния, без собственного project ID/clock/history или второго хранилища.
+- G4–G8 продолжаются после соответствующих контрактов; нейтральный анализ/режиссура/UI/галерейная QA остаются ответственностью этого потока.
+- Исходный звук, три режима mix и STT для смонтированной речи до музыки добавляются как интеграционные задачи обновлённого #14. Второй Vosk/редактор не создаётся; captions готового MP4 остаются отдельным согласованным сценарием.
+- Исполнение с агентами и ревью каждой части одобрено. Сейчас проверяем эмуляторы; Samsung A25 и человеческая приёмка отдельно не подтверждены. Не ждать телефона для продолжения реализации.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Из 1–20 сторонних видео автоматически собрать разнообразный MP4 без съёмки внутри Veycad и обязательного наличия людей.
