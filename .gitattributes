@@ -6,6 +6,8 @@ gradlew text eol=lf
 *.yml text eol=lf
 *.bat text eol=crlf
 *.jar binary
-*.tflite binary
+*.tflite filter=lfs diff=lfs merge=lfs -text
 *.png binary
 *.m4a binary
+*.onnx filter=lfs diff=lfs merge=lfs -text
+*.task filter=lfs diff=lfs merge=lfs -text
