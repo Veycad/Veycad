@@ -20,10 +20,13 @@ data class FrameAttachments(
     val maskBlendTarget: Plane? = null,
     val maskBlendProgress: Float = 0f,
     /** True only for inferred physical opacity, not a class-confidence segmentation mask. */
-    val maskIsOpacity: Boolean = false
+    val maskIsOpacity: Boolean = false,
+    val detectedFaceCount: Int? = null,
+    val faceInferenceSucceeded: Boolean = false
 ) {
     init {
         require(sourceTimeUs >= 0L)
+        require(detectedFaceCount == null || (detectedFaceCount >= 0 && faceInferenceSucceeded))
         require(mask != null || depth != null || flow != null)
         require(subjectQuality in 0f..1f && subjectOcclusion in 0f..1f && maskTemporalIou in 0f..1f)
         require(maskBlendProgress in 0f..1f)
@@ -152,7 +155,9 @@ data class FrameAttachmentTimeline(val frames: List<FrameAttachments> = emptyLis
             faceRegion = face(left.faceRegion, right.faceRegion),
             maskBlendTarget = if (canBlendMask) right.mask else null,
             maskBlendProgress = if (canBlendMask) progress else 0f,
-            maskIsOpacity = closest.maskIsOpacity
+            maskIsOpacity = closest.maskIsOpacity,
+            detectedFaceCount = closest.detectedFaceCount,
+            faceInferenceSucceeded = closest.faceInferenceSucceeded
         )
     }
 

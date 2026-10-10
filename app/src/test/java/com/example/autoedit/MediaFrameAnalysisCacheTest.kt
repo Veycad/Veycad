@@ -5,6 +5,25 @@ import org.junit.Test
 import java.nio.file.Files
 
 class MediaFrameAnalysisCacheTest {
+    @Test fun cache_round_trip_retains_count_and_inference_failure() {
+        val observations = listOf(0, 1, 2, null).mapIndexed { i, count ->
+            VisualEventMap.Observation(i * 250_000L, faceInferenceSucceeded = count != null,
+                detectedFaceCount = count)
+        }
+        val frames = observations.map { FrameAttachments(it.sourceTimeUs,
+            FrameAttachments.Plane(1, 1, floatArrayOf(.7f), .9f),
+            detectedFaceCount = it.detectedFaceCount, faceInferenceSucceeded = it.faceInferenceSucceeded) }
+        val result = MediaFrameVisualAnalyzer.Result(SourceAnalysisProfile.EDITORIAL_SEMANTICS,
+            0, 2_000_000, observations, FrameAttachmentTimeline(frames), 4, 4, 0)
+        val file = Files.createTempFile("analysis-face-count", ".gz").toFile()
+        try {
+            MediaFrameAnalysisCache.write(result, file)
+            val restored = MediaFrameAnalysisCache.read(file, result.profile)
+            assertEquals(listOf(0, 1, 2, null), restored.observations.map { it.detectedFaceCount })
+            assertEquals(listOf(true, true, true, false), restored.observations.map { it.faceInferenceSucceeded })
+            assertEquals(result, restored)
+        } finally { file.delete() }
+    }
     @Test fun incompatible_versions_cannot_supply_current_evidence_even_with_a_complete_payload() {
         val current = MediaFrameVisualAnalyzer.Result(
             SourceAnalysisProfile.EDITORIAL_WITH_CORRESPONDENCE, 1, 2_000_000L,
@@ -14,9 +33,9 @@ class MediaFrameAnalysisCacheTest {
             MediaFrameAnalysisCache.write(current, file)
             assertEquals(current, MediaFrameAnalysisCache.read(file, current.profile))
             val original = java.util.zip.GZIPInputStream(file.inputStream()).use { it.readBytes() }
-            // Old versions 4..17 represent successive incompatible evidence contracts.
+            // Old versions 4..18 represent successive incompatible evidence contracts.
             // Full payloads ensure accepting a bad header cannot merely fail later on EOF.
-            for (version in (4..17).toList() + listOf(0, -1, 19, Int.MAX_VALUE)) {
+            for (version in (4..18).toList() + listOf(0, -1, 20, Int.MAX_VALUE)) {
                 val payload = original.copyOf()
                 java.nio.ByteBuffer.wrap(payload).putInt(4, version)
                 java.util.zip.GZIPOutputStream(file.outputStream()).use { it.write(payload) }
