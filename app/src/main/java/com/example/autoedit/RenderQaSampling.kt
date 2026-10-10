@@ -45,7 +45,8 @@ internal data class RenderQaTransitionWindow(val first: Int, val last: Int) {
 }
 
 /** Regular QA cadence plus bounded checkpoints per authored event, including one-frame events. */
-internal object ManualQaSampling {
+internal object RenderQaSampling {
+    private const val SHORT_TRANSITION_FRAME_CAP = 8
     fun targets(graph: MontageGraph, plan: HighQualityFramePlan.Plan, intervalUs: Long): List<Long> {
         require(intervalUs > 0)
         val frames = plan.frames
@@ -64,6 +65,11 @@ internal object ManualQaSampling {
         }
         RenderQaTransitionWindow.inPlan(frames).forEach { window ->
             add(window.first - 1); add(window.first); add(window.last); add(window.last + 1)
+            if (window.last - window.first + 1 <= SHORT_TRANSITION_FRAME_CAP) {
+                // A 105ms BLACKOUT has four/seven retained images at 30/60fps. Cadence and
+                // phase landmarks alone can miss its interior; expand only bounded windows.
+                for (frame in window.first..window.last) add(frame)
+            }
             // Foreground measurement needs witnesses within its retained .72..80 matte phase.
             for (phase in listOf(.25f, .5f, .72f, .76f, .8f, .88f)) {
                 var low = window.first; var high = window.last + 1

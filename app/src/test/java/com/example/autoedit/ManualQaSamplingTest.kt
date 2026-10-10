@@ -4,6 +4,48 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ManualQaSamplingTest {
+    @Test fun disabledAndTrimmedAwayEffectWindowsAddNoTargets() {
+        val base = ManualMontageFixtures.generatedGraph().copy(overlays = emptyList(),
+            manualOverrides = ManualRenderOverrides(disabledEffectIds = setOf("disabled-overlay", "disabled-node")))
+        val removedWindow = EffectSampleWindow(8_000_000, 8_100_000, -7_000_000, 1_000_000, 1_100_000)
+        val graph = base.copy(overlays = listOf(
+            MontageGraph.Overlay("disabled-overlay", 1_233, 1_234, "flash"),
+            MontageGraph.Overlay("trimmed-overlay", 1_237, 1_238, "flash", sampleWindow = removedWindow)),
+            effectGraph = GpuEffectGraph(listOf(
+                GpuEffectGraph.Node("disabled-node", GpuEffectGraph.Kind.GLITCH, 1_233_333, 1_233_334, .5f),
+                GpuEffectGraph.Node("trimmed-node", GpuEffectGraph.Kind.GLITCH, 1_237_000, 1_238_000, .5f,
+                    sampleWindow = removedWindow))))
+        for (fps in listOf(30, 60)) assertEquals(
+            RenderedVisualSampler.samplingTargets(base, 100_000, fps),
+            RenderedVisualSampler.samplingTargets(graph, 100_000, fps))
+    }
+
+    @Test fun dormantIncomingBoundaryAndTrimmedTransitionUseOnlyRetainedFrames() {
+        for (fps in listOf(30, 60)) {
+            val project = ManualMontageFixtures.linearProject(fps)
+            val moved = (MontageTimelineEditor.prepare(project, TimelineCommand.Move("B", 0))
+                as TimelinePreparation.Prepared).candidate.graph
+            assertTrue(moved.manualMontageState!!.effects.any { it.enabled })
+            assertTrue(moved.renderOverlays().isEmpty()) // enabled Boundary B is dormant when first
+            val noDormantPayload = moved.copy(manualMontageState = null)
+            assertEquals(RenderedVisualSampler.samplingTargets(noDormantPayload, 100_000, fps),
+                RenderedVisualSampler.samplingTargets(moved, 100_000, fps))
+
+            val start = (MontageTimelineEditor.prepare(project, TimelineCommand.Trim("B", ClipEdge.START, 1))
+                as TimelinePreparation.Prepared).candidate
+            val adapter = project.copy(shared = project.shared.copy(current = start.copy(id = 2, parentId = 1), nextRevisionId = 3))
+            val trimmed = (MontageTimelineEditor.prepare(adapter, TimelineCommand.Trim("B", ClipEdge.END, 4))
+                as TimelinePreparation.Prepared).candidate.graph
+            val frames = HighQualityFramePlan.build(trimmed, fps).frames
+            val retained = frames.filter { it.clipIndex == 1 }
+            assertEquals(3, retained.size)
+            assertTrue(retained.first().transitionProgress!! > 0f) // original phase never restarts
+            val expected = if (fps == 30) listOf(1_966_667L, 2_000_000L, 2_033_333L, 2_066_667L, 2_100_000L)
+                else listOf(1_983_333L, 2_000_000L, 2_016_667L, 2_033_333L, 2_050_000L)
+            assertTrue(RenderedVisualSampler.samplingTargets(trimmed, 100_000, fps).containsAll(expected))
+        }
+    }
+
     @Test fun frameAssociationKeepsRoundingAndTieBehaviorWithBoundedReads() {
         val base = ManualMontageFixtures.generatedGraph()
         val graph = base.copy(clips = listOf(base.clips.first().copy(outputDurationMs = 60_000)),

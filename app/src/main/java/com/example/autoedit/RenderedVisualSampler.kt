@@ -849,8 +849,10 @@ internal object RenderedVisualSampler {
         renderFps: Int = graph.editableTiming?.fps ?: HighQualityFramePlan.DEFAULT_FPS,
         plan: HighQualityFramePlan.Plan? = null): List<Long> {
         require(intervalUs > 0L)
+        val framePlan = plan ?: HighQualityFramePlan.build(graph, renderFps)
+        val witnesses = RenderQaSampling.targets(graph, framePlan, intervalUs)
         if (graph.manualOverrides != null || graph.editableTiming != null) {
-            return ManualQaSampling.targets(graph, plan ?: HighQualityFramePlan.build(graph, renderFps), intervalUs)
+            return witnesses
         }
         val durationUs = graph.outputDurationMs * 1_000L
         val uniform = generateSequence(0L) { previous ->
@@ -884,13 +886,19 @@ internal object RenderedVisualSampler {
             } + HeartbeatPulseAudit.tailSamplingTargetsUs().asSequence()
         } else emptySequence()
         val fearCheckpoints = if (FearStrobeProfile.appliesTo(graph)) {
-            (plan?.takeIf { it.fps == FearStrobeProfile.REFERENCE_FPS }
-                ?: HighQualityFramePlan.build(graph, FearStrobeProfile.REFERENCE_FPS)).frames.asSequence()
-                .map { it.outputTimeUs } + FearStrobeProfile.pulses.asSequence().flatMap { pulse ->
+            // Preserve the raw author grid without building another render/ML frame plan.
+            val authorFrames = if (framePlan.fps == FearStrobeProfile.REFERENCE_FPS) {
+                framePlan.frames.asSequence().map { it.outputTimeUs }
+            } else {
+                generateSequence(0L) { it + 1L }
+                    .map { frameTimeUs(it, FearStrobeProfile.REFERENCE_FPS) }
+                    .takeWhile { it < durationUs }
+            }
+            authorFrames + FearStrobeProfile.pulses.asSequence().flatMap { pulse ->
                 sequenceOf(pulse.startUs, (pulse.endUs - 1L).coerceAtLeast(pulse.startUs))
             } + FearStrobeProfile.scenes.asSequence().map { it.startUs }
         } else emptySequence()
-        return (uniform + accents.asSequence() + effectCheckpoints + heartbeatCheckpoints + fearCheckpoints)
+        return (uniform + accents.asSequence() + effectCheckpoints + heartbeatCheckpoints + fearCheckpoints + witnesses.asSequence())
             .filter { it <= durationUs }
             .distinct()
             .sorted()
