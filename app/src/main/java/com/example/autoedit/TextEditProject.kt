@@ -40,7 +40,8 @@ data class TextEditProject(
     val captions: List<CaptionCue> = emptyList(),
     val captionStyle: TextStyle = TextStyle(position = TextPosition.BOTTOM, sizeRatio = 0.045f),
     val captionsEdited: Boolean = false,
-    val language: String = "auto"
+    val language: String = "auto",
+    val sourceOriginUs: Long = 0
 ) {
     init {
         require(sourcePath.isNotBlank() && durationUs > 0 && width > 0 && height > 0)
@@ -48,6 +49,7 @@ data class TextEditProject(
         require(layers.map { it.id }.distinct().size == layers.size)
         require(captions.map { it.id }.distinct().size == captions.size)
         require(language in setOf("auto", "ru", "en"))
+        require(sourceOriginUs>=0)
     }
     fun hook(text: String) = TextLayer(UUID.randomUUID().toString(), text, 0, minOf(3_000_000, durationUs))
     fun activeLayers(timeUs: Long): List<TextLayer> =
