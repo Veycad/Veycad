@@ -1,10 +1,32 @@
 package com.veycad.app
 
 import java.io.File
+import java.nio.file.Files
 import org.junit.Assert.*
 import org.junit.Test
 
 class MultiSourceRequestTest {
+    @Test fun galleryValidatesEverySelectedFileAndKeepsEqualSelectionsLegal() {
+        val directory = Files.createTempDirectory("gallery-request").toFile()
+        try {
+            val video = File(directory, "video.mp4").apply { writeText("video") }
+            val music = File(directory, "neon_drift.wav").apply { writeText("music") }
+            val sources = MediaSourceSet(gallerySources(20).items.map { it.copy(file = video) })
+            VeycadAutomaticEditor.Request.validateSourceFiles(sources, music, MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
+            val missing = MediaSourceSet(sources.items.mapIndexed { index, source ->
+                if (index == 19) source.copy(file = File(directory, "missing.mp4")) else source })
+            assertThrows(IllegalArgumentException::class.java) {
+                VeycadAutomaticEditor.Request.validateSourceFiles(missing, music, MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                VeycadAutomaticEditor.Request.validateSourceFiles(sources, video, MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                VeycadAutomaticEditor.Request.validateSourceFiles(MediaSourceSet(sources.items.take(2)), music,
+                    MontageStyleCatalog.Recipe.DUALITY_LOOP)
+            }
+        } finally { directory.deleteRecursively() }
+    }
     @Test fun rendererPreservesTwentyOrderedSelectionsIncludingEqualFiles() {
         val files = (19 downTo 0).map { File("source-$it.mp4") }.toMutableList()
         files[1] = files[0]
@@ -43,7 +65,7 @@ class MultiSourceRequestTest {
     }
 
     @Test fun automaticRequestKeepsLegacyRecipeCardinality() {
-        MontageStyleCatalog.Recipe.entries.forEach { recipe ->
+        MontageStyleCatalog.Recipe.entries.filter { it != MontageStyleCatalog.Recipe.GALLERY_MONTAGE }.forEach { recipe ->
             val expected = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) 2 else 1
             VeycadAutomaticEditor.Request.validateRecipeSources(sourceSet(expected), recipe)
             listOf(0, 3, 20, if (expected == 1) 2 else 1).forEach { count ->
@@ -51,6 +73,15 @@ class MultiSourceRequestTest {
                     VeycadAutomaticEditor.Request.validateRecipeSources(sourceSet(count), recipe)
                 }
             }
+        }
+    }
+
+    @Test fun galleryAllowsOneToTwentySelectionsIncludingEqualFiles() {
+        for (count in listOf(1, 2, 10, 20)) {
+            VeycadAutomaticEditor.Request.validateRecipeSources(sourceSet(count), MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
+        }
+        for (count in listOf(0, 21)) assertThrows(IllegalArgumentException::class.java) {
+            VeycadAutomaticEditor.Request.validateRecipeSources(sourceSet(count), MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
         }
     }
 

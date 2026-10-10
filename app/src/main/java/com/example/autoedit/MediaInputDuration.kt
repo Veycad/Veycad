@@ -5,9 +5,9 @@ internal fun mediaInputDurationUs(firstPtsUs: Long, lastPtsUs: Long, penultimate
     declaredDurationUs: Long?, frameRate: Int?): Long {
     require(firstPtsUs >= 0 && lastPtsUs >= firstPtsUs) { "Некорректные PTS видео" }
     val span = lastPtsUs - firstPtsUs
-    // MediaFormat.KEY_DURATION is a content duration, not an absolute EOS timestamp.
-    // A muxer may explicitly hold the final frame for longer than the preceding PTS gap.
-    // Preserve that metadata, including when the track begins at a nonzero PTS.
+    // Preserve the legacy declared metadata. Its convention is container-dependent;
+    // it is NOT independent presentation-end evidence for gallery windows or policy.
+    // Explicit long final holds must not be reduced to a preceding PTS gap.
     if (declaredDurationUs != null && declaredDurationUs > span) return declaredDurationUs
 
     // Only absent/inconsistent metadata needs an estimate. This never adds the initial

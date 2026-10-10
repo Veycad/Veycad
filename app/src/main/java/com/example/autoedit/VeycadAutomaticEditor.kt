@@ -60,6 +60,10 @@ internal object VeycadAutomaticEditor {
 
         companion object {
             internal fun validateRecipeSources(sources: MediaSourceSet, recipe: MontageStyleCatalog.Recipe) {
+                if (recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) {
+                    GalleryImportPolicy.validate(sources)
+                    return
+                }
                 val expected = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) 2 else 1
                 require(sources.items.size == expected) {
                     "DUALITY requires exactly two video sources and other recipes require one"
@@ -73,17 +77,23 @@ internal object VeycadAutomaticEditor {
                     inspector.inspect("legacy-$index", file, file.name)
                 })
             }
+
+            internal fun validateSourceFiles(sources: MediaSourceSet, musicFile: File,
+                recipe: MontageStyleCatalog.Recipe) {
+                require(sources.items.isNotEmpty() && musicFile.isFile)
+                val musicPath = musicFile.canonicalPath
+                val paths = sources.items.map { source ->
+                    require(source.file.isFile) { "Недоступен исходный файл: ${source.displayName}" }
+                    source.file.canonicalPath.also { require(it != musicPath) }
+                }
+                // Gallery identity belongs to selections even when they reference the same file.
+                if (recipe != MontageStyleCatalog.Recipe.GALLERY_MONTAGE) require(paths.distinct().size == paths.size)
+            }
         }
 
         init {
             validateRecipeSources(sources, recipe)
-            require(sourceFile.isFile && musicFile.isFile)
-            require(sourceFile.canonicalPath != musicFile.canonicalPath)
-            secondarySourceFile?.let { secondary ->
-                require(secondary.isFile)
-                require(secondary.canonicalPath != sourceFile.canonicalPath)
-                require(secondary.canonicalPath != musicFile.canonicalPath)
-            }
+            validateSourceFiles(sources, musicFile, recipe)
             require(recipe != MontageStyleCatalog.Recipe.HEARTBEAT ||
                 HeartbeatMontageProfile.matchesAudio(musicFile)) {
                 "Heartbeat requires its authored score; refusing a mixed-style render"
@@ -103,6 +113,11 @@ internal object VeycadAutomaticEditor {
         musicFile: File
     ): Boolean = FearStrobeProfile.matchesAudio(musicFile) ==
         (recipe == MontageStyleCatalog.Recipe.FEAR_STROBE)
+
+    /** Internal neutral route; G6/G7 must integrate its analysis, export and decoded QA. */
+    internal fun directGallery(sources: MediaSourceSet, moments: List<GalleryMoment>,
+        audioMap: AudioBeatMap, requestedDurationMs: Long = 30_000): MontageGraph =
+        GalleryMontageDirector.direct(sources, moments, audioMap, requestedDurationMs)
 
     internal fun dualityAudioMatchesRecipe(
         recipe: MontageStyleCatalog.Recipe,

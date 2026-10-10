@@ -102,6 +102,7 @@ object BuiltInMusicCatalog {
         MontageStyleCatalog.heartbeat.id -> heartbeatTrack
         MontageStyleCatalog.fearStrobe.id -> fearTrack
         MontageStyleCatalog.dualityLoop.id -> dualityTrack
+        MontageStyleCatalog.galleryMontage.id -> tracks.single { it.id == "neon_drift" }
         else -> error("No production music route for montage style: $styleId")
     }
 
