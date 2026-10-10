@@ -1,3 +1,5 @@
+> Integration amendment (2026-10-10): the approved common HybridProject core from PR #15 owns project/asset IDs, revision allocation, ProjectClock, clip span/sourceMap, storage and commands. Task 1 now supplies format/framing values and a read-only DraftProject snapshot adapter. Task 2 storage work is delegated to that core owner; preparation, export and lifecycle tasks consume the common store through the adapter. Independent geometry/render tasks continue. See docs/design/live-preview-core-contract.md. The original task history below is preserved; competing draft stores/codecs and private revision allocators are superseded.
+
 # План реализации быстрого предпросмотра и форматов кадра
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
