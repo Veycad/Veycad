@@ -52,6 +52,7 @@ internal object MontageStylePresentation {
             MontageStyleCatalog.Recipe.HEARTBEAT -> "♥" to "Пульс · повтор фразы · чёрный финал"
             MontageStyleCatalog.Recipe.FEAR_STROBE -> "⚡" to "Движение · склейки · строб-акценты"
             MontageStyleCatalog.Recipe.DUALITY_LOOP -> "↔" to "Две связанные сцены · перекличка"
+            MontageStyleCatalog.Recipe.GALLERY_MONTAGE -> "▦" to style.description
             null -> "○" to style.description
         }
         return Copy(

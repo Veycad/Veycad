@@ -5,6 +5,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BuiltInMusicCatalogTest {
+    @Test fun gallery_uses_its_own_procedural_neon_drift_route() {
+        val track = BuiltInMusicCatalog.trackForStyle(MontageStyleCatalog.galleryMontage.id)
+        assertEquals("neon_drift", track.id)
+        assertEquals(null, track.rawResourceId)
+    }
     @Test fun catalog_contains_ten_distinct_phonk_arrangements() {
         val tracks = BuiltInMusicCatalog.tracks
 
