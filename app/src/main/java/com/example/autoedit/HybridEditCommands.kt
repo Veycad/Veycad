@@ -102,10 +102,18 @@ object HybridEditCommands {
         commitRevision(project, project.current.copy(style = project.current.style.copy(showAuthoredText = visible)))
 
     /** External adapters supply payload at the current ID; allocation and parenting belong here. */
-    fun commitRevision(project: HybridProject, candidate: HybridRevision): HybridProject = editValidation {
+    fun commitRevision(project: HybridProject, candidate: HybridRevision): HybridProject =
+        commitRevision(project, candidate, restoresAutomaticSources = false)
+
+    private fun commitRevision(project: HybridProject, candidate: HybridRevision,
+        restoresAutomaticSources: Boolean): HybridProject = editValidation {
         require(candidate.id == project.current.id) { "Проект изменился после начала правки" }
-        val payload = candidate.copy(parentId = project.current.parentId)
-        if (payload == project.current) return@editValidation project
+        // Compare content without interpreting an inherited event as a new reset. An
+        // explicit reset can change hidden source selection even when visible content matches.
+        val payload = candidate.copy(parentId = project.current.parentId,
+            restoresAutomaticSources = project.current.restoresAutomaticSources)
+        if (payload == project.current && (!restoresAutomaticSources ||
+                project.current.id == project.original.id || project.current.restoresAutomaticSources)) return@editValidation project
         require(project.nextRevisionId < Long.MAX_VALUE) { "Исчерпан диапазон номеров ревизий" }
         val assets = project.assets.associateBy { it.id }
         payload.clips.forEach { clip ->
@@ -118,7 +126,8 @@ object HybridEditCommands {
         require(music != null && music.kind == ProjectAsset.Kind.AUDIO) { "Аудиоисходник музыки не найден" }
         require(payload.music.startUs < music.durationUs) { "Выбранный отрывок начинается после конца музыки" }
         // HybridProject validates the entire payload, source bounds and historical ownership.
-        project.copy(current = payload.copy(id = project.nextRevisionId, parentId = project.current.id),
+        project.copy(current = payload.copy(id = project.nextRevisionId, parentId = project.current.id,
+            restoresAutomaticSources = restoresAutomaticSources),
             nextRevisionId = project.nextRevisionId + 1,
             undo = (project.undo + project.current).takeLast(50), redo = emptyList())
     }
@@ -136,7 +145,7 @@ object HybridEditCommands {
     }
 
     fun restoreAutomatic(project: HybridProject): HybridProject = commitRevision(project,
-        project.original.copy(id = project.current.id, parentId = project.current.parentId))
+        project.original.copy(id = project.current.id, parentId = project.current.parentId), restoresAutomaticSources = true)
 
     private fun exactSlice(map: SourceTimeMap, from: Int, until: Int): SourceTimeMap {
         // Re-interpolating rounded endpoints changes unsaved fractional samples by 1 us.

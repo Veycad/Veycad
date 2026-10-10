@@ -385,11 +385,134 @@ class HybridEditCommandsTest {
         val edited = HybridEditCommands.putText(base, title()).let { it.copy(exports = listOf(
             ProjectExportRef(it.current.id, "export.mp4", ProjectExportSettings(1080, 1920, 30, 1, 1)))) }
         val restored = HybridEditCommands.apply(edited, ProjectCommand.RestoreAutomatic)
-        assertEquals(base.original.copy(id = 2, parentId = 1), restored.current)
+        assertEquals(base.original.copy(id = 2, parentId = 1, restoresAutomaticSources = true), restored.current)
         assertEquals(edited.exports, restored.exports)
         assertEquals(edited.assets, restored.assets)
         assertSame(base.original, restored.original)
         assertEquals(edited.current, HybridEditCommands.undo(restored).current)
+    }
+
+    private fun reopenResetProject(project: HybridProject, mode: Int): HybridProject = when (mode) {
+        0 -> project
+        1 -> HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder())).let { it.decode(it.encode(project)) }
+        else -> HybridProjectStore(temporary.newFolder()).let { store ->
+            val sources = File(store.directory(project.id), "sources").apply { mkdirs() }
+            project.assets.forEach { File(sources, it.fileName).writeText("fixture source") }
+            store.create(project)
+            store.load(project.id)
+        }
+    }
+
+    private fun rewriteRightCurve(base: HybridProject): HybridProject = HybridEditCommands.commitRevision(base,
+        base.current.copy(clips = base.current.clips.map { clip ->
+            if (clip.id != "right") clip else clip.copy(sourceMap = SourceTimeMap(clip.sourceMap.points.mapIndexed { index, point ->
+                if (index == 0) point.copy(sourceTimeUs = 300_000) else point
+            }))
+        }))
+
+    @Test fun automaticResetAfterExternalRewriteAllowsCutsDirectlyAndAfterCodecOrStoreReopen() {
+        val base = editProject()
+        val selected = rewriteRightCurve(base)
+        val reset = HybridEditCommands.restoreAutomatic(selected)
+        assertEquals(selected.current.id, reset.current.parentId)
+        assertEquals(base.original.clips, reset.current.clips)
+        for (mode in 0..2) {
+            val reopened = reopenResetProject(reset, mode)
+            assertEquals("mode=$mode", HybridCutConstraints.range(base, "right"), HybridCutConstraints.range(reopened, "right"))
+            val moved = HybridEditCommands.moveCut(reopened, "right", 28)
+            val expected = HybridEditCommands.moveCut(base, "right", 28)
+            for (clip in 0..1) for (frame in 0..expected.current.clips[clip].span.length) {
+                assertEquals("mode=$mode clip=$clip frame=$frame", expected.current.clips[clip].sourceMap.sample(frame),
+                    moved.current.clips[clip].sourceMap.sample(frame))
+            }
+            assertEquals(moved, reopenResetProject(moved, mode))
+        }
+    }
+
+    @Test fun automaticResetAncestrySurvivesTrimSlipUndoRedoAndReopen() {
+        val base = nonlinearProject()
+        for (mode in 1..2) for ((before, after) in listOf(123_456L to 0L, 0L to 123_456L, 100_000L to 23_456L)) {
+            val selected = rewriteRightCurve(base)
+            val reset = HybridEditCommands.restoreAutomatic(selected)
+            assertEquals(selected.current, HybridEditCommands.undo(reset).current)
+            assertEquals(reset.current, HybridEditCommands.redo(HybridEditCommands.undo(reset)).current)
+            var edited = HybridEditCommands.slipClip(reset, "right", before)
+            edited = HybridEditCommands.moveCut(edited, "right", 42)
+            edited = HybridEditCommands.slipClip(edited, "right", after)
+            val reopened = reopenResetProject(edited, mode)
+            val replayed = HybridEditCommands.redo(HybridEditCommands.undo(reopened))
+            assertEquals(reopened.current, replayed.current)
+            val extended = HybridEditCommands.moveCut(replayed, "right", 28)
+            val expected = HybridEditCommands.moveCut(HybridEditCommands.slipClip(base, "right", 123_456), "right", 28)
+            for (frame in 0..32) assertEquals("mode=$mode before=$before after=$after frame=$frame",
+                expected.current.clips[1].sourceMap.sample(frame), extended.current.clips[1].sourceMap.sample(frame))
+        }
+    }
+
+    private fun selectedLongerCurve(): HybridProject {
+        val base = editProject()
+        val right = base.current.clips[1].copy(span = FrameSpan(30, 80), sourceMap = SourceTimeMap(listOf(
+            SourceTimeMap.Point(0, 500_000), SourceTimeMap.Point(30, 1_500_000), SourceTimeMap.Point(50, 2_600_000))))
+        val last = base.current.clips[2].copy(span = FrameSpan(80, 90), originalFrameOffset = 20,
+            sourceMap = SourceTimeMap((20..30).map { SourceTimeMap.Point(it - 20, base.current.clips[2].sourceMap.sample(it)) }))
+        return HybridEditCommands.commitRevision(base, base.current.copy(clips = listOf(base.current.clips[0], right, last)))
+    }
+
+    @Test fun baselineShapedTrimStillRestoresTheNewerLongerHiddenCurve() {
+        val selected = selectedLongerCurve()
+        val trimmed = HybridEditCommands.moveCut(selected, "last", 60)
+        assertEquals(selected.original.clips[1].sourceMap, trimmed.current.clips[1].sourceMap)
+        for (mode in 0..2) {
+            val restored = HybridEditCommands.moveCut(reopenResetProject(trimmed, mode), "last", 80)
+            for (frame in 0..50) assertEquals("mode=$mode frame=$frame", selected.current.clips[1].sourceMap.sample(frame),
+                restored.current.clips[1].sourceMap.sample(frame))
+        }
+    }
+
+    @Test fun explicitResetSelectsBaselineEvenWhenVisiblePayloadAlreadyMatchesIt() {
+        val trimmed = HybridEditCommands.moveCut(selectedLongerCurve(), "last", 60)
+        val visibleBaseline = HybridEditCommands.commitRevision(trimmed, trimmed.original.copy(id = trimmed.current.id))
+        assertEquals(visibleBaseline.original.clips, visibleBaseline.current.clips)
+        val reset = HybridEditCommands.restoreAutomatic(visibleBaseline)
+        assertEquals(visibleBaseline.nextRevisionId, reset.current.id)
+        assertEquals(visibleBaseline.current.id, reset.current.parentId)
+        val expected = HybridEditCommands.moveCut(editProject(), "last", 80)
+        for (mode in 0..2) {
+            val reopened = reopenResetProject(reset, mode)
+            val extended = HybridEditCommands.moveCut(reopened, "last", 80)
+            for (frame in 0..50) assertEquals("mode=$mode frame=$frame", expected.current.clips[1].sourceMap.sample(frame),
+                extended.current.clips[1].sourceMap.sample(frame))
+            val undone = HybridEditCommands.moveCut(HybridEditCommands.undo(reopened), "last", 80)
+            assertEquals(2_600_000L, undone.current.clips[1].sourceMap.sample(50))
+        }
+    }
+
+    @Test fun resetMarkerBelongsOnlyToItsAllocatedRevisionAndCannotDescribeEditedSources() {
+        val base = editProject()
+        val reset = HybridEditCommands.restoreAutomatic(rewriteRightCurve(base))
+        assertTrue(reset.current.restoresAutomaticSources)
+        assertFalse(reset.original.restoresAutomaticSources)
+        assertSame(reset, HybridEditCommands.restoreAutomatic(reset))
+        assertSame(reset, HybridEditCommands.commitRevision(reset, reset.current))
+        val edited = HybridEditCommands.commitRevision(reset, reset.current.copy(texts = listOf(title())))
+        assertFalse(edited.current.restoresAutomaticSources)
+        assertTrue(HybridEditCommands.undo(edited).current.restoresAutomaticSources)
+        assertEquals(edited.current, HybridEditCommands.redo(HybridEditCommands.undo(edited)).current)
+        val forged = HybridEditCommands.commitRevision(edited,
+            edited.current.copy(texts = listOf(title("external")), restoresAutomaticSources = true))
+        assertFalse(forged.current.restoresAutomaticSources)
+        val different = reset.current.clips[1]
+        for (changed in listOf(
+            different.copy(originalFrameOffset = 1),
+            different.copy(sourceMap = SourceTimeMap(listOf(SourceTimeMap.Point(0, 300_000), SourceTimeMap.Point(30, 1_500_000)))),
+            different.copy(original = different.original.copy(sourceIndex = 1)),
+            different.copy(assetId = "another-video")
+        )) {
+            val candidate = reset.current.copy(clips = listOf(reset.current.clips[0], changed, reset.current.clips[2]))
+            val assets = reset.assets + reset.assets.first().copy(id = "another-video", fileName = "another.mp4")
+            assertThrows(IllegalArgumentException::class.java) { reset.copy(assets = assets, current = candidate) }
+        }
+        assertThrows(IllegalArgumentException::class.java) { base.original.copy(restoresAutomaticSources = true) }
     }
 
     @Test fun externalCommitUsesSharedCounterHistoryAndRejectsStaleOrInvalidPayload() {

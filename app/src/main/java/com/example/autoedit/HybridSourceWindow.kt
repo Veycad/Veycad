@@ -23,7 +23,8 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
     // arbitrary older curve cannot prove which hidden samples were selected. Redo and gaps
     // must not supply backing, and a rewrite ends provenance even if older overlaps match.
     private val backing: List<Backing> = buildList {
-        if (project.current.id == project.original.id) {
+        // The model validates reset events against the complete original source clips.
+        if (project.current.id == project.original.id || project.current.restoresAutomaticSources) {
             add(Backing(clip, 0, true))
         } else {
             val undoById = project.undo.associateBy { it.id }
@@ -37,7 +38,11 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
                 if (saved.assetId != selected.assetId || !sameSourceDescriptor(selected, saved)) break
                 val delta = slipFrom(selected, saved) ?: break
                 shift = Math.addExact(shift, delta)
-                add(Backing(saved, shift, revision.id == project.original.id))
+                val automatic = revision.id == project.original.id || revision.restoresAutomaticSources
+                add(Backing(saved, shift, automatic))
+                // A reset is a validated selection barrier. Older edited curves must not
+                // supply hidden samples beyond the newly selected automatic window.
+                if (automatic) break
                 selected = saved
                 parentId = revision.parentId
             }
@@ -118,7 +123,7 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
                 }
             }
         }
-        // Only a verified chain to the automatic map proves its baseline extent. After
+        // Only original or a verified chain to an automatic reset proves that extent. After
         // a rewrite or pruned ancestry, durable backing belongs to integration A/A2.
         val original = backing.firstOrNull { it.automatic }
         require(original != null) { "Сохранённая карта скрытых кадров недоступна; расширение клипа невозможно" }

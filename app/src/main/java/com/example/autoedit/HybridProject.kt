@@ -46,7 +46,9 @@ data class ProjectStyle(val recipeId: String, val recipeVersion: Int, val mode: 
 /** Editable clips own frame timing; graph retains the director/style template. */
 class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
     clips: List<HybridClip>, val music: ProjectMusic, texts: List<TextItem>,
-    val style: ProjectStyle, lockedCutIds: Set<String>) {
+    val style: ProjectStyle, lockedCutIds: Set<String>,
+    /** Event on this revision only: RestoreAutomatic selected the original source windows. */
+    val restoresAutomaticSources: Boolean = false) {
     val clips: List<HybridClip> = snapshotList(clips)
     val texts: List<TextItem> = snapshotList(texts)
     /** A cut is identified by the incoming (right) clip; the first clip has no cut. */
@@ -54,6 +56,7 @@ class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
 
     init {
         require(id >= 0 && (parentId == null || parentId in 0 until id))
+        require(!restoresAutomaticSources || parentId != null)
         require(this.clips.isNotEmpty() && this.clips.first().span.start == 0)
         require(this.clips.zipWithNext().all { (a, b) -> a.span.endExclusive == b.span.start })
         require(this.clips.map { it.id }.toSet().size == this.clips.size)
@@ -65,13 +68,14 @@ class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
     fun copy(id: Long = this.id, parentId: Long? = this.parentId, graph: MontageGraph = this.graph,
         clips: List<HybridClip> = this.clips, music: ProjectMusic = this.music,
         texts: List<TextItem> = this.texts, style: ProjectStyle = this.style,
-        lockedCutIds: Set<String> = this.lockedCutIds) =
-        HybridRevision(id, parentId, graph, clips, music, texts, style, lockedCutIds)
+        lockedCutIds: Set<String> = this.lockedCutIds,
+        restoresAutomaticSources: Boolean = this.restoresAutomaticSources) =
+        HybridRevision(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources)
 
-    private fun values() = listOf(id, parentId, graph, clips, music, texts, style, lockedCutIds)
+    private fun values() = listOf(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources)
     override fun equals(other: Any?): Boolean = other is HybridRevision && values() == other.values()
     override fun hashCode(): Int = values().hashCode()
-    override fun toString(): String = "HybridRevision(id=$id, parentId=$parentId, clips=$clips, music=$music, texts=$texts, style=$style, lockedCutIds=$lockedCutIds, graph=$graph)"
+    override fun toString(): String = "HybridRevision(id=$id, parentId=$parentId, clips=$clips, music=$music, texts=$texts, style=$style, lockedCutIds=$lockedCutIds, restoresAutomaticSources=$restoresAutomaticSources, graph=$graph)"
 }
 
 /** nextRevisionId lives outside undoable revisions; commands retain it when moving history. */
@@ -98,6 +102,9 @@ class HybridProject(val id: String, val schemaVersion: Int, val fps: Int,
         require(this.exports.all { it.revisionId < nextRevisionId })
         val byId = this.assets.associateBy { it.id }
         for (revision in revisions) {
+            require(!revision.restoresAutomaticSources || revision.clips == original.clips) {
+                "An automatic source reset must contain the complete original clips"
+            }
             for (clip in revision.clips) {
                 val asset = byId[clip.assetId]
                 require(asset != null && asset.kind == ProjectAsset.Kind.VIDEO)

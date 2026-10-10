@@ -12,7 +12,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Explicit primitive format. Physical v2 adds camera phase; project schema remains 1. */
+/** Explicit primitive format: v2 adds camera phase, v3 source resets; project schema stays 1. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
     fun encode(project: HybridProject): ByteArray {
         val bytes = ByteArrayOutputStream()
@@ -120,6 +120,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             }
             with(style) { string(recipeId); out.writeInt(recipeVersion); enum(mode); out.writeBoolean(showAuthoredText) }
             list(lockedCutIds) { string(it) }
+            out.writeBoolean(restoresAutomaticSources)
         }
         fun clip(value: MontageGraph.Clip) = with(value) {
             string(id); out.writeLong(sourceStartMs); out.writeLong(sourceEndMs); out.writeLong(outputDurationMs)
@@ -201,7 +202,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         fun span() = FrameSpan(input.readInt(), input.readInt())
         fun curve() = MontageGraph.SpeedRamp.CubicBezier(input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat())
         fun formatVersion(): Int = input.readInt().also {
-            require(it == 1 || it == FORMAT_VERSION) { "Unsupported hybrid format $it" }
+            require(it == 1 || it == 2 || it == FORMAT_VERSION) { "Unsupported hybrid format $it" }
         }
         fun revision(format: Int): HybridRevision {
             val id = input.readLong(); val parent = nullableLong(); val graph = graph()
@@ -209,7 +210,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
                 val clip = HybridClip(string(), string(), span(), sourceMap(), clip())
                 when (format) {
                     1 -> clip
-                    2 -> clip.copy(originalFrameOffset = input.readInt())
+                    2, 3 -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -218,7 +219,12 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             val style = ProjectStyle(string(), input.readInt(), enum(), input.readBoolean())
             val locked = list { string() }
             require(locked.distinct().size == locked.size)
-            return HybridRevision(id, parent, graph, clips, music, texts, style, locked.toSet())
+            val resetsSources = when (format) {
+                1, 2 -> false
+                3 -> input.readBoolean()
+                else -> error("Unsupported hybrid format")
+            }
+            return HybridRevision(id, parent, graph, clips, music, texts, style, locked.toSet(), resetsSources)
         }
         fun clip() = MontageGraph.Clip(string(), input.readLong(), input.readLong(), input.readLong(), enum(), enum(), enum(),
             input.readFloat(), input.readLong(),
@@ -287,7 +293,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 2
+        private const val FORMAT_VERSION = 3
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024
