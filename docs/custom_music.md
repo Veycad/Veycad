@@ -60,6 +60,23 @@ SHA256 исходника, музыки и итогового MP4, полный 
 диагностика не меняет QA-пороги и не делает отрицательный результат успешным.
 Это тестовый локальный snapshot, а не общий release-report и не художественная
 приёмка. Рефлексия сохраняет поля модели без округления и сокращения массивов.
+Запись потоковая, с буфером 8192 символа: planes не дублируются в JSON-дереве или
+гигантской строке. Inspector читается через streaming JsonReader и встраивается
+из файла ограниченным буфером; в памяти остаётся только компактная карта PTS.
+Для assertions возвращается небольшой Summary, полный файл повторно не читается.
+Host-проверки `tools/custom_music_tests/CustomMusicJsonWriterTest.kt` запускаются
+JUnit с `-Xmx64m` и проверяют точный SHA256 всех 8 миллионов float-значений в
+JSON, который больше всего heap, а также scalar precision/null/enum/escaping.
+Небольшой `fidelity.json` проверяется независимым JSON-парсером. Android-тест
+проверяет streaming clock, включая большие Long PTS, null и отрицательные PTS.
+Команда независимой проверки:
+
+```shell
+python tools/custom_music_tests/verify_fidelity.py <каталог-host-evidence>/fidelity.json
+```
+
+Парные и одиночные UTF-16 суррогаты экранируются как `\uXXXX`, чтобы UTF-8 запись
+сохраняла исходные строки.
 
 Для разбора `colour-jump` сопоставьте `maximumColourJumpTimeUs` с соседними
 VisualSamples, clip/overlay окнами графа и decoded source clock из inspector.

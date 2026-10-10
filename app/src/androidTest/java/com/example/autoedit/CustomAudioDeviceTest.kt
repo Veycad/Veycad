@@ -4,6 +4,7 @@ import android.media.MediaMetadataRetriever
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.io.StringWriter
 import kotlin.math.abs
 import kotlin.math.sqrt
 import org.json.JSONArray
@@ -20,8 +21,8 @@ class CustomAudioDeviceTest {
 
     @Test fun diagnostic_snapshot_preserves_planes_nulls_and_failed_audio_evidence() {
         val plane = FrameAttachments.Plane(2, 1, floatArrayOf(.25f, .75f), .9f)
-        val encoded = CustomMusicEvidence.json(FrameAttachments(123_456, mask = plane)) as JSONObject
-        val decoded = JSONObject(encoded.toString())
+        fun encoded(value: Any?) = StringWriter().also { CustomMusicJsonWriter.writeValue(it, value) }.toString()
+        val decoded = JSONObject(encoded(FrameAttachments(123_456, mask = plane)))
         assertEquals(123_456L, decoded.getLong("sourceTimeUs"))
         assertTrue(decoded.has("depth") && decoded.isNull("depth"))
         val values = decoded.getJSONObject("mask").getJSONArray("values")
@@ -29,12 +30,32 @@ class CustomAudioDeviceTest {
         assertEquals(.75, values.getDouble(1), .000001)
         val audio = DecodedAudioQuality.evaluate(floatArrayOf(.5f), 10, 1,
             expectedDurationUs = 100_000, durationToleranceUs = 0, unclampedFloatEvidence = false)
-        val evidence = CustomMusicEvidence.json(audio) as JSONObject
+        val evidence = JSONObject(encoded(audio))
         assertFalse(evidence.getBoolean("unclampedFloatEvidence"))
         assertEquals("audio-unclamped-headroom-unavailable", evidence.getJSONArray("issues").getString(0))
-        val transitions = CustomMusicEvidence.json(listOf(MontageGraph.Transition.WHIP, null)) as JSONArray
+        val transitions = JSONArray(encoded(listOf(MontageGraph.Transition.WHIP, null)))
         assertEquals("WHIP", transitions.getString(0))
         assertTrue(transitions.isNull(1))
+    }
+
+    @Test fun streaming_clock_preserves_missing_negative_and_precise_pts() {
+        val inspector = File(directory, "stream-clock.json")
+        inspector.writeText("""{"ignored":{"nested":[1,2]},"frames":[
+            {"output_us":9007199254740993,"decoded_source_us":123456,"other":[null]},
+            {"output_us":33333,"decoded_source_us":null},
+            {"output_us":66666,"decoded_source_us":-1}]}""")
+        assertEquals(mapOf(9_007_199_254_740_993L to 123_456L, 66_666L to -1L),
+            CustomMusicEvidence.readClock(inspector))
+        val copied = File(directory, "stream-clock-copy.json")
+        CustomMusicJsonWriter.write(copied, mapOf("execution" to
+            CustomMusicJsonWriter.InspectorDocument(inspector)))
+        val frames = JSONObject(copied.readText()).getJSONObject("execution").getJSONArray("frames")
+        assertEquals(3, frames.length())
+        assertEquals(9_007_199_254_740_993L, frames.getJSONObject(0).getLong("output_us"))
+        assertTrue(frames.getJSONObject(1).isNull("decoded_source_us"))
+        assertEquals(-1L, frames.getJSONObject(2).getLong("decoded_source_us"))
+        inspector.appendText(" {}")
+        assertThrows(Exception::class.java) { CustomMusicEvidence.readClock(inspector) }
     }
 
     @Test fun wav_seek_discards_the_intro_at_exact_pcm_frame_boundaries() {
@@ -126,15 +147,14 @@ class CustomAudioDeviceTest {
             bitrate = 200_000, musicStartUs = 15_000_000))
         // Save before assertions, and before subsequent UI fixtures clear private inspector files.
         val evidence = CustomMusicEvidence.save(result, video, audio, output, evidenceFile)
-        assertEquals(result.passedQualityGate, evidence.getBoolean("quality_gate"))
-        assertEquals(result.winner.samples.size, evidence.getJSONArray("visual_samples").length())
-        assertEquals(15_000_000L, evidence.getJSONObject("graph")
-            .getJSONObject("audioTrack").getLong("sourceStartUs"))
+        assertEquals(result.passedQualityGate, evidence.qualityGate)
+        assertEquals(result.winner.samples.size, evidence.visualSamples)
+        assertEquals(15_000_000L, evidence.audioStartUs)
         assertTrue("Missing decoded source clock; inspect saved native-editor-evidence.json",
-            evidence.getBoolean("decoded_source_clock_available"))
-        assertEquals(result.winner.frames, evidence.getInt("decoded_source_clock_entries"))
+            evidence.clockEntries > 0)
+        assertEquals(result.winner.frames, evidence.clockEntries)
         assertTrue("Incomplete/negative decoded PTS; inspect saved native-editor-evidence.json",
-            evidence.getBoolean("decoded_source_clock_complete"))
+            evidence.clockComplete)
         assertTrue(output.isFile && output.length() > 0)
         assertTrue(result.winner.frames > 0)
         assertEquals(15_000_000L, result.winner.alternative.graph.audioTrack!!.sourceStartUs)
