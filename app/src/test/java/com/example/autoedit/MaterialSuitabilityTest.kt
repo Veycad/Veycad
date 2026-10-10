@@ -4,6 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MaterialSuitabilityTest {
+    @Test fun custom_music_accepts_a_nonhuman_scene_for_rhythm_based_cuts() {
+        MaterialSuitability.checkHumanEvidence(MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
+            listOf(visual(human = 0f, face = 0f)))
+    }
     @Test fun short_input_is_a_named_material_rejection_for_each_product() {
         MontageStyleCatalog.Recipe.entries.forEach { recipe ->
             val sources = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP)

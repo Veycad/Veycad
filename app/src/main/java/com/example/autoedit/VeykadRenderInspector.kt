@@ -531,6 +531,7 @@ object VeykadRenderInspector {
             }))
             put("opening_mask_refinements", graph.frameAttachments.maskRefinements.size)
             put("audio", graph.audioTrack?.sourceId ?: "none")
+            put("audio_start_us", graph.audioTrack?.sourceStartUs ?: 0L)
             put("transitions", JSONArray(graph.clips.map { it.transitionIn.name }))
         })
         put("container", containerJson(container))

@@ -33,8 +33,8 @@ data class MontageGraph(
     }
     enum class ShotRole { OPENING, ESTABLISHING, CLOSE, DETAIL, ACTION, FINALE }
 
-    data class AudioTrack(val sourceId: String, val gain: Float = 1f) {
-        init { require(sourceId.isNotBlank() && gain in 0f..2f) }
+    data class AudioTrack(val sourceId: String, val gain: Float = 1f, val sourceStartUs: Long = 0L) {
+        init { require(sourceId.isNotBlank() && gain in 0f..2f && sourceStartUs >= 0L) }
     }
 
     data class Overlay(

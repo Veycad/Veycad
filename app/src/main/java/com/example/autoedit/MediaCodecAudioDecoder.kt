@@ -36,12 +36,12 @@ internal object MediaCodecAudioDecoder {
 
     fun decode(file: File, maxDecodeUs: Long = Long.MAX_VALUE,
                preserveFloatHeadroom: Boolean = false,
-               checkCancelled: () -> Unit = {}): DecodedAudio {
-        require(file.isFile)
+               checkCancelled: () -> Unit = {}, startUs: Long = 0L): DecodedAudio {
+        require(file.isFile && startUs >= 0 && maxDecodeUs > 0)
         val extractor = MediaExtractor()
         return try {
             extractor.setDataSource(file.absolutePath)
-            decodeTrack(extractor, maxDecodeUs, preserveFloatHeadroom, checkCancelled)
+            decodeTrack(extractor, maxDecodeUs, preserveFloatHeadroom, checkCancelled, startUs)
         } finally {
             extractor.release()
         }
@@ -65,20 +65,34 @@ internal object MediaCodecAudioDecoder {
 
     private fun decodeTrack(extractor: MediaExtractor, maxDecodeUs: Long,
                             preserveFloatHeadroom: Boolean,
-                            checkCancelled: () -> Unit): DecodedAudio {
+                            checkCancelled: () -> Unit, startUs: Long = 0L): DecodedAudio {
         val track = (0 until extractor.trackCount).firstOrNull { index ->
             extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
         } ?: error("No audio track")
         extractor.selectTrack(track)
+        val firstPacketUs = extractor.sampleTime
+        // Audio extractors may seek to the closest packet even with PREVIOUS_SYNC. Leave
+        // preroll for MP3's bit reservoir and discard it by the decoded PCM clock below.
+        if (startUs > 0L) extractor.seekTo((startUs - 500_000L).coerceAtLeast(0L),
+            MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
         val inputFormat = extractor.getTrackFormat(track)
-        if (preserveFloatHeadroom) {
+        val maxUs = if (maxDecodeUs > Long.MAX_VALUE - startUs) Long.MAX_VALUE else startUs + maxDecodeUs
+        // Encoder delay/padding describe the original file boundaries, not an interior seek
+        // or the artificial EOS used for a bounded analysis/export window.
+        if (startUs > 0L && extractor.sampleTime > firstPacketUs &&
+            inputFormat.containsKey(MediaFormat.KEY_ENCODER_DELAY))
+            inputFormat.setInteger(MediaFormat.KEY_ENCODER_DELAY, 0)
+        if (inputFormat.containsKey(MediaFormat.KEY_DURATION) &&
+            maxUs < inputFormat.getLong(MediaFormat.KEY_DURATION) &&
+            inputFormat.containsKey(MediaFormat.KEY_ENCODER_PADDING))
+            inputFormat.setInteger(MediaFormat.KEY_ENCODER_PADDING, 0)
+        if (preserveFloatHeadroom && inputFormat.getString(MediaFormat.KEY_MIME) != MediaFormat.MIMETYPE_AUDIO_RAW) {
             // Ask for float output so AAC overshoots are measured before integer saturation.
             // The returned encoding still has to be checked: this is a request, not evidence.
             inputFormat.setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_FLOAT)
         }
         val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: error("Audio track has no MIME")
         val decoder = MediaCodec.createDecoderByType(mime)
-        val maxUs = maxDecodeUs.coerceAtLeast(0L)
 
         val bytes = ByteArrayOutputStream()
         val info = MediaCodec.BufferInfo()
@@ -130,9 +144,25 @@ internal object MediaCodecAudioDecoder {
                         if (outputFormat == null) outputFormat = decoder.outputFormat
                         if (info.size > 0) {
                             val output = decoder.getOutputBuffer(outputIndex) ?: error("Missing decoder output")
-                            output.position(info.offset)
-                            output.limit(info.offset + info.size)
-                            val chunk = ByteArray(info.size)
+                            val format = requireNotNull(outputFormat)
+                            val channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                            val encoding = if (format.containsKey(MediaFormat.KEY_PCM_ENCODING))
+                                format.getInteger(MediaFormat.KEY_PCM_ENCODING) else AudioFormat.ENCODING_PCM_16BIT
+                            val sampleBytes = when (encoding) {
+                                AudioFormat.ENCODING_PCM_FLOAT -> 4
+                                AudioFormat.ENCODING_PCM_16BIT -> 2
+                                AudioFormat.ENCODING_PCM_8BIT -> 1
+                                else -> error("Unsupported decoder PCM encoding $encoding")
+                            }
+                            val frameBytes = sampleBytes * channels
+                            val frames = AudioPcmWindow.frames(info.presentationTimeUs, info.size / frameBytes,
+                                format.getInteger(MediaFormat.KEY_SAMPLE_RATE), startUs, maxDecodeUs)
+                            output.position(info.offset + frames.first * frameBytes)
+                            output.limit(info.offset + (frames.last + 1) * frameBytes)
+                            val chunk = ByteArray(frames.count() * frameBytes)
+                            check(bytes.size().toLong() + chunk.size <= 64L * 1024 * 1024) {
+                                "Аудиофрагмент слишком большой для обработки на устройстве"
+                            }
                             output.get(chunk)
                             bytes.write(chunk)
                         }

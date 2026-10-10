@@ -5,16 +5,22 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      custom_music_targeted:
+        description: Decode the pinned custom-music MP4 and run frozen visual renderer controls
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.custom_music_targeted && 'targeted' || 'ui' }}
   cancel-in-progress: true
 
 jobs:
   ui:
+    if: github.event_name != 'workflow_dispatch' || !inputs.custom_music_targeted
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -44,7 +50,7 @@ jobs:
           emulator-port: 5556
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-front emulated -camera-back emulated
-          script: pwsh -NoProfile -File tools/run_ui_tests.ps1
+          script: bash tools/run_custom_music_ci_tests.sh
       - name: Save UI reports and device failures
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,3 +60,55 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
             build/reports/ui-tests/
+
+  custom-music-targeted:
+    if: github.event_name == 'workflow_dispatch' && inputs.custom_music_targeted
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          fetch-depth: 0
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Download and verify pinned synthetic evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build/reports/custom-music-targeted
+          gh api repos/Veycad/Veycad/actions/artifacts/11670925739/zip > build/reports/custom-music-targeted/source-artifact.zip
+          gh api repos/Veycad/Veycad/actions/runs/38054343649 > build/reports/custom-music-targeted/source-run.json
+          gh api repos/Veycad/Veycad/commits/1a2c18c09bd29568dc2a7a3c1a38fc1efa3cc0c3 > build/reports/custom-music-targeted/source-commit.json
+          python3 tools/custom_music_tests/prepare_targeted_input.py build/reports/custom-music-targeted/source-artifact.zip build/reports/custom-music-targeted/input --run-metadata build/reports/custom-music-targeted/source-run.json --commit-metadata build/reports/custom-music-targeted/source-commit.json
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          chmod +x gradlew
+      - name: Decode retained frames and compare frozen visual renderers
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          avd-name: CustomMusicDiagnostic_API36
+          emulator-port: 5556
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash tools/run_custom_music_targeted.sh
+      - name: Save diagnostic input, reports and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-music-targeted-reports
+          path: build/reports/custom-music-targeted/

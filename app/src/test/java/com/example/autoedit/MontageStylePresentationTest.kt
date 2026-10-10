@@ -6,8 +6,8 @@ import org.junit.Test
 class MontageStylePresentationTest {
     @Test fun active_products_have_distinct_owned_identity_and_grammar() {
         val copies = MontageStyleCatalog.available.map(MontageStylePresentation::forStyle)
-        assertEquals(3, copies.map { it.symbol }.distinct().size)
-        assertEquals(3, copies.map { it.subtitle }.distinct().size)
+        assertEquals(copies.size, copies.map { it.symbol }.distinct().size)
+        assertEquals(copies.size, copies.map { it.subtitle }.distinct().size)
         copies.forEach { copy ->
             assertTrue(copy.selectorLabel.contains(copy.title))
             assertFalse(copy.selectorLabel.contains("Σ"))

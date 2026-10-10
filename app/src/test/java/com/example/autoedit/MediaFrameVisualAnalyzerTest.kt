@@ -41,11 +41,11 @@ class MediaFrameVisualAnalyzerTest {
         assertTrue(map.events.none { it.type == VisualEventMap.EventType.GESTURE })
     }
 
-    @Test fun one_portrait_plus_failed_frames_cannot_supply_two_human_witnesses_for_any_product() {
+    @Test fun one_portrait_plus_failed_frames_cannot_supply_two_human_witnesses_for_authored_products() {
         val observations = listOf(MediaFrameVisualAnalyzer.observationForFrame(0, estimate, semantics())) +
             (1..3).map { MediaFrameVisualAnalyzer.observationForFrame(it * 250_000L, estimate, null) }
         val visual = VisualEventMap(2_000_000L, emptyList(), observations)
-        for (recipe in MontageStyleCatalog.Recipe.values()) {
+        for (recipe in MontageStyleCatalog.Recipe.values().filterNot { it == MontageStyleCatalog.Recipe.CUSTOM_MUSIC }) {
             val maps = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) listOf(visual, visual) else listOf(visual)
             val rejection = try {
                 MaterialSuitability.checkHumanEvidence(recipe, maps)
