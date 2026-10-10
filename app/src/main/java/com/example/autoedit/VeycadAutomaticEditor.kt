@@ -33,10 +33,14 @@ internal object VeycadAutomaticEditor {
             RenderPassPlanner.DeviceCapabilities.conservative(),
         val onProgress: (Progress) -> Unit = {},
         val checkCancelled: () -> Unit = {},
-        val jobLease: File? = null
+        val jobLease: File? = null,
+        val musicStartUs: Long = 0L
     ) {
         init {
             require(sourceFile.isFile && musicFile.isFile)
+            require(musicStartUs >= 0L && (musicStartUs == 0L || recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC)) {
+                "Authored recipes require their original audio timing"
+            }
             require(sourceFile.canonicalPath != musicFile.canonicalPath)
             require((secondarySourceFile != null) == (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP)) {
                 "DUALITY requires exactly two video sources and other recipes require one"
@@ -63,13 +67,13 @@ internal object VeycadAutomaticEditor {
     internal fun fearAudioMatchesRecipe(
         recipe: MontageStyleCatalog.Recipe,
         musicFile: File
-    ): Boolean = FearStrobeProfile.matchesAudio(musicFile) ==
+    ): Boolean = recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC || FearStrobeProfile.matchesAudio(musicFile) ==
         (recipe == MontageStyleCatalog.Recipe.FEAR_STROBE)
 
     internal fun dualityAudioMatchesRecipe(
         recipe: MontageStyleCatalog.Recipe,
         musicFile: File
-    ): Boolean = DualityLoopProfile.matchesAudio(musicFile) ==
+    ): Boolean = recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC || DualityLoopProfile.matchesAudio(musicFile) ==
         (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP)
 
     data class Candidate(
@@ -120,16 +124,20 @@ internal object VeycadAutomaticEditor {
         MaterialSuitability.checkHumanEvidence(request.recipe,
             listOfNotNull(primaryVisualMap, secondaryVisualMap))
         request.onProgress(Progress(Stage.DIRECTING, 0, candidateCount(request)))
-        // Only Sigma enters the generic event-matching director. The other three products
-        // select their own source windows from neutral evidence before authoring their graph.
-        val sigmaPipeline = if (request.recipe == MontageStyleCatalog.Recipe.SIGMA)
+        // Custom music uses measured rhythm in the generic director. Authored products retain
+        // their fixed scores and timeline grammars.
+        val automaticPipeline = if (request.recipe == MontageStyleCatalog.Recipe.SIGMA ||
+            request.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC)
             VeycadEventPipeline.fromAudioFile(
                 sourceId = request.sourceFile.name,
                 audioFile = request.musicFile,
                 sourceDurationUs = analysis.durationUs,
                 observations = analysis.observations,
                 frameAttachments = analysis.attachments,
-                requestedStyle = request.style
+                requestedStyle = request.style,
+                audioStartUs = request.musicStartUs,
+                useAuthoredProfile = request.recipe != MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
+                checkCancelled = request.checkCancelled
             ) else null
         var productSourcePool: MontageGraph? = null
         var heartbeatSelectionTrace: HeartbeatSourcePool.SelectionTrace? = null
@@ -174,7 +182,7 @@ internal object VeycadAutomaticEditor {
                 listOf(EventMatchingDirector.Alternative(
                     EventMatchingDirector.Style.DYNAMIC, graph, 0, 0
                 )))
-        } else requireNotNull(sigmaPipeline)
+        } else requireNotNull(automaticPipeline)
         val alternatives = request.style?.let { requested ->
             listOf(pipeline.alternatives.first { it.style == requested })
         } ?: pipeline.alternatives
@@ -292,6 +300,7 @@ internal object VeycadAutomaticEditor {
             fps = if (request.recipe == MontageStyleCatalog.Recipe.HEARTBEAT) 60
                 else HighQualityFramePlan.DEFAULT_FPS,
             audioFile = request.musicFile,
+            audioStartUs = request.musicStartUs,
             context = request.context,
             renderPlan = passPlan,
             onPassesExecuted = { executedPasses = it },

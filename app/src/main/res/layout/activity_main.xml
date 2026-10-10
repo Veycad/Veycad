@@ -198,16 +198,67 @@
             <TextView
                 android:id="@+id/musicSelection"
                 android:layout_width="match_parent"
-                android:layout_height="64dp"
+                android:layout_height="wrap_content"
+                android:minHeight="64dp"
                 android:layout_marginTop="12dp"
                 android:background="@drawable/soft_surface"
                 android:gravity="center_vertical"
                 android:paddingStart="18dp"
                 android:paddingEnd="18dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp"
                 android:text="♫ Музыка для Heartbeat подберётся автоматически"
                 android:textColor="@color/text_primary"
                 android:textSize="13sp"
                 android:textStyle="bold" />
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:id="@+id/importMusicButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/soft_surface"
+                android:text="Свой трек · монтаж по ритму"
+                android:textAllCaps="false"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+
+            <LinearLayout
+                android:id="@+id/musicFragmentPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/soft_surface"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/musicStartLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Начало: 0:00.0"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp" />
+                <SeekBar
+                    android:id="@+id/musicStartSeek"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:contentDescription="Начало музыкального фрагмента" />
+                <androidx.appcompat.widget.AppCompatButton
+                    android:id="@+id/previewMusicButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:text="Прослушать фрагмент"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Выберите начало припева или нужного момента. Ритм анализируется на телефоне. Короткий остаток трека повторяется с выбранного места."
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/captureActionPreviewPanel"

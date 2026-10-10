@@ -13,7 +13,7 @@ class MontageStyleCatalogTest {
         assertFalse(MontageStyleCatalog.upcoming.available)
         assertEquals("upcoming", MontageStyleCatalog.upcoming.id)
         assertEquals("Upcoming", MontageStyleCatalog.upcoming.title)
-        assertEquals(listOf("heartbeat", "fear_strobe", "duality_loop"),
+        assertEquals(listOf("heartbeat", "fear_strobe", "duality_loop", "custom_music"),
             MontageStyleCatalog.available.map { it.id })
         assertTrue(MontageStyleCatalog.heartbeat.available)
         assertEquals("heartbeat", MontageStyleCatalog.heartbeat.id)

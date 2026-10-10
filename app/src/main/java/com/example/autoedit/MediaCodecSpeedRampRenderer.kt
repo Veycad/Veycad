@@ -64,7 +64,8 @@ object MediaCodecSpeedRampRenderer {
             RenderPassPlanner.DeviceCapabilities.conservative()
         ),
         val onPassesExecuted: ((Map<RenderPassPlanner.PassKind, Int>) -> Unit)? = null,
-        val checkCancelled: () -> Unit = {}
+        val checkCancelled: () -> Unit = {},
+        val audioStartUs: Long = graph.audioTrack?.sourceStartUs ?: 0L
     )
 
     sealed interface Outcome {
@@ -202,7 +203,8 @@ object MediaCodecSpeedRampRenderer {
                 videoOnlyFile,
                 request.outputFile,
                 request.outputWindow?.durationUs ?: request.audioDurationUs,
-                request.checkCancelled
+                request.checkCancelled,
+                startUs = request.audioStartUs
             )
             videoOnlyFile.delete()
         } else if (request.audioResourceId != 0 && request.context != null) {

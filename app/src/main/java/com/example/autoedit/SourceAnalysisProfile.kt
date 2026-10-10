@@ -38,6 +38,7 @@ internal enum class SourceAnalysisProfile(val cacheToken: String, val requestsCo
         fun requiredFor(recipe: MontageStyleCatalog.Recipe): SourceAnalysisProfile = when (recipe) {
             MontageStyleCatalog.Recipe.FEAR_STROBE -> EDITORIAL_WITH_CORRESPONDENCE
             MontageStyleCatalog.Recipe.SIGMA,
+            MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
             MontageStyleCatalog.Recipe.HEARTBEAT,
             MontageStyleCatalog.Recipe.DUALITY_LOOP -> EDITORIAL_SEMANTICS
         }

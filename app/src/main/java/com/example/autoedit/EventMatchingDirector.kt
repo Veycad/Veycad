@@ -237,7 +237,9 @@ object EventMatchingDirector {
                 (if (beat.isDownbeat) .42f else 0f) +
                 (if (beat.dominantBand == AudioBeatMap.FrequencyBand.LOW) .16f else 0f)
             timeMs to structuralScore
-        }.filter { (timeMs, _) ->
+        }.plus(request.audio.drops.map { drop ->
+            request.audio.timestampUs(drop.sampleIndex) / 1_000L to (2f + drop.strength)
+        }).filter { (timeMs, _) ->
             timeMs in minimumGap..request.outputDurationMs - minimumGap
         }
 

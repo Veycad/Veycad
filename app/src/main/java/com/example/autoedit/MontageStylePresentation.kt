@@ -8,7 +8,8 @@ internal object MontageStylePresentation {
         val subtitle: String,
         val sourceCount: Int,
         val minimumSourceDurationMs: Long?,
-        val unavailableLabel: String? = null
+        val unavailableLabel: String? = null,
+        val customMusic: Boolean = false
     ) {
         val selectorLabel: String get() = "$symbol   $title\n$subtitle"
         val addSourceLabel: String get() = if (sourceCount == 2) "Добавить 2 видео" else "Добавить видео"
@@ -19,8 +20,10 @@ internal object MontageStylePresentation {
             else "1 видео · от $seconds секунд"
         }
         val musicPlaceholder: String get() = unavailableLabel?.let { "♫ $it" }
+            ?: "♫ Выберите трек · $title".takeIf { customMusic }
             ?: "♫ Музыка для $title подберётся автоматически"
         val musicLoading: String get() = unavailableLabel?.let { "♫ $it" }
+            ?: "♫ Анализирую трек · $title…".takeIf { customMusic }
             ?: "♫ Подбираю музыку для $title…"
 
         fun sourceDisplay(names: List<String>): String = when {
@@ -52,6 +55,7 @@ internal object MontageStylePresentation {
             MontageStyleCatalog.Recipe.HEARTBEAT -> "♥" to "Пульс · повтор фразы · чёрный финал"
             MontageStyleCatalog.Recipe.FEAR_STROBE -> "⚡" to "Движение · склейки · строб-акценты"
             MontageStyleCatalog.Recipe.DUALITY_LOOP -> "↔" to "Две связанные сцены · перекличка"
+            MontageStyleCatalog.Recipe.CUSTOM_MUSIC -> "♫" to "Ваш трек · склейки по ритму"
             null -> "○" to style.description
         }
         return Copy(
@@ -62,7 +66,8 @@ internal object MontageStylePresentation {
                     DualityLoopProfile.MINIMUM_SOURCE_DURATION_MS
                 else -> EditDurationPolicy.MINIMUM_MS
             },
-            unavailableLabel = style.unavailableLabel.takeIf { !style.available }
+            unavailableLabel = style.unavailableLabel.takeIf { !style.available },
+            customMusic = style.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC
         )
     }
 }

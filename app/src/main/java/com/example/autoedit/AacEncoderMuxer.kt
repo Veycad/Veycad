@@ -56,10 +56,11 @@ internal object AacEncoderMuxer {
     }
 
     /** Same owned AAC path for user-selected files; the source never has to be packaged in APK. */
-    fun muxMusicFile(audioFile: File, videoFile: File, outputFile: File, durationUs: Long, checkCancelled: () -> Unit = {}) {
+    fun muxMusicFile(audioFile: File, videoFile: File, outputFile: File, durationUs: Long,
+        checkCancelled: () -> Unit = {}, startUs: Long = 0L) {
         checkCancelled()
         val decoded = MediaCodecAudioDecoder.decode(audioFile, durationUs,
-            preserveFloatHeadroom = true, checkCancelled = checkCancelled)
+            preserveFloatHeadroom = true, checkCancelled = checkCancelled, startUs = startUs)
         muxPcm(prepareMusicPcm(decoded, checkCancelled), videoFile, outputFile, durationUs, checkCancelled)
     }
 
