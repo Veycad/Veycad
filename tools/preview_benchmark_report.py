@@ -201,7 +201,7 @@ def _events(group):
                     status, reason = "incomplete", "completion/presentation evidence missing"
             counts[status] += 1
             if status == "completed":
-                begin = event["request_ns"] if kind == "EXACT_SEEK" else event["start_ns"]
+                begin = event["start_ns"] if kind == "FIRST_FRAME" else event["request_ns"]
                 timings.append((event["end_ns"] - begin) / 1_000_000)
                 if kind == "FIRST_FRAME" and event["prepare_ns"] is not None:
                     prepares.append(event["prepare_ns"] / 1_000_000)

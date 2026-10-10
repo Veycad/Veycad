@@ -224,6 +224,45 @@ class PreviewBenchmarkTest(unittest.TestCase):
         metric = self.result()["events"]["EXACT_SEEK"]
         self.assertEqual(("FAIL", 810.0), (metric["status"], metric["p95_ms"]))
 
+    def test_format_change_includes_queue_delay(self):
+        for sample in self.group["events"]:
+            if sample["event"] == "FORMAT_CHANGE":
+                sample.update(request_ns=0, start_ns=800_000_000, end_ns=810_000_000)
+        result = self.result()
+        metric = result["events"]["FORMAT_CHANGE"]
+        self.assertEqual(("FAIL", 810.0, 20),
+                         (metric["status"], metric["p95_ms"], metric["completed"]))
+        self.assertEqual("FAIL", result["status"])
+
+    def test_play_start_includes_queue_delay(self):
+        self.group["events"][-1].update(request_ns=0, start_ns=800_000_000, end_ns=810_000_000)
+        result = self.result()
+        metric = result["events"]["PLAY_START"]
+        self.assertEqual(("FAIL", 810.0, 1),
+                         (metric["status"], metric["p95_ms"], metric["completed"]))
+        self.assertEqual("FAIL", result["status"])
+
+    def test_cached_scrub_includes_queue_delay(self):
+        self.group["events"][-2].update(request_ns=0, start_ns=800_000_000, end_ns=810_000_000)
+        result = self.result()
+        metric = result["events"]["CACHED_SCRUB"]
+        self.assertEqual(("FAIL", 810.0, 1),
+                         (metric["status"], metric["p95_ms"], metric["completed"]))
+        self.assertEqual("FAIL", result["status"])
+
+    def test_first_frame_starts_when_draft_and_surface_ready_after_preparation(self):
+        for sample in self.group["events"]:
+            if sample["event"] == "FIRST_FRAME":
+                sample.update(request_ns=0, start_ns=3_000_000_000, end_ns=3_010_000_000,
+                              prepare_ns=3_000_000_000)
+        result = self.result()
+        for key in ("FIRST_FRAME/cold", "FIRST_FRAME/warm"):
+            metric = result["events"][key]
+            self.assertEqual(("PASS", 10.0, 3000.0, 20),
+                             (metric["status"], metric["p95_ms"], metric["prepare_p95_ms"],
+                              metric["completed"]))
+        self.assertEqual("PASS", result["status"])
+
     def test_repeated_presentation_pts_cannot_fill_distinct_grid_slots(self):
         self.group["playback"][0]["frames"][1]["shown_output_us"] = 0
         with self.assertRaisesRegex(ValueError, "duplicate.*presentation"):

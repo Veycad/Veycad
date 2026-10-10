@@ -70,13 +70,16 @@ duplicate shown **output** PTS; source PTS are not event/playback fields.
 | `prepare_ns` | Preparation duration separate from FIRST_FRAME; nullable for FIRST_FRAME and null for other events |
 
 FIRST_FRAME `start_ns` means draft and Surface are ready, after preparation;
-FORMAT_CHANGE means format request; PLAY_START means play request. End requires
-the corresponding canonical-ready presentation. CACHED_SCRUB records the
-intermediate cached response; a thumbnail cannot complete EXACT_SEEK.
-EXACT_SEEK latency uses **end − request**, covering all work since the last
-canonical request/scrub release; a delayed internal start cannot hide latency.
-Other events use end − start. The producer must keep these semantic boundaries.
-The calculator cannot detect an omitted request or dishonest readiness flag.
+its latency alone uses **end − start**, with preparation recorded separately.
+All request-driven operations use **end − request**, including any queue delay:
+FORMAT_CHANGE starts at the format request; PLAY_START at the play request;
+CACHED_SCRUB at the scrub request; EXACT_SEEK at the last canonical request or
+scrub release. Their `start_ns` may record later internal work, but cannot hide
+request-to-presentation latency. End requires the corresponding canonical-ready
+presentation, except CACHED_SCRUB which records the intermediate cached response;
+a thumbnail cannot complete EXACT_SEEK. The producer must keep these semantic
+boundaries. The calculator cannot detect an omitted request or dishonest
+readiness flag.
 
 Completed timing requires end, presentation PTS and completion epoch. For every
 event except CACHED_SCRUB, canonical_ready and exact must also be true. A claimed
