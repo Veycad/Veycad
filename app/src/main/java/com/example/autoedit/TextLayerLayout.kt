@@ -23,6 +23,7 @@ object TextLayerLayout {
                     TextFont.SANS -> Typeface.create("sans-serif", Typeface.NORMAL)
                     TextFont.BOLD -> Typeface.create("sans-serif", Typeface.BOLD)
                     TextFont.SERIF -> Typeface.create("serif", Typeface.NORMAL)
+                    TextFont.MONO -> Typeface.create("monospace", Typeface.NORMAL)
                 }
                 textSize = width * style.sizeRatio
                 setShadowLayer(width*.003f, 0f, width*.002f, Color.BLACK)

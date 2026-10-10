@@ -30,6 +30,7 @@ class TextEditStore(private val directory: File) {
             put("$prefix.position", s.position); put("$prefix.font", s.font)
             put("$prefix.size", s.sizeRatio); put("$prefix.color", s.color)
             put("$prefix.plate", s.darkPlate); put("$prefix.animation", s.animation)
+            s.plate?.let { put("$prefix.background",it) }
         }
         put("version", 1); put("identity", identity(project.sourcePath)); put("source", project.sourcePath)
         put("duration", project.durationUs); put("width", project.width); put("height", project.height)
@@ -40,10 +41,13 @@ class TextEditStore(private val directory: File) {
         put("layers", project.layers.size); put("captions", project.captions.size)
         project.layers.forEachIndexed { i, l ->
             put("l.$i.id", l.id); put("l.$i.text", l.text); put("l.$i.start", l.startUs); put("l.$i.end", l.endUs)
+            put("l.$i.kind",l.kind)
             style("l.$i.style", l.style)
         }
         project.captions.forEachIndexed { i, c ->
             put("c.$i.id", c.id); put("c.$i.text", c.text); put("c.$i.start", c.startUs); put("c.$i.end", c.endUs)
+            c.confidence?.let { put("c.$i.confidence",it) }
+            put("c.$i.reviewed",c.manuallyReviewed); put("c.$i.calibrated",c.confidenceCalibrated)
         }
         val file = target(project.sourcePath)
         val partial = File(file.path + ".partial")
@@ -59,12 +63,16 @@ class TextEditStore(private val directory: File) {
         fun get(k: String) = p.getProperty(k) ?: error("Missing $k")
         if (get("version") != "1" || get("identity") != identity(sourcePath)) return null
         fun style(k: String) = TextStyle(TextPosition.valueOf(get("$k.position")), TextFont.valueOf(get("$k.font")),
-            get("$k.size").toFloat(), get("$k.color").toInt(), get("$k.plate").toBoolean(), TextAnimation.valueOf(get("$k.animation")))
+            get("$k.size").toFloat(), get("$k.color").toInt(), get("$k.plate").toBoolean(), TextAnimation.valueOf(get("$k.animation")),
+            p.getProperty("$k.background")?.let { TextPlate.valueOf(it) })
         TextEditProject(sourcePath, get("duration").toLong(), get("width").toInt(), get("height").toInt(),
             List(get("layers").toInt().also { require(it in 0..1000) }) { i ->
-                TextLayer(get("l.$i.id"), get("l.$i.text"), get("l.$i.start").toLong(), get("l.$i.end").toLong(), style("l.$i.style"))
+                TextLayer(get("l.$i.id"), get("l.$i.text"), get("l.$i.start").toLong(), get("l.$i.end").toLong(), style("l.$i.style"),
+                    TextLayerKind.valueOf(p.getProperty("l.$i.kind","LEGACY")))
             }, List(get("captions").toInt().also { require(it in 0..100000) }) { i ->
-                CaptionCue(get("c.$i.id"), get("c.$i.text"), get("c.$i.start").toLong(), get("c.$i.end").toLong())
+                CaptionCue(get("c.$i.id"), get("c.$i.text"), get("c.$i.start").toLong(), get("c.$i.end").toLong(),
+                    p.getProperty("c.$i.confidence")?.toDouble(),p.getProperty("c.$i.reviewed","false").toBoolean(),
+                    p.getProperty("c.$i.calibrated","false").toBoolean())
             }, style("captionStyle"), get("edited").toBoolean(), get("language"),p.getProperty("origin","0").toLong())
     }.getOrNull()
 }

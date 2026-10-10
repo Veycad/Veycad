@@ -24,8 +24,15 @@ internal data class SpeechEvidence(
     val accuracyMeasured:Boolean=false,
     val recognitionPerformed:Boolean?=null,
     val reason:SpeechNoSpeechReason?=null,
-    val modelSha256:String?=null
-)
+    val modelSha256:String?=null,
+    val confidenceCalibrated:Boolean=false
+) {
+    init {
+        require(confidence==null || (confidence.isFinite() && confidence in 0.0..1.0))
+        require(!confidenceCalibrated || confidence!=null)
+    }
+    val needsReview:Boolean get()=!confidenceCalibrated || confidence==null || confidence<.75
+}
 internal sealed interface SpeechOutcome {
     data class Success(val cues:List<CaptionCue>,val evidence:SpeechEvidence):SpeechOutcome
     data class NoSpeech(val evidence:SpeechEvidence):SpeechOutcome
