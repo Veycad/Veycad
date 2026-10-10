@@ -71,7 +71,34 @@ internal object SequentialBitmapDecoder {
         height: Int,
         requireExactPts: Boolean = false,
         onFrame: (targetUs: Long, bitmap: Bitmap) -> Unit
+    ): Stats = decodeInternal(source, targetsUs, width, height, requireExactPts,
+        indexedBounds = false, checkCancelled = {}) { targetUs, _, bitmap -> onFrame(targetUs, bitmap) }
+
+    /** Unlike the legacy callback, decodedPtsUs is evidence from MediaCodec.BufferInfo.
+     * Targets must be bounded by an actual source sample index, which may outlive declared duration.
+     * No frame is invented for requests beyond EOS; those requests fail just like legacy decoding.
+     */
+    fun decodeActual(
+        source: File,
+        targetsUs: LongArray,
+        width: Int,
+        height: Int,
+        checkCancelled: () -> Unit = {},
+        onFrame: (targetUs: Long, decodedPtsUs: Long, bitmap: Bitmap) -> Unit
+    ): Stats = decodeInternal(source, targetsUs, width, height, requireExactPts = false,
+        indexedBounds = true, checkCancelled = checkCancelled, onFrame = onFrame)
+
+    private fun decodeInternal(
+        source: File,
+        targetsUs: LongArray,
+        width: Int,
+        height: Int,
+        requireExactPts: Boolean,
+        indexedBounds: Boolean,
+        checkCancelled: () -> Unit,
+        onFrame: (Long, Long, Bitmap) -> Unit
     ): Stats {
+        checkCancelled()
         require(source.isFile && width > 0 && height > 0)
         val extractor = MediaExtractor()
         var decoder: MediaCodec? = null
@@ -85,14 +112,16 @@ internal object SequentialBitmapDecoder {
             Log.i(TAG, "Decode target preflight: exactPts=$requireExactPts, " +
                 "declaredVideoDurationUs=$durationUs, lastTargetUs=${targetsUs.lastOrNull()}, " +
                 "targetCount=${targetsUs.size}")
-            SourceAnalysisTimeline.validateDecodeTargets(targetsUs, durationUs, requireExactPts)
+            SourceAnalysisTimeline.validateDecodeTargets(targetsUs, durationUs, requireExactPts || indexedBounds)
+            checkCancelled()
             output = GlOutput(width, height)
             decoder = MediaCodec.createDecoderByType(
                 requireNotNull(format.getString(MediaFormat.KEY_MIME))
             )
             decoder.configure(format, output.surface, null, 0)
             decoder.start()
-            return decodeAscending(extractor, decoder, output, targetsUs, requireExactPts, onFrame)
+            return decodeAscending(extractor, decoder, output, targetsUs, requireExactPts,
+                indexedBounds, checkCancelled, onFrame)
         } finally {
             runCatching { decoder?.stop() }
             runCatching { decoder?.release() }
@@ -107,7 +136,9 @@ internal object SequentialBitmapDecoder {
         output: GlOutput,
         targetsUs: LongArray,
         requireExactPts: Boolean,
-        onFrame: (Long, Bitmap) -> Unit
+        actualPts: Boolean,
+        checkCancelled: () -> Unit,
+        onFrame: (Long, Long, Bitmap) -> Unit
     ): Stats {
         val info = MediaCodec.BufferInfo()
         var inputEnded = false
@@ -117,12 +148,15 @@ internal object SequentialBitmapDecoder {
         var idleIterations = 0
 
         fun publish(index: Int, ptsUs: Long) {
+            checkCancelled()
             decoder.releaseOutputBuffer(index, true)
-            output.awaitAndUpdate()
+            output.awaitAndUpdate(checkCancelled)
+            checkCancelled()
             val bitmap = output.readBitmap()
             try {
                 while (targetIndex < targetsUs.size && targetsUs[targetIndex] <= ptsUs) {
-                    onFrame(targetsUs[targetIndex], bitmap)
+                    checkCancelled()
+                    onFrame(targetsUs[targetIndex], ptsUs, bitmap)
                     targetIndex++
                 }
             } finally {
@@ -131,6 +165,7 @@ internal object SequentialBitmapDecoder {
         }
 
         while (!outputEnded && targetIndex < targetsUs.size) {
+            checkCancelled()
             var progressed = false
             if (!inputEnded) {
                 val inputIndex = decoder.dequeueInputBuffer(DEQUEUE_TIMEOUT_US)
@@ -150,6 +185,7 @@ internal object SequentialBitmapDecoder {
                 }
             }
 
+            checkCancelled()
             when (val index = decoder.dequeueOutputBuffer(info, DEQUEUE_TIMEOUT_US)) {
                 MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
                 MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> progressed = true
@@ -157,7 +193,8 @@ internal object SequentialBitmapDecoder {
                     progressed = true
                     val eos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                     if (info.size > 0) {
-                        val ptsUs = info.presentationTimeUs.coerceAtLeast(0L)
+                        val ptsUs = if (actualPts) info.presentationTimeUs else info.presentationTimeUs.coerceAtLeast(0L)
+                        if (actualPts) require(ptsUs >= 0L) { "Negative decoded video PTS" }
                         decodedFrames++
                         if (targetIndex < targetsUs.size && ptsUs >= targetsUs[targetIndex]) {
                             if (requireExactPts) SourceAnalysisTimeline.requireDecodedPts(
@@ -249,10 +286,14 @@ internal object SequentialBitmapDecoder {
             }
         }
 
-        fun awaitAndUpdate() {
+        fun awaitAndUpdate(checkCancelled: () -> Unit) {
             synchronized(frameLock) {
                 val deadline = System.nanoTime() + FRAME_TIMEOUT_NS
-                while (!frameAvailable && System.nanoTime() < deadline) frameLock.wait(20L)
+                while (!frameAvailable && System.nanoTime() < deadline) {
+                    checkCancelled()
+                    frameLock.wait(20L)
+                }
+                checkCancelled()
                 check(frameAvailable) { "Timed out waiting for sequential decoder frame" }
                 frameAvailable = false
             }
