@@ -21,7 +21,7 @@ class GalleryAnalysisIntegrationTest {
         val source = MediaInputInspector().inspect("landscape", file, file.name)
         val moments = GallerySourceAnalyzer().analyze(source) {}
         assertTrue(moments.isNotEmpty())
-        assertTrue(moments.all { it.features.faceConfidence == null && it.endUs <= source.durationUs })
+        assertTrue(moments.all { it.features.faceConfidence == null && it.endUs <= source.videoEndPtsUs })
         val actual = videoPts(file)
         assertTrue(moments.all { it.features.timeUs in actual })
     }
@@ -32,6 +32,8 @@ class GalleryAnalysisIntegrationTest {
             val source = MediaInputInspector().inspect("vfr", file, file.name)
             val pts = videoPts(file)
             assertTrue(pts.first() > 0)
+            assertEquals(pts.first(), source.firstVideoPtsUs)
+            assertEquals(pts.first() + source.durationUs, source.videoEndPtsUs)
             assertTrue(pts.zipWithNext().map { it.second - it.first }.distinct().size > 1)
             val observed = mutableListOf<Long>()
             val requested = longArrayOf(pts.first() + 1, pts.last())
@@ -45,7 +47,7 @@ class GalleryAnalysisIntegrationTest {
             assertEquals(pts.last(), observed.last())
             val moments = GallerySourceAnalyzer().analyze(source) {}
             assertTrue(moments.isNotEmpty())
-            assertTrue(moments.all { it.features.timeUs in pts && it.startUs >= pts.first() && it.endUs <= source.durationUs })
+            assertTrue(moments.all { it.features.timeUs in pts && it.startUs >= pts.first() && it.endUs <= source.videoEndPtsUs })
             // Neither boundary invents a frame for a request after the last real sample.
             assertThrows(IllegalStateException::class.java) {
                 SequentialBitmapDecoder.decodeActual(file, longArrayOf(pts.last() + 1), 32, 32) { _, _, _ ->
@@ -64,7 +66,7 @@ class GalleryAnalysisIntegrationTest {
         assertTrue(source.durationUs in 500_000L..550_000L)
         val moments = GallerySourceAnalyzer().analyze(source) {}
         assertTrue(moments.isNotEmpty())
-        assertTrue(moments.all { it.endUs <= source.durationUs && it.endUs - it.startUs >= 500_000 })
+        assertTrue(moments.all { it.endUs <= source.videoEndPtsUs && it.endUs - it.startUs >= 500_000 })
     }
 
     @Test fun decodeAndRefineCancellationReleaseWorker() = withClip("cancel", regularPts(90)) { file ->
@@ -123,6 +125,7 @@ class GalleryAnalysisIntegrationTest {
     }
 
     /** Small real texture encoder; last sample intentionally does not complete a GOP. */
+    @Suppress("DEPRECATION") // Intentional fallback for AVC encoders without flexible YUV420.
     private fun createTextureVideo(file: File, pts: LongArray) {
         val width = 96
         val height = 64

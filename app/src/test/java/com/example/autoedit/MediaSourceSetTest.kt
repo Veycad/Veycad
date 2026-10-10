@@ -48,4 +48,14 @@ class MediaSourceSetTest {
         assertFalse(source.copy(colorTransfer = 6).isBaselineInput)
         assertFalse(source.copy(colorTransfer = 7).isBaselineInput)
     }
+
+    @Test fun measuredOriginProvidesOneCheckedRawEndBound() {
+        val source = mediaSource(durationUs = 500_000).copy(firstVideoPtsUs = 120_000)
+        assertEquals(620_000L, source.videoEndPtsUs)
+        assertEquals(500_000L, source.durationUs)
+        assertThrows(IllegalArgumentException::class.java) { source.copy(firstVideoPtsUs = -1) }
+        assertThrows(IllegalArgumentException::class.java) { source.copy(firstVideoPtsUs = Long.MAX_VALUE - 499_999) }
+        assertEquals(Long.MAX_VALUE, source.copy(firstVideoPtsUs = Long.MAX_VALUE - 500_000).videoEndPtsUs)
+        GalleryImportPolicy.validate(MediaSourceSet(listOf(source)))
+    }
 }

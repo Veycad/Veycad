@@ -64,6 +64,20 @@ internal object SequentialBitmapDecoder {
         return targets.toLongArray()
     }
 
+    /** Pure preflight boundary shared by the actual codec path and JVM contract tests. */
+    internal fun validateTargets(targetsUs: LongArray, declaredDurationUs: Long?,
+        requireExactPts: Boolean, actualPts: Boolean) {
+        if (actualPts) {
+            require(targetsUs.isNotEmpty() && targetsUs.first() >= 0L) {
+                "Indexed gallery targets must be nonempty and nonnegative"
+            }
+            require(targetsUs.toList().zipWithNext().all { (a, b) -> a < b }) {
+                "Indexed gallery targets must be strictly increasing"
+            }
+        } else SourceAnalysisTimeline.validateDecodeTargets(targetsUs,
+            requireNotNull(declaredDurationUs), requireExactPts)
+    }
+
     fun decode(
         source: File,
         targetsUs: LongArray,
@@ -108,11 +122,12 @@ internal object SequentialBitmapDecoder {
             val track = extractor.videoTrack()
             extractor.selectTrack(track)
             val format = extractor.getTrackFormat(track)
-            val durationUs = format.getLong(MediaFormat.KEY_DURATION)
+            val durationUs = if (indexedBounds && !format.containsKey(MediaFormat.KEY_DURATION)) null
+                else format.getLong(MediaFormat.KEY_DURATION)
             Log.i(TAG, "Decode target preflight: exactPts=$requireExactPts, " +
                 "declaredVideoDurationUs=$durationUs, lastTargetUs=${targetsUs.lastOrNull()}, " +
                 "targetCount=${targetsUs.size}")
-            SourceAnalysisTimeline.validateDecodeTargets(targetsUs, durationUs, requireExactPts || indexedBounds)
+            validateTargets(targetsUs, durationUs, requireExactPts, indexedBounds)
             checkCancelled()
             output = GlOutput(width, height)
             decoder = MediaCodec.createDecoderByType(

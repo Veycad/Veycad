@@ -58,7 +58,8 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
             check()
             require(file.length() == initialSize) { "Файл изменился во время проверки" }
             return MediaSource(id, file, name, durationUs, initialSize, rotation, width, height,
-                requireNotNull(format.getString(MediaFormat.KEY_MIME)), transfer, hasAudio, digest)
+                requireNotNull(format.getString(MediaFormat.KEY_MIME)), transfer, hasAudio, digest,
+                firstVideoPtsUs = samples.firstPtsUs)
         } catch (failure: Exception) {
             cancellation?.let { throw it }
             throw IllegalArgumentException("$name: ${failure.message ?: "не удалось проверить видео"}", failure)

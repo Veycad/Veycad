@@ -29,7 +29,8 @@ class GallerySourceAnalyzer(
         require(source.durationUs in 500_000L..GalleryImportPolicy.MAX_DURATION_US)
         cache.load(source, profile)?.let { checkCancelled(); return it }
         val bounds = frameReader.bounds(source, checkCancelled)
-        require(bounds.firstPtsUs >= 0 && bounds.lastPtsUs >= bounds.firstPtsUs && bounds.lastPtsUs < source.durationUs)
+        require(bounds.firstPtsUs == source.firstVideoPtsUs && bounds.lastPtsUs >= bounds.firstPtsUs &&
+            bounds.lastPtsUs < source.videoEndPtsUs) { "Measured gallery PTS do not fit inspected source bounds" }
         val coarse = sortedSetOf(bounds.firstPtsUs, bounds.lastPtsUs)
         var target = bounds.firstPtsUs
         while (bounds.lastPtsUs - target >= coarseIntervalUs) {
@@ -46,7 +47,11 @@ class GallerySourceAnalyzer(
                 checkCancelled()
                 require(pts in bounds.firstPtsUs..bounds.lastPtsUs && pts >= previousPts) { "Invalid decoded gallery PTS" }
                 if (pts != previousPts) {
-                    val features = GalleryFrameMetrics.measure(pts, luma, width, height, previous)
+                    val measured = GalleryFrameMetrics.measure(pts, luma, width, height, previous)
+                    // A refined predecessor can make a gradual transition look smaller. It
+                    // must not discard stronger scene evidence already measured by overview.
+                    val features = measured.copy(sceneChange = maxOf(measured.sceneChange,
+                        observations[pts]?.features?.sceneChange ?: 0f))
                     observations[pts] = Observation(features, GalleryFrameMetrics.keyHash(luma, width, height))
                     previous = luma.copyOf()
                     previousPts = pts
@@ -64,8 +69,8 @@ class GallerySourceAnalyzer(
         }
         val refine = sortedSetOf<Long>()
         for (center in chosen) {
-            var time = maxOf(bounds.firstPtsUs, center - 1_000_000L)
-            val end = minOf(bounds.lastPtsUs, center + 1_000_000L)
+            var time = center - minOf(1_000_000L, center - bounds.firstPtsUs)
+            val end = center + minOf(1_000_000L, bounds.lastPtsUs - center)
             while (time <= end) {
                 checkCancelled()
                 refine += time
@@ -79,7 +84,7 @@ class GallerySourceAnalyzer(
         if (refine.isNotEmpty()) sample((refine + coarse).sorted().toLongArray())
         checkCancelled()
         val cuts = observations.values.filter { it.features.sceneChange >= .6f }.map { it.features.timeUs }
-        val boundaries = (listOf(bounds.firstPtsUs) + cuts + source.durationUs).distinct().sorted()
+        val boundaries = (listOf(bounds.firstPtsUs) + cuts + source.videoEndPtsUs).distinct().sorted()
         val moments = mutableListOf<GalleryMoment>()
         for ((start, end) in boundaries.zipWithNext()) {
             checkCancelled()

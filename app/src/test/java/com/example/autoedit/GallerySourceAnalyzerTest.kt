@@ -37,11 +37,42 @@ class GallerySourceAnalyzerTest {
     @Test fun usesActualNonzeroVfrPtsAndRefinesLocally() {
         val pts = longArrayOf(120_000, 330_000, 610_000, 980_000, 1_280_000, 1_670_000, 2_230_000, 2_700_000)
         val reader = Frames(pts, image)
-        val moments = GallerySourceAnalyzer(frameReader = reader).analyze(mediaSource(durationUs = 2_900_000)) {}
+        val source = mediaSource(durationUs = 2_780_000).copy(firstVideoPtsUs = 120_000)
+        val moments = GallerySourceAnalyzer(frameReader = reader).analyze(source) {}
         assertTrue(moments.isNotEmpty())
         assertTrue(moments.all { it.features.timeUs in pts && it.startUs >= 120_000 && it.endUs <= 2_900_000 })
         assertEquals(2, reader.requests.size)
         assertTrue(reader.requests.last().any { it !in reader.requests.first() })
+    }
+
+    @Test fun nonzeroOriginKeepsEligibleHalfSecondContentOnRawPtsAxis() {
+        for (pts in listOf(longArrayOf(5_000, 250_000, 495_000), longArrayOf(120_000, 353_333, 586_666))) {
+            val source = mediaSource(durationUs = 500_000).copy(firstVideoPtsUs = pts.first())
+            val moments = GallerySourceAnalyzer(frameReader = Frames(pts, image)).analyze(source) {}
+            assertTrue("Eligible shifted half-second content was lost", moments.isNotEmpty())
+            assertTrue(moments.all { it.startUs == pts.first() && it.endUs == pts.first() + 500_000 &&
+                it.features.timeUs in pts && it.endUs - it.startUs == 500_000L })
+        }
+    }
+
+    @Test fun gradualRefinementCannotEraseCoarseSceneEvidence() {
+        val pts = (0..8).map { it * 250_000L }.toLongArray()
+        val reader = Frames(pts, image, imageAt = { time ->
+            FloatArray(image.size) { when (time) {
+                0L -> .1f
+                250_000L -> .2f
+                500_000L -> .3f
+                750_000L -> .4f
+                else -> .5f
+            } }
+        })
+        val coarse = GalleryFrameMetrics.measure(1_000_000, FloatArray(image.size) { .5f }, 32, 24,
+            FloatArray(image.size) { .1f })
+        assertTrue(coarse.sceneChange > .6f)
+        val moments = GallerySourceAnalyzer(frameReader = reader).analyze(mediaSource(durationUs = 2_250_000)) {}
+        assertTrue(moments.isNotEmpty())
+        assertTrue("Refinement erased the coarse transition", moments.none { it.startUs < 1_000_000 && it.endUs > 1_000_000 })
+        assertTrue(moments.any { it.features.timeUs == 1_000_000L && it.features.sceneChange >= .8f })
     }
 
     @Test fun sceneNearEofCannotCreateWindowAcrossTheCut() {

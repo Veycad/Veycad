@@ -16,11 +16,15 @@ data class MediaSource(
     val mime: String,
     val colorTransfer: Int?,
     val hasAudio: Boolean,
-    val fingerprint: String
+    val fingerprint: String,
+    val firstVideoPtsUs: Long = 0L
 ) {
     init {
         require(id.isNotBlank() && displayName.isNotBlank())
         require(durationUs > 0 && sizeBytes > 0)
+        require(firstVideoPtsUs >= 0 && durationUs <= Long.MAX_VALUE - firstVideoPtsUs) {
+            "Некорректные границы PTS исходного видео"
+        }
         require(rotationDegrees in setOf(0, 90, 180, 270))
         require(width > 0 && height > 0 && mime.startsWith("video/"))
         require(fingerprint.matches(Regex("[0-9a-f]{64}")))
@@ -28,6 +32,9 @@ data class MediaSource(
 
     /** Describes the supported input matrix, not artistic or device acceptance. */
     val isBaselineInput: Boolean get() = mime == "video/avc" && (colorTransfer == null || colorTransfer == 3)
+
+    /** Absolute source-PTS endpoint; durationUs remains content length for import policy. */
+    val videoEndPtsUs: Long get() = firstVideoPtsUs + durationUs
 }
 
 /** Graph source indices refer to this snapshot, never to a caller-owned mutable list. */
