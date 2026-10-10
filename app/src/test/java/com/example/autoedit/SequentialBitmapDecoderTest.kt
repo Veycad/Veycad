@@ -32,4 +32,31 @@ class SequentialBitmapDecoderTest {
             }
         }
     }
+
+    @Test fun actualModePreflightDoesNotRequireOptionalContainerDuration() {
+        for (declared in listOf(null, 0L, -1L, 100_000L)) {
+            SequentialBitmapDecoder.validateTargets(longArrayOf(120_000, 586_666), declared,
+                requireExactPts = false, actualPts = true)
+        }
+    }
+
+    @Test fun actualModePreflightStillRejectsMalformedTargetsAndLegacyKeepsItsContract() {
+        for (targets in listOf(longArrayOf(), longArrayOf(-1), longArrayOf(1, 1), longArrayOf(2, 1))) {
+            assertThrows(IllegalArgumentException::class.java) {
+                SequentialBitmapDecoder.validateTargets(targets, null, requireExactPts = false, actualPts = true)
+            }
+        }
+        for (declared in listOf(null, 0L, -1L)) {
+            assertThrows(IllegalArgumentException::class.java) {
+                SequentialBitmapDecoder.validateTargets(longArrayOf(120_000), declared,
+                    requireExactPts = true, actualPts = false)
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            SequentialBitmapDecoder.validateTargets(longArrayOf(586_666), 500_000,
+                requireExactPts = false, actualPts = false)
+        }
+        SequentialBitmapDecoder.validateTargets(longArrayOf(586_666), 500_000,
+            requireExactPts = true, actualPts = false)
+    }
 }

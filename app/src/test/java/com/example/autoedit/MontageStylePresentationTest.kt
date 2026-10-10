@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MontageStylePresentationTest {
+    @Test fun hidden_gallery_copy_keeps_full_selected_source_order() {
+        val gallery = MontageStyleCatalog.galleryMontage
+        val copy = MontageStylePresentation.forStyle(gallery)
+        assertEquals("Ролик из галереи", copy.title)
+        assertEquals("В разработке", copy.sourceHint)
+        assertNull(copy.minimumSourceDurationMs)
+        val selected = (0 until 20).map { "selected-$it.mp4" }
+        assertEquals(selected, MontageStylePresentation.restoredSources(selected, gallery))
+    }
     @Test fun active_products_have_distinct_owned_identity_and_grammar() {
         val copies = MontageStyleCatalog.available.map(MontageStylePresentation::forStyle)
         assertEquals(3, copies.map { it.symbol }.distinct().size)

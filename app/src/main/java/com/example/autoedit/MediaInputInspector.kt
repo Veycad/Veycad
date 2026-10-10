@@ -53,12 +53,15 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
             extractor.selectTrack(videoTrack)
             val samples = scanSamples(extractor, check)
             val durationUs = samples.durationUs(format)
+            val presentationBounds = Mp4PresentationBounds.read(file, format.optionalInt(MediaFormat.KEY_TRACK_ID),
+                samples.firstPtsUs, samples.lastPtsUs, samples.count, check)
             probeDecoder(extractor, format, samples.firstPtsUs, check)
             val digest = fingerprint ?: hash(file, check)
             check()
             require(file.length() == initialSize) { "Файл изменился во время проверки" }
             return MediaSource(id, file, name, durationUs, initialSize, rotation, width, height,
-                requireNotNull(format.getString(MediaFormat.KEY_MIME)), transfer, hasAudio, digest)
+                requireNotNull(format.getString(MediaFormat.KEY_MIME)), transfer, hasAudio, digest,
+                firstVideoPtsUs = samples.firstPtsUs, videoPresentationBounds = presentationBounds)
         } catch (failure: Exception) {
             cancellation?.let { throw it }
             throw IllegalArgumentException("$name: ${failure.message ?: "не удалось проверить видео"}", failure)
@@ -67,7 +70,7 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
         }
     }
 
-    private data class Samples(val firstPtsUs: Long, val lastPtsUs: Long, val penultimatePtsUs: Long?) {
+    private data class Samples(val firstPtsUs: Long, val lastPtsUs: Long, val penultimatePtsUs: Long?, val count: Long) {
         fun durationUs(format: MediaFormat): Long {
             val declared = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else null
             return mediaInputDurationUs(firstPtsUs, lastPtsUs, penultimatePtsUs, declared,
@@ -79,8 +82,10 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
         var first = Long.MAX_VALUE
         var last = -1L
         var penultimate: Long? = null
+        var count = 0L
         while (extractor.sampleTrackIndex >= 0) {
             check()
+            count = Math.addExact(count, 1L)
             val pts = extractor.sampleTime
             require(pts >= 0) { "Некорректные PTS видео" }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -99,7 +104,7 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
             if (!extractor.advance()) break
         }
         require(last >= 0) { "Видеодорожка не содержит кадров" }
-        return Samples(first, last, penultimate)
+        return Samples(first, last, penultimate, count)
     }
 
     private fun probeDecoder(extractor: MediaExtractor, format: MediaFormat, firstPtsUs: Long,
