@@ -80,6 +80,16 @@ python tools/custom_music_tests/verify_fidelity.py <каталог-host-evidence
 
 Для разбора `colour-jump` сопоставьте `maximumColourJumpTimeUs` с соседними
 VisualSamples, clip/overlay окнами графа и decoded source clock из inspector.
+
+CI сохраняет пять синтетических файлов (`editor-source.mp4`, `editor.wav`,
+`native-editor.mp4`, `native-editor-evidence.json`, `native-editor-report.txt`)
+в `android-ui-reports` / `build/reports/ui-tests/custom-music-native/`.
+Wrapper `tools/run_custom_music_ci_tests.sh` выполняет существующий UI runner
+и копирует эти файлы до выключения эмулятора, даже при неуспешном gate.
+Он сохраняет exit code runner; отсутствие файла делает сбор evidence неуспешным.
+Код QA и его пороги не меняются. Команда лёгкой host-проверки поведения:
+`python tools/custom_music_tests/test_ci_retention.py` (нужен Bash).
+
 Для `weak-rendered-transitions` проверьте каждый тип перехода и максимальный
 `transitionStrength` в его окне. Сначала нужен один такой нативный прогон;
 парный контроль или base/current сравнение нужны только при неясной причине.

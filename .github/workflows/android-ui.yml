@@ -44,7 +44,7 @@ jobs:
           emulator-port: 5556
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-front emulated -camera-back emulated
-          script: pwsh -NoProfile -File tools/run_ui_tests.ps1
+          script: bash tools/run_custom_music_ci_tests.sh
       - name: Save UI reports and device failures
         if: always()
         uses: actions/upload-artifact@v4
