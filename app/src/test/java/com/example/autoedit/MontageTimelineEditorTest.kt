@@ -90,7 +90,7 @@ class MontageTimelineEditorTest {
             undo = emptyList(), redo = listOf(edited.shared.current)))
         val before = restored.shared
         for (command in listOf(TimelineCommand.Move("A1", 0), TimelineCommand.Trim("A1", ClipEdge.START, 0),
-            TimelineCommand.SetFlashEnabled("flash-B", true), TimelineCommand.RestoreBaseline,
+            TimelineCommand.SetFlashEnabled("flash-B", true),
             TimelineCommand.SetTransition("B", MontageGraph.Transition.WHIP))) {
             assertSame(TimelinePreparation.Unchanged, MontageTimelineEditor.prepare(restored, command))
         }
@@ -98,6 +98,8 @@ class MontageTimelineEditorTest {
             TimelineCommand.SetFlashEnabled("missing", false))) {
             assertTrue(MontageTimelineEditor.prepare(restored, command) is TimelinePreparation.Rejected)
         }
+        val reset = MontageTimelineEditor.prepare(restored, TimelineCommand.RestoreBaseline) as TimelinePreparation.CoreRestoreMontage
+        assertSame(before, HybridEditCommands.apply(before, reset.command))
         assertSame(before, restored.shared)
         assertEquals(3L, restored.shared.nextRevisionId)
         assertEquals(listOf(2L), restored.shared.redo.map { it.id })
@@ -110,7 +112,8 @@ class MontageTimelineEditorTest {
         val current = moved.shared.current.copy(music = moved.shared.current.music.copy(gain = .4f, startUs = 20_000),
             texts = listOf(text), style = moved.shared.current.style.copy(mode = ProjectStyle.Mode.ADAPTIVE), lockedCutIds = setOf("B"))
         val project = fixtureCommit(moved, current)
-        val reset = prepare(project, TimelineCommand.RestoreBaseline).candidate
+        val resetPreparation = MontageTimelineEditor.prepare(project, TimelineCommand.RestoreBaseline) as TimelinePreparation.CoreRestoreMontage
+        val reset = HybridEditCommands.apply(project.shared, resetPreparation.command).current
         assertEquals(listOf("A1", "B", "A2"), reset.clips.map { it.id })
         assertEquals(project.shared.current.music, reset.music)
         assertEquals(project.shared.current.texts, reset.texts)
@@ -175,7 +178,13 @@ class MontageTimelineEditorTest {
 
     @Test fun obsoleteMetadataLessTrimDoesNotBlockKnownEdgeExtension() {
         val complete = completeMapAfterMetadataLessTrim()
-        val extended = prepare(complete, TimelineCommand.Trim("A1", ClipEdge.END, 69)).candidate
+        val rejected = MontageTimelineEditor.prepare(complete, TimelineCommand.Trim("A1", ClipEdge.END, 69))
+        assertTrue(rejected.toString(), rejected is TimelinePreparation.Rejected)
+        // A rewritten full window proves its recorded points, not its unseen continuation.
+        val original = complete.shared.current.copy(id = 1, parentId = null)
+        val proven = complete.copy(shared = complete.shared.copy(original = original, current = original,
+            undo = emptyList(), redo = emptyList()))
+        val extended = prepare(proven, TimelineCommand.Trim("A1", ClipEdge.END, 69)).candidate
         assertArrayEquals(LongArray(61) { 1_000_000L + (it / 2).toLong() * (it / 2) * 1000 }, projectSamples(extended).copyOfRange(0, 61))
         assertEquals(2_431_000L, extended.clips.first().sourceMap.sample(69))
     }
@@ -196,7 +205,8 @@ class MontageTimelineEditorTest {
         val old = short.shared.current.copy(graph = short.shared.current.graph.copy(manualMontageState = null))
         val history = short.copy(shared = short.shared.copy(current = old))
         val map = SourceTimeMap((0..60).map { SourceTimeMap.Point(it, 1_000_000L + (it / 2).toLong() * (it / 2) * 1000) })
-        return fixtureCommit(history, replaceMap(base.shared.original, map))
+        return fixtureCommit(history, replaceMap(base.shared.original.copy(id = history.shared.current.id,
+            parentId = history.shared.current.parentId), map))
     }
 
     @Test fun slipTrimExtendRestoresNonlinearRepeatedAndSparseSamples() {
@@ -289,11 +299,6 @@ class MontageTimelineEditorTest {
     private fun prepare(project: EditableMontageProject, command: TimelineCommand): TimelinePreparation.Prepared =
         MontageTimelineEditor.prepare(project, command).let { assertTrue(it.toString(), it is TimelinePreparation.Prepared); it as TimelinePreparation.Prepared }
 
-    /** Fixtures model saved shared revisions only; production allocation/history belongs to Task3B. */
-    private fun fixtureCommit(project: EditableMontageProject, candidate: HybridRevision): EditableMontageProject {
-        val shared = project.shared
-        val saved = candidate.copy(id = shared.nextRevisionId, parentId = shared.current.id)
-        return project.copy(shared = shared.copy(current = saved, nextRevisionId = shared.nextRevisionId + 1,
-            undo = shared.undo + shared.current, redo = emptyList()))
-    }
+    private fun fixtureCommit(project: EditableMontageProject, candidate: HybridRevision): EditableMontageProject =
+        project.copy(shared = HybridEditCommands.apply(project.shared, ProjectCommand.CommitRevision(candidate)))
 }

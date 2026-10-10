@@ -15,6 +15,9 @@ sealed interface TimelineCommand {
 
 sealed interface TimelinePreparation {
     data class Prepared(val candidate: HybridRevision, val changedClipIds: Set<String>) : TimelinePreparation
+    data class CoreRestoreMontage(val changedClipIds: Set<String>) : TimelinePreparation {
+        val command: ProjectCommand get() = ProjectCommand.RestoreMontage
+    }
     data object Unchanged : TimelinePreparation
     data class Rejected(val reason: String) : TimelinePreparation
 }
@@ -30,6 +33,12 @@ internal object MontageTimelineEditor {
     }
 
     private fun prepareChecked(project: EditableMontageProject, command: TimelineCommand): TimelinePreparation {
+        if (command == TimelineCommand.RestoreBaseline) {
+            // Core owns reset provenance, validation and referential no-op. Do not project
+            // potentially ambiguous current phase or manufacture an ordinary candidate.
+            return TimelinePreparation.CoreRestoreMontage(Collections.unmodifiableSet(
+                (project.shared.current.clips.map { it.id } + project.shared.original.clips.map { it.id }).toSet()))
+        }
         val current = project.current
         val clips = current.clips.toMutableList()
         var effects = current.effects
@@ -105,16 +114,10 @@ internal object MontageTimelineEditor {
                 effects = effects.mapIndexed { i, effect -> if (i == index) moved else effect }
                 markOwner(flash); markOwner(moved)
             }
-            TimelineCommand.RestoreBaseline -> {
-                if (current.clips == project.baseline.clips && effects == project.baseline.effects) return TimelinePreparation.Unchanged
-                changed += clips.map { it.id }
-                clips.clear(); clips.addAll(project.baseline.clips)
-                effects = project.baseline.effects
-            }
+            TimelineCommand.RestoreBaseline -> error("Reset routes directly to core")
         }
         val shared = project.shared.current
-        val sourceClips = if (command == TimelineCommand.RestoreBaseline) project.shared.original.clips else shared.clips
-        val sourceById = sourceClips.associateBy { it.id }
+        val sourceById = shared.clips.associateBy { it.id }
         var cursor = 0
         val preparedClips = clips.map { clip ->
             val source = sourceById.getValue(clip.id)
@@ -136,62 +139,58 @@ internal object MontageTimelineEditor {
         return TimelinePreparation.Prepared(candidate.copy(graph = compiled), Collections.unmodifiableSet(changed))
     }
 
-    /** Reads only canonical saved revisions. There is no independent map registry or history. */
+    /** Shared contiguous selected ancestry is the only authority for hidden source samples. */
     private fun trimmedMap(project: EditableMontageProject, clip: EditableClip, visible: FrameRange): ClipTimeMapping {
-        val original = project.shared.original.clips.single { it.id == clip.id }
-        val current = project.shared.current
-        require(current.graph.manualMontageState != null || clip.visible.count == original.span.length.toLong()) {
-            "Missing original frame coordinates for a previously trimmed clip"
-        }
         if (visible.start >= clip.visible.start && visible.endExclusive <= clip.visible.endExclusive) return clip.timeMap
-        val saved = (project.shared.undo.sortedByDescending { it.id } + project.shared.original).distinctBy { it.id }
-        val maps = saved.map { revision -> lazy {
-            val candidate = project.revisionView(revision).clips.single { it.id == clip.id }
-            val left = maxOf(clip.visible.start, candidate.visible.start)
-            val right = minOf(clip.visible.endExclusive, candidate.visible.endExclusive)
-            val delta = if (right > left && candidate.phase == clip.phase) {
-                val shift = Math.subtractExact(clip.timeMap.sourceTimeUs(left), candidate.timeMap.sourceTimeUs(left))
-                if ((left..right).all { frame -> Math.subtractExact(clip.timeMap.sourceTimeUs(frame), candidate.timeMap.sourceTimeUs(frame)) == shift }) shift else null
-            } else null
-            SavedMap(candidate, revision.clips.single { it.id == clip.id }.sourceMap, delta)
-        } }
-        val currentMap = current.clips.single { it.id == clip.id }.sourceMap
-        fun sample(frame: Long): Long {
-            if (frame in clip.visible.start..clip.visible.endExclusive) return clip.timeMap.sourceTimeUs(frame)
-            val edgeMaps = mutableListOf(SavedMap(clip, currentMap, 0L))
-            var completeWindowKnown = clip.visible.start <= 0 && clip.visible.endExclusive >= clip.originFrameCount
-            for ((index, revision) in saved.withIndex()) {
-                val source = revision.clips.single { it.id == clip.id }
-                if (revision.graph.manualMontageState == null && source.span.length != original.span.length) {
-                    // An older coordinate-less trim supplies neither samples nor edge provenance
-                    // once a newer compatible full original window is known. Never infer its offset.
-                    require(completeWindowKnown) { "Saved trim is missing original frame coordinates" }
-                    continue
-                }
-                val map = maps[index].value
-                if (frame in map.clip.visible.start..map.clip.visible.endExclusive) {
-                    val shift = requireNotNull(map.delta) { "Saved source mapping is incompatible with the current clip" }
-                    return Math.addExact(map.clip.timeMap.sourceTimeUs(frame), shift)
-                }
-                if (map.delta != null) {
-                    edgeMaps += map
-                    if (map.clip.visible.start <= 0 && map.clip.visible.endExclusive >= clip.originFrameCount) completeWindowKnown = true
-                }
-            }
-            require(frame < 0 || frame > clip.originFrameCount) { "Original source samples are unavailable in shared history" }
-            // Outside all recorded material, continue the widest compatible saved edge, retaining
-            // sparse segment provenance instead of inferring a slope from a newly cropped edge.
-            val edge = if (frame < clip.visible.start) edgeMaps.minBy { it.clip.visible.start }
-                else edgeMaps.maxBy { it.clip.visible.endExclusive }
-            val shifted = SourceTimeMap(edge.map.points.map { it.copy(sourceTimeUs = Math.addExact(it.sourceTimeUs, edge.delta!!)) })
-            val local = Math.subtractExact(frame, edge.clip.visible.start)
-            return if (local < 0) shifted.extendLeft(Math.toIntExact(-local), 0).sample(0)
-                else shifted.extendRight(Math.toIntExact(local - edge.clip.visible.count), clip.timeMap.sourceDurationUs).sample(Math.toIntExact(local))
+        require(Math.addExact(visible.count, 1) <= HybridProjectCodec.MAX_SOURCE_POINTS) {
+            "Dense source map exceeds the project point limit"
         }
-        require(visible.count < Int.MAX_VALUE) { "Dense map needs an end-exclusive point" }
+        val source = project.shared.current.clips.single { it.id == clip.id }
+        val leftCount = Math.toIntExact(maxOf(0L, Math.subtractExact(clip.visible.start, visible.start)))
+        val rightCount = Math.toIntExact(maxOf(0L, Math.subtractExact(visible.endExclusive, clip.visible.endExclusive)))
+        val budget = HybridSourceWindow.ComparisonBudget()
+        // Reserve both edges before any source sampling or allocation.
+        budget.reserve(Math.addExact(leftCount.toLong(), rightCount.toLong()))
+        val window = HybridSourceWindow(project.shared, source, budget)
+        validateRecoveryPhase(project, clip, visible, budget)
+        val left = if (leftCount > 0) window.extendLeft(leftCount) else source.sourceMap
+        val right = if (rightCount > 0) window.extendRight(rightCount) else source.sourceMap
         return ClipTimeMapping(project.export.fps, clip.timeMap.sourceDurationUs,
-            LongArray(visible.count.toInt() + 1) { sample(Math.addExact(visible.start, it.toLong())) }, visible.start)
+            LongArray(Math.toIntExact(Math.addExact(visible.count, 1))) { index ->
+                val frame = Math.addExact(visible.start, index.toLong())
+                val local = Math.subtractExact(frame, clip.visible.start)
+                when {
+                    local < 0 -> left.sample(Math.toIntExact(local + leftCount))
+                    local > source.span.length -> right.sample(Math.toIntExact(local))
+                    else -> clip.timeMap.sourceTimeUs(frame)
+                }
+            }, visible.start)
     }
 
-    private data class SavedMap(val clip: EditableClip, val map: SourceTimeMap, val delta: Long?)
+    /** Conservative legacy phase guard only; it neither selects maps nor supplies PTS. */
+    private fun validateRecoveryPhase(project: EditableMontageProject, clip: EditableClip,
+        requested: FrameRange, budget: HybridSourceWindow.ComparisonBudget) {
+        val shared = project.shared
+        val ancestors = shared.undo.associateBy { it.id }
+        var revision = shared.current
+        repeat(shared.undo.size + 2) {
+            budget.reserve(revision.clips.size.toLong())
+            val saved = revision.clips.firstOrNull { it.id == clip.id } ?: return
+            val states = revision.graph.manualMontageState?.clips
+            budget.reserve(states?.size?.toLong() ?: 0)
+            val state = states?.firstOrNull { it.clipId == clip.id }
+            require(state != null || (saved.originalFrameOffset == 0 && saved.span.length.toLong() == clip.originFrameCount)) {
+                "Saved trim is missing original frame coordinates"
+            }
+            require(state == null || (state.originFrameCount == clip.originFrameCount && state.phase == clip.phase)) {
+                "Saved original motion phase is incompatible with the current clip"
+            }
+            if (revision.id == shared.original.id || revision.restoresAutomaticSources) return
+            val start = saved.originalFrameOffset.toLong()
+            val end = Math.addExact(start, saved.span.length.toLong())
+            if (start <= requested.start && end >= requested.endExclusive) return
+            val parent = revision.parentId ?: return
+            revision = if (parent == shared.original.id) shared.original else ancestors[parent] ?: return
+        }
+    }
 }

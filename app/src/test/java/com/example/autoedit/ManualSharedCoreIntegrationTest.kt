@@ -102,7 +102,7 @@ class ManualSharedCoreIntegrationTest {
             }
             for (command in listOf(TimelineCommand.Move("A1", 2), TimelineCommand.Trim("A1", ClipEdge.END, 2L * fps - 1),
                 TimelineCommand.SetTransition("B", MontageGraph.Transition.HARD_CUT),
-                TimelineCommand.SetFlashEnabled("flash-B", false), TimelineCommand.RestoreBaseline)) {
+                TimelineCommand.SetFlashEnabled("flash-B", false))) {
                 val candidate = prepared(slipped, command)
                 assertEquals(choices.music, candidate.music)
                 assertEquals(choices.texts, candidate.texts)
@@ -110,6 +110,13 @@ class ManualSharedCoreIntegrationTest {
                 assertEquals(visuals, candidate.visualSettings)
                 assertEquals(textState, candidate.textState)
             }
+            val reset = MontageTimelineEditor.prepare(slipped, TimelineCommand.RestoreBaseline) as TimelinePreparation.CoreRestoreMontage
+            val restored = HybridEditCommands.apply(slipped.shared, reset.command).current
+            assertEquals(choices.music, restored.music)
+            assertEquals(choices.texts, restored.texts)
+            assertEquals(choices.style, restored.style)
+            assertEquals(visuals, restored.visualSettings)
+            assertEquals(textState, restored.textState)
         }
     }
 
@@ -175,9 +182,13 @@ class ManualSharedCoreIntegrationTest {
             assertEquals(cut.toInt(), transition.clips.first().originalFrameOffset)
             val flash = prepared(redo, TimelineCommand.SetFlashEnabled("flash-B", false))
             assertEquals(cut.toInt(), flash.clips.first().originalFrameOffset)
-            val resetCandidate = prepared(redo, TimelineCommand.RestoreBaseline)
-            assertEquals(0, resetCandidate.clips.first().originalFrameOffset)
-            // This candidate is deliberately not applied as a scoped reset: owner API pending.
+            val reset = MontageTimelineEditor.prepare(redo, TimelineCommand.RestoreBaseline) as TimelinePreparation.CoreRestoreMontage
+            val restored = redo.copy(shared = HybridEditCommands.apply(redo.shared, reset.command))
+            assertEquals(0, restored.shared.current.clips.first().originalFrameOffset)
+            assertTrue(restored.shared.current.restoresAutomaticSources)
+            assertEquals(redo.shared.nextRevisionId, restored.shared.current.id)
+            assertEquals(redo.shared.current, HybridEditCommands.apply(restored.shared, ProjectCommand.Undo).current)
+            assertSame(restored.shared, HybridEditCommands.apply(restored.shared, reset.command))
         }
     }
 
@@ -204,6 +215,11 @@ class ManualSharedCoreIntegrationTest {
             assertEquals(selections, moved.shared.selectedVideos)
             assertEquals(4, moved.sources.size)
             assertEquals(4, moved.shared.assets.size)
+            val reset = MontageTimelineEditor.prepare(moved, TimelineCommand.RestoreBaseline) as TimelinePreparation.CoreRestoreMontage
+            val restored = moved.copy(shared = HybridEditCommands.apply(moved.shared, reset.command))
+            assertEquals(listOf(0, 1, 2), EditableMontageCompiler.compile(restored).clips.map { it.sourceIndex })
+            assertEquals(selections, restored.shared.selectedVideos)
+            assertEquals(shared.assets, restored.shared.assets)
         }
     }
 
