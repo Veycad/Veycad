@@ -40,6 +40,71 @@ internal fun storageProject(assets: List<ProjectAsset> = listOf(
 
 class HybridProjectCodecTest {
     @get:Rule val temporary = TemporaryFolder()
+    @Test fun version1ProjectLoadsWithZeroPhase() {
+        val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
+        val bytes = javaClass.getResourceAsStream("/hybrid-v1/project.bin")!!.use { it.readBytes() }
+        val untouched = bytes.copyOf()
+        assertEquals(1, ByteBuffer.wrap(bytes).getInt(4))
+        val loaded = codec.decode(bytes)
+        val base = storageProject()
+        val revision = base.current.copy(graph = base.current.graph.copy(frameAttachments = FrameAttachmentTimeline()))
+        val expected = base.copy(original = revision, current = revision, exports = listOf(
+            ProjectExportRef(0, "automatic.mp4", ProjectExportSettings(1080, 1920, 30, 8_000_000, 192_000))))
+        assertEquals(expected, loaded)
+        assertEquals(0, loaded.current.clips.single().originalFrameOffset)
+        assertSame(loaded.original, loaded.current)
+        assertEquals(0L, loaded.exports.single().revisionId)
+        assertArrayEquals(untouched, bytes)
+        val revisionBytes = javaClass.getResourceAsStream("/hybrid-v1/revision.bin")!!.use { it.readBytes() }
+        assertEquals(revision, codec.decodeRevision(revisionBytes))
+    }
+
+    @Test fun version2RoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
+        val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
+        val base = storageProject()
+        val revision = base.current.copy(id = 1, parentId = 0,
+            clips = base.current.clips.map { it.copy(originalFrameOffset = -2) })
+        val project = base.copy(current = revision, nextRevisionId = 2, undo = listOf(base.original))
+        val encoded = codec.encode(project)
+        assertEquals(2, ByteBuffer.wrap(encoded).getInt(4))
+        val loaded = codec.decode(encoded)
+        assertEquals(project, loaded)
+        assertEquals(-2, loaded.current.clips.single().originalFrameOffset)
+        assertSame(loaded.original, loaded.undo.single())
+        assertEquals(revision, codec.decodeRevision(codec.encodeRevisions(listOf(revision)).getValue(1)))
+    }
+
+    @Test fun openingVersion1StoreDoesNotRewriteAndNextEditRetainsOldExportBlob() {
+        val store = HybridProjectStore(temporary.newFolder())
+        val dir = store.directory("project").apply { mkdirs() }
+        val projectBytes = javaClass.getResourceAsStream("/hybrid-v1/project.bin")!!.use { it.readBytes() }
+        val revisionBytes = javaClass.getResourceAsStream("/hybrid-v1/revision.bin")!!.use { it.readBytes() }
+        val hash = contentHash(revisionBytes)
+        val revisionFile = File(File(dir, "revisions").apply { mkdirs() }, "$hash.bin").apply { writeBytes(revisionBytes) }
+        val manifestName = "00000000-0000-0000-0000-000000000001.bin"
+        val manifest = File(File(dir, "manifests").apply { mkdirs() }, manifestName)
+        java.io.DataOutputStream(manifest.outputStream()).use {
+            it.writeInt(0x56485354); it.writeInt(1)
+            it.writeInt(projectBytes.size); it.write(projectBytes)
+            it.writeInt(1); it.writeLong(0); it.write(hash.toByteArray(Charsets.US_ASCII)); it.writeInt(0)
+        }
+        val before = manifest.readBytes()
+        val pointer = File(dir, "CURRENT").apply { writeText(manifestName) }
+        val loaded = store.load("project")
+        assertArrayEquals(before, manifest.readBytes())
+        assertEquals(manifestName, pointer.readText())
+        assertEquals(loaded.original, store.loadRevision("project", loaded.exports.single().revisionId))
+        val sources = File(dir, "sources").apply { mkdirs() }
+        loaded.assets.forEach { File(sources, it.fileName).writeText("fixture source") }
+        val edited = HybridEditCommands.setAuthoredText(loaded, true)
+        store.save(edited, loaded.current.id)
+        val reopened = store.load("project")
+        assertEquals(edited, reopened)
+        assertSame(reopened.original, reopened.undo.single())
+        assertEquals(loaded.original, store.loadRevision("project", 0))
+        assertArrayEquals(revisionBytes, revisionFile.readBytes())
+        assertArrayEquals(before, manifest.readBytes())
+    }
     @Test fun codecPreservesEveryGraphField() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val original = storageProject()
@@ -82,6 +147,19 @@ class HybridProjectCodecTest {
         val offset = (0..bytes.size - name.size).first { index -> name.indices.all { bytes[index + it] == name[it] } }
         "../xx.mp4".toByteArray().copyInto(bytes, offset)
         assertThrows(IllegalArgumentException::class.java) { codec.decode(bytes) }
+    }
+
+    @Test fun pointCountsAreCheckedAgainstAvailableBytesBeforeAllocation() {
+        val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
+        val bytes = codec.encode(editProject())
+        val map = ByteBuffer.allocate(28).putInt(2).putInt(0).putLong(500_000)
+            .putInt(30).putLong(1_500_000).array()
+        val offset = (0..bytes.size - map.size).first { index -> map.indices.all { bytes[index + it] == map[it] } }
+        for (count in listOf(Int.MAX_VALUE, bytes.size / 12 + 1)) {
+            val corrupt = bytes.copyOf()
+            ByteBuffer.wrap(corrupt).putInt(offset, count)
+            assertThrows(IllegalArgumentException::class.java) { codec.decode(corrupt) }
+        }
     }
     @Test fun distinctRevisionsShareDecodedSidecarArraysButEachEncodeFreezesFreshValues() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))

@@ -12,7 +12,9 @@ data class ProjectAsset(val id: String, val fileName: String, val kind: Kind,
 }
 
 data class HybridClip(val id: String, val assetId: String, val span: FrameSpan,
-    val sourceMap: SourceTimeMap, val original: MontageGraph.Clip) {
+    val sourceMap: SourceTimeMap, val original: MontageGraph.Clip,
+    /** Original local output frame at current local frame 0; independent of source PTS/holds. */
+    val originalFrameOffset: Int = 0) {
     init {
         require(id.isNotBlank() && assetId.isNotBlank())
         require(sourceMap.points.last().localFrame == span.length)

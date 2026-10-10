@@ -12,12 +12,12 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Version 1 is an explicit primitive format. No runtime class names or object serialization. */
+/** Explicit primitive format. Physical v2 adds camera phase; project schema remains 1. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
     fun encode(project: HybridProject): ByteArray {
         val bytes = ByteArrayOutputStream()
         Writer(DataOutputStream(bytes), sidecars).apply {
-            out.writeInt(MAGIC); out.writeInt(project.schemaVersion)
+            out.writeInt(MAGIC); out.writeInt(FORMAT_VERSION)
             string(project.id); out.writeInt(project.fps); out.writeLong(project.nextRevisionId)
             list(project.assets) {
                 string(it.id); string(it.fileName); enum(it.kind); out.writeLong(it.durationUs)
@@ -45,7 +45,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         return revisions.associate { revision ->
             val bytes = ByteArrayOutputStream()
             val output = DataOutputStream(bytes)
-            output.writeInt(MAGIC); output.writeInt(1)
+            output.writeInt(MAGIC); output.writeInt(FORMAT_VERSION)
             Writer(output, sidecars, planes, hashes).revision(revision)
             require(bytes.size() <= MAX_MANIFEST_BYTES)
             revision.id to bytes.toByteArray()
@@ -55,8 +55,9 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
     internal fun decodeRevision(bytes: ByteArray): HybridRevision {
         require(bytes.size in 8..MAX_MANIFEST_BYTES)
         val reader = Reader(DataInputStream(ByteArrayInputStream(bytes)), sidecars)
-        require(reader.input.readInt() == MAGIC && reader.input.readInt() == 1)
-        return reader.revision().also { require(reader.input.available() == 0) }
+        require(reader.input.readInt() == MAGIC)
+        val format = reader.formatVersion()
+        return reader.revision(format).also { require(reader.input.available() == 0) }
     }
 
     fun decodeWithAnalysisStatus(bytes: ByteArray): ProjectLoadResult {
@@ -64,11 +65,10 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         val reader = Reader(DataInputStream(ByteArrayInputStream(bytes)), sidecars)
         with(reader) {
             require(input.readInt() == MAGIC) { "Not a hybrid project" }
-            val schema = input.readInt()
-            require(schema == 1) { "Unsupported hybrid schema $schema" }
+            val format = formatVersion()
             val id = string(); val fps = input.readInt(); val next = input.readLong()
             val assets = list { ProjectAsset(string(), string(), enum(), input.readLong(), string(), string()) }
-            val revisions = list { revision() }
+            val revisions = list { revision(format) }
             require(revisions.map { it.id }.distinct().size == revisions.size)
             val canonical = revisions.associateBy { it.id }
             fun reference(): HybridRevision = requireNotNull(canonical[input.readLong()]) { "Unknown revision reference" }
@@ -77,7 +77,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             val exports = list { ProjectExportRef(input.readLong(), string(), ProjectExportSettings(
                 input.readInt(), input.readInt(), input.readInt(), input.readInt(), input.readInt())) }
             require(input.available() == 0) { "Trailing project data" }
-            return ProjectLoadResult(HybridProject(id, schema, fps, next, assets, original, current, undo, redo, exports), missing)
+            return ProjectLoadResult(HybridProject(id, 1, fps, next, assets, original, current, undo, redo, exports), missing)
         }
     }
 
@@ -93,6 +93,14 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         fun <T> list(values: Collection<T>, write: (T) -> Unit) {
             require(values.size <= MAX_ITEMS); out.writeInt(values.size); values.forEach(write)
         }
+        fun sourceMap(value: SourceTimeMap) {
+            val count = value.points.size
+            require(count in 2..MAX_SOURCE_POINTS && 4L + count * 12L <= MAX_MANIFEST_BYTES - out.size().toLong()) {
+                "Source map exceeds the project byte budget"
+            }
+            out.writeInt(count)
+            value.points.forEach { out.writeInt(it.localFrame); out.writeLong(it.sourceTimeUs) }
+        }
         fun <T : Any> optional(value: T?, write: (T) -> Unit) { out.writeBoolean(value != null); if (value != null) write(value) }
         fun nullableLong(value: Long?) = optional(value) { out.writeLong(it) }
         fun span(value: FrameSpan) { out.writeInt(value.start); out.writeInt(value.endExclusive) }
@@ -101,8 +109,9 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             out.writeLong(id); nullableLong(parentId); graph(graph)
             list(clips) {
                 string(it.id); string(it.assetId); span(it.span)
-                list(it.sourceMap.points) { point -> out.writeInt(point.localFrame); out.writeLong(point.sourceTimeUs) }
+                sourceMap(it.sourceMap)
                 clip(it.original)
+                out.writeInt(it.originalFrameOffset)
             }
             with(music) { string(assetId); out.writeLong(startUs); out.writeFloat(gain); out.writeLong(fadeInUs); out.writeLong(fadeOutUs); out.writeBoolean(repeat) }
             list(texts) {
@@ -178,13 +187,32 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             itemBudget -= count
             return List(count) { read() }
         }
+        fun sourceMap(): SourceTimeMap {
+            val count = input.readInt()
+            // Points have a fixed 12-byte representation. The manifest's byte limit bounds
+            // their aggregate allocation; the generic object-list budget does not apply.
+            require(count in 2..MAX_SOURCE_POINTS && count * 12L <= input.available()) {
+                "Source map exceeds the available project bytes"
+            }
+            return SourceTimeMap(List(count) { SourceTimeMap.Point(input.readInt(), input.readLong()) })
+        }
         fun <T> optional(read: () -> T): T? = if (input.readBoolean()) read() else null
         fun nullableLong(): Long? = optional { input.readLong() }
         fun span() = FrameSpan(input.readInt(), input.readInt())
         fun curve() = MontageGraph.SpeedRamp.CubicBezier(input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat())
-        fun revision(): HybridRevision {
+        fun formatVersion(): Int = input.readInt().also {
+            require(it == 1 || it == FORMAT_VERSION) { "Unsupported hybrid format $it" }
+        }
+        fun revision(format: Int): HybridRevision {
             val id = input.readLong(); val parent = nullableLong(); val graph = graph()
-            val clips = list { HybridClip(string(), string(), span(), SourceTimeMap(list { SourceTimeMap.Point(input.readInt(), input.readLong()) }), clip()) }
+            val clips = list {
+                val clip = HybridClip(string(), string(), span(), sourceMap(), clip())
+                when (format) {
+                    1 -> clip
+                    2 -> clip.copy(originalFrameOffset = input.readInt())
+                    else -> error("Unsupported hybrid format")
+                }
+            }
             val music = ProjectMusic(string(), input.readLong(), input.readFloat(), input.readLong(), input.readLong(), input.readBoolean())
             val texts = list { TextItem(string(), string(), span(), input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat(), input.readInt(), enum(), input.readInt()) }
             val style = ProjectStyle(string(), input.readInt(), enum(), input.readBoolean())
@@ -259,7 +287,9 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
 
     companion object {
         private const val MAGIC = 0x56485942
+        private const val FORMAT_VERSION = 2
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
+        internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024
         private const val MAX_ITEMS = 10_000
     }
