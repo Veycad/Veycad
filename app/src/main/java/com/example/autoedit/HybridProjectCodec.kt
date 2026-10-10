@@ -12,11 +12,12 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Explicit primitive format: v2 phase, v3 resets, v4 sources/visual/text; project schema stays 1. */
-class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
+/** Explicit primitive format: v4 author DTOs; v5 authored map references/backing/timing. Schema stays 1. */
+class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
+    private val authoredMaps: AuthoredSourceMapStore = sidecars.authoredMaps()) {
     fun encode(project: HybridProject): ByteArray {
         val bytes = ByteArrayOutputStream()
-        Writer(DataOutputStream(bytes), sidecars).apply {
+        Writer(DataOutputStream(bytes), sidecars, authoredMaps.writer()).apply {
             out.writeInt(MAGIC); out.writeInt(FORMAT_VERSION)
             string(project.id); out.writeInt(project.fps); out.writeLong(project.nextRevisionId)
             list(project.assets) {
@@ -44,11 +45,12 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
     internal fun encodeRevisions(revisions: List<HybridRevision>): Map<Long, ByteArray> {
         val planes = IdentityHashMap<FloatArray, String>()
         val hashes = hashSetOf<String>()
+        val maps = authoredMaps.writer()
         return revisions.associate { revision ->
             val bytes = ByteArrayOutputStream()
             val output = DataOutputStream(bytes)
             output.writeInt(MAGIC); output.writeInt(FORMAT_VERSION)
-            Writer(output, sidecars, planes, hashes).revision(revision)
+            Writer(output, sidecars, maps, planes, hashes).revision(revision)
             require(bytes.size() <= MAX_MANIFEST_BYTES)
             revision.id to bytes.toByteArray()
         }
@@ -56,22 +58,27 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
 
     internal fun decodeRevision(bytes: ByteArray): HybridRevision {
         require(bytes.size in 8..MAX_MANIFEST_BYTES)
-        val reader = Reader(DataInputStream(ByteArrayInputStream(bytes)), sidecars)
+        val reader = Reader(DataInputStream(ByteArrayInputStream(bytes)), sidecars, authoredMaps.reader())
         require(reader.input.readInt() == MAGIC)
         val format = reader.formatVersion()
-        return reader.revision(format).also { require(reader.input.available() == 0) }
+        return reader.revision(format).also { revision ->
+            require(reader.input.available() == 0)
+            require(revision.sourceBackings.keys.all { id -> revision.clips.any { it.id == id } })
+            val budget = HybridSourceWindow.ComparisonBudget()
+            revision.clips.forEach { clip -> revision.sourceBackings[clip.id]?.validate(clip, budget) }
+        }
     }
 
     fun decodeWithAnalysisStatus(bytes: ByteArray): ProjectLoadResult {
         require(bytes.size in 8..MAX_MANIFEST_BYTES)
-        val reader = Reader(DataInputStream(ByteArrayInputStream(bytes)), sidecars)
+        val reader = Reader(DataInputStream(ByteArrayInputStream(bytes)), sidecars, authoredMaps.reader())
         with(reader) {
             require(input.readInt() == MAGIC) { "Not a hybrid project" }
             val format = formatVersion()
             val id = string(); val fps = input.readInt(); val next = input.readLong()
             val assets = list {
                 val asset = ProjectAsset(string(), string(), enum(), input.readLong(), string(), string())
-                if (format >= 4) asset.copy(videoMetadata = optional { videoMetadata() }) else asset
+                if (format >= 4) asset.copy(videoMetadata = optional { videoMetadata(format) }) else asset
             }
             val selections = if (format >= 4) optional { list { selectedVideo() } } else null
             val revisions = list { revision(format) }
@@ -101,6 +108,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
     }
 
     private class Writer(val out: DataOutputStream, val sidecars: AnalysisSidecarStore,
+        val maps: AuthoredSourceMapStore.Writer,
         val planes: IdentityHashMap<FloatArray, String> = IdentityHashMap(),
         val hashes: MutableSet<String> = hashSetOf()) {
         private val itemBudget = ItemBudget()
@@ -114,12 +122,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             itemBudget.consume(values.size); out.writeInt(values.size); values.forEach(write)
         }
         fun sourceMap(value: SourceTimeMap) {
-            val count = value.points.size
-            require(count in 2..MAX_SOURCE_POINTS && 4L + count * 12L <= MAX_MANIFEST_BYTES - out.size().toLong()) {
-                "Source map exceeds the project byte budget"
-            }
-            out.writeInt(count)
-            value.points.forEach { out.writeInt(it.localFrame); out.writeLong(it.sourceTimeUs) }
+            string(maps.reference(value))
         }
         fun <T : Any> optional(value: T?, write: (T) -> Unit) { out.writeBoolean(value != null); if (value != null) write(value) }
         fun nullableLong(value: Long?) = optional(value) { out.writeLong(it) }
@@ -128,6 +131,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         fun videoMetadata(value: VideoSourceMetadata) = with(value) {
             with(geometry) { out.writeInt(encodedWidth); out.writeInt(encodedHeight); out.writeInt(rotation); out.writeFloat(pixelAspectRatio) }
             out.writeLong(sizeBytes); string(mime); optional(colorTransfer) { out.writeInt(it) }; out.writeBoolean(hasAudio)
+            nullableLong(firstVideoPtsUs); nullableLong(videoEndPtsUs)
         }
         fun selectedVideo(value: SelectedVideo) = with(value) {
             string(id.value); string(assetId); enum(ownership)
@@ -169,6 +173,10 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             list(lockedCutIds) { string(it) }
             out.writeBoolean(restoresAutomaticSources)
             visuals(visualSettings); textState(textState)
+            list(sourceBackings.entries) { (id, backing) ->
+                string(id); string(backing.assetId); sourceMap(backing.map); out.writeInt(backing.phaseStart)
+                out.writeLong(backing.slipUs); out.writeLong(backing.selectedRevisionId); out.writeBoolean(backing.automatic)
+            }
         }
         fun clip(value: MontageGraph.Clip) = with(value) {
             string(id); out.writeLong(sourceStartMs); out.writeLong(sourceEndMs); out.writeLong(outputDurationMs)
@@ -219,7 +227,8 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         }
     }
 
-    private class Reader(val input: DataInputStream, val sidecars: AnalysisSidecarStore) {
+    private class Reader(val input: DataInputStream, val sidecars: AnalysisSidecarStore,
+        val maps: AuthoredSourceMapStore.Reader) {
         val missing = linkedSetOf<String>()
         private val arrays = mutableMapOf<String, FloatArray?>()
         private var arrayBytes = 0L
@@ -236,7 +245,8 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             require(count <= input.available())
             return List(count) { read() }
         }
-        fun sourceMap(): SourceTimeMap {
+        fun sourceMap(format: Int): SourceTimeMap {
+            if (format >= 5) return maps.resolve(string())
             val count = input.readInt()
             // Points have a fixed 12-byte representation. The manifest's byte limit bounds
             // their aggregate allocation; the generic object-list budget does not apply.
@@ -249,8 +259,9 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
         fun nullableLong(): Long? = optional { input.readLong() }
         fun span() = FrameSpan(input.readInt(), input.readInt())
         fun curve() = MontageGraph.SpeedRamp.CubicBezier(input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat())
-        fun videoMetadata() = VideoSourceMetadata(SourceGeometry(input.readInt(), input.readInt(), input.readInt(), input.readFloat()),
-            input.readLong(), string(), optional { input.readInt() }, input.readBoolean())
+        fun videoMetadata(format: Int) = VideoSourceMetadata(SourceGeometry(input.readInt(), input.readInt(), input.readInt(), input.readFloat()),
+            input.readLong(), string(), optional { input.readInt() }, input.readBoolean(),
+            if (format >= 5) nullableLong() else null, if (format >= 5) nullableLong() else null)
         fun selectedVideo() = SelectedVideo(SourceId(string()), string(), enum(),
             optional { CaptureOrigin(string(), input.readInt(), input.readBoolean()) }, string())
         fun framing() = FramingSettings(enum(), input.readFloat(), input.readFloat(), input.readFloat())
@@ -267,15 +278,15 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             list { CaptionCue(string(), string(), input.readLong(), input.readLong()) },
             textStyle(), input.readBoolean(), string())
         fun formatVersion(): Int = input.readInt().also {
-            require(it == 1 || it == 2 || it == 3 || it == FORMAT_VERSION) { "Unsupported hybrid format $it" }
+            require(it in 1..FORMAT_VERSION) { "Unsupported hybrid format $it" }
         }
         fun revision(format: Int): HybridRevision {
             val id = input.readLong(); val parent = nullableLong(); val graph = graph()
             val clips = list {
-                val clip = HybridClip(string(), string(), span(), sourceMap(), clip())
+                val clip = HybridClip(string(), string(), span(), sourceMap(format), clip())
                 when (format) {
                     1 -> clip
-                    2, 3, 4 -> clip.copy(originalFrameOffset = input.readInt())
+                    2, 3, 4, 5 -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -286,12 +297,16 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
             require(locked.distinct().size == locked.size)
             val resetsSources = when (format) {
                 1, 2 -> false
-                3, 4 -> input.readBoolean()
+                3, 4, 5 -> input.readBoolean()
                 else -> error("Unsupported hybrid format")
             }
             val visuals = if (format >= 4) visuals() else ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false)
             val text = if (format >= 4) textState() else HybridTextState()
-            return HybridRevision(id, parent, graph, clips, music, texts, style, locked.toSet(), resetsSources, visuals, text)
+            val backings = if (format >= 5) list {
+                string() to HybridSourceBacking(string(), sourceMap(format), input.readInt(), input.readLong(), input.readLong(), input.readBoolean())
+            } else emptyList()
+            require(backings.map { it.first }.distinct().size == backings.size)
+            return HybridRevision(id, parent, graph, clips, music, texts, style, locked.toSet(), resetsSources, visuals, text, backings.toMap())
         }
         fun clip() = MontageGraph.Clip(string(), input.readLong(), input.readLong(), input.readLong(), enum(), enum(), enum(),
             input.readFloat(), input.readLong(),
@@ -360,7 +375,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore) {
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 4
+        private const val FORMAT_VERSION = 5
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024

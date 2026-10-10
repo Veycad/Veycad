@@ -22,9 +22,9 @@ object HybridCutConstraints {
         fun duration(clip: HybridClip): Long {
             val asset = assets.firstOrNull { it.id == clip.assetId }
             require(asset != null && asset.kind == ProjectAsset.Kind.VIDEO) { "Исходник клипа не найден" }
-            require(clip.sourceMap.points.last().sourceTimeUs <= asset.durationUs &&
-                clip.sourceMap.sample(clip.span.length - 1) < asset.durationUs) { "Здесь заканчивается исходник" }
-            return asset.durationUs
+            asset.timeBounds.requireRequest(clip.sourceMap.points.last().sourceTimeUs, exclusiveBoundary = true)
+            asset.timeBounds.requireRequest(clip.sourceMap.sample(clip.span.length - 1))
+            return asset.timeBounds.requestEndUs
         }
         val leftDuration = duration(left)
         duration(right)

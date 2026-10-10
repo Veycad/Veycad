@@ -26,7 +26,7 @@ class HybridIntegrationA1Test {
     @Test fun genuinePhysicalV3KeepsResetHistoryAndUnknownMetadata() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val moved = HybridEditCommands.moveCut(editProject(), "right", 28)
-        val expected = HybridEditCommands.restoreAutomatic(moved)
+        val expected = HybridEditCommands.restoreAutomatic(moved).withoutSourceBackings()
         val bytes = javaClass.getResourceAsStream("/hybrid-v3/project.bin")!!.use { it.readBytes() }
         val before = bytes.copyOf()
         assertEquals(3, java.nio.ByteBuffer.wrap(bytes).getInt(4))

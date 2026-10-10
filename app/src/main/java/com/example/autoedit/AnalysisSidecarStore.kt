@@ -9,6 +9,9 @@ import java.security.MessageDigest
 
 /** Replaceable analysis only. Source media never enters this directory. */
 class AnalysisSidecarStore(private val directory: File) {
+    /** Compatibility for standalone codec callers; authored files are outside the cache tree. */
+    internal fun authoredMaps() = AuthoredSourceMapStore(ownedChild(directory.absoluteFile.parentFile,
+        "${directory.name}-authored-maps"))
     fun write(kind: String, data: ByteArray): String {
         require(kind.matches(Regex("[a-z-]{1,40}")))
         require(data.size <= MAX_BYTES)

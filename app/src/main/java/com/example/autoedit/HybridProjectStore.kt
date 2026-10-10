@@ -71,7 +71,12 @@ class HybridProjectStore(
         require(revisionId >= 0)
         val state = readCurrent(projectId)
         val hash = requireNotNull(state.revisions[revisionId]) { "Revision was never published" }
-        readRevision(projectId, revisionId, hash)
+        readRevision(projectId, revisionId, hash).also { revision ->
+            // Export-only revisions must obey the same physical bindings and backing validation.
+            val project = state.result.project
+            project.copy(original = if (revision.id == project.original.id) revision else project.original,
+                current = revision, undo = emptyList(), redo = emptyList())
+        }
     }
 
     private data class State(val result: ProjectLoadResult, val revisions: Map<Long, String>)
@@ -143,7 +148,12 @@ class HybridProjectStore(
                 }
             } else {
                 require(previous == null || revision.id >= previous.result.project.nextRevisionId) { "Revision ID was already allocated" }
-                atomicWrite(ownedChild(revisionDir, "$hash.bin"), snapshot)
+                val file = ownedChild(revisionDir, "$hash.bin")
+                if (file.exists()) {
+                    require(file.inputStream().use { it.readBytesBounded(HybridProjectCodec.MAX_MANIFEST_BYTES) }.contentEquals(snapshot)) {
+                        "Immutable revision snapshot is corrupt"
+                    }
+                } else atomicWrite(file, snapshot)
                 index[revision.id] = hash
             }
         }
@@ -166,7 +176,8 @@ class HybridProjectStore(
         atomicWrite(ownedChild(dir, "CURRENT"), name.toByteArray(Charsets.US_ASCII), beforePointerReplace)
     }
 
-    private fun codec(dir: File) = HybridProjectCodec(AnalysisSidecarStore(ownedChild(dir, "analysis")))
+    private fun codec(dir: File) = HybridProjectCodec(AnalysisSidecarStore(ownedChild(dir, "analysis")),
+        AuthoredSourceMapStore(ownedChild(dir, "authored-maps")))
 
     private fun <T> locked(block: () -> T): T = synchronized(processLock) {
         root.mkdirs()

@@ -143,7 +143,7 @@ class HybridEditCommandsTest {
             val knot = 100 + index
             val map = SourceTimeMap(listOf(SourceTimeMap.Point(0, 500_000),
                 SourceTimeMap.Point(knot, 500_000L + knot * 100L), SourceTimeMap.Point(length, 1_500_000)))
-            project = HybridEditCommands.commitRevision(project, project.current.copy(clips = project.current.clips.map {
+            project = legacyCommit(project, project.current.copy(clips = project.current.clips.map {
                 if (it.id == "left" || it.id == "right") it.copy(sourceMap = map) else it
             }))
         }
@@ -158,7 +158,7 @@ class HybridEditCommandsTest {
             val knot = 7 * (100 + index)
             val map = SourceTimeMap(listOf(SourceTimeMap.Point(0, 500_000),
                 SourceTimeMap.Point(knot, 500_000L + knot * 1_000L / 7), SourceTimeMap.Point(length, 1_500_000)))
-            project = HybridEditCommands.commitRevision(project, project.current.copy(clips = project.current.clips.map {
+            project = legacyCommit(project, project.current.copy(clips = project.current.clips.map {
                 if (it.id == "left" || it.id == "right") it.copy(sourceMap = map) else it
             }))
         }
@@ -175,7 +175,7 @@ class HybridEditCommandsTest {
         val right = base.current.clips[1].copy(sourceMap = SourceTimeMap(listOf(
             SourceTimeMap.Point(0, 500_000), SourceTimeMap.Point(length / 2, 1_000_000),
             SourceTimeMap.Point(length, 1_500_000))))
-        val selected = HybridEditCommands.commitRevision(base, base.current.copy(clips = listOf(
+        val selected = legacyCommit(base, base.current.copy(clips = listOf(
             base.current.clips[0], right, base.current.clips[2])))
         val error = assertThrows(HybridEditRejected::class.java) { HybridCutConstraints.range(selected, "right") }
         assertTrue(error.reason.contains("сравнений"))
@@ -190,12 +190,12 @@ class HybridEditCommandsTest {
         val selected = HybridEditCommands.commitRevision(base, base.current.copy(clips = listOf(
             base.current.clips[0], right.copy(sourceMap = selectedMap), base.current.clips[2])))
         val trimmed = HybridEditCommands.moveCut(selected, "right", 42)
-        val branch = trimmed.copy(undo = listOf(base.original),
-            redo = listOf(selected.current.copy(id = 3, parentId = 2)), nextRevisionId = 4)
+        val branch = trimmed.withoutSourceBackings().copy(undo = listOf(base.original),
+            redo = listOf(selected.current.copy(id = 3, parentId = 2, sourceBackings = emptyMap())), nextRevisionId = 4)
         rejected { HybridEditCommands.moveCut(branch, "right", 30) }
         var pruned = trimmed
         repeat(51) { pruned = HybridEditCommands.putText(pruned, title("$it")) }
-        rejected { HybridEditCommands.moveCut(pruned, "right", 30) }
+        rejected { HybridEditCommands.moveCut(pruned.withoutSourceBackings(), "right", 30) }
     }
 
     @Test fun savedHeldSamplesCanBeRestoredWithoutInventingNewFrozenFrames() {
@@ -219,7 +219,7 @@ class HybridEditCommandsTest {
         for (frame in 0..30) assertEquals(external.sourceMap.sample(frame), restored.current.clips[1].sourceMap.sample(frame))
         var pruned = trimmed
         repeat(51) { pruned = HybridEditCommands.putText(pruned, title("$it")) }
-        rejected { HybridEditCommands.moveCut(pruned, "external", 30) }
+        rejected { HybridEditCommands.moveCut(pruned.withoutSourceBackings(), "external", 30) }
     }
 
     @Test fun redoCurveCannotSupplyBackingForANewEditorialBranch() {
@@ -228,14 +228,14 @@ class HybridEditCommandsTest {
         val inserted = HybridEditCommands.commitRevision(base, base.current.copy(clips = listOf(
             base.current.clips[0], external, base.current.clips[2])))
         val trimmed = HybridEditCommands.moveCut(inserted, "external", 42)
-        val future = inserted.current.copy(id = 3, parentId = 2)
-        val branched = trimmed.copy(undo = listOf(base.original), redo = listOf(future), nextRevisionId = 4)
+        val future = inserted.current.copy(id = 3, parentId = 2, sourceBackings = emptyMap())
+        val branched = trimmed.withoutSourceBackings().copy(undo = listOf(base.original), redo = listOf(future), nextRevisionId = 4)
         rejected { HybridEditCommands.moveCut(branched, "external", 30) }
         assertEquals(listOf(future), branched.redo)
     }
 
     @Test fun oneVisibleFrameDoesNotEstablishHiddenCurveProvenance() {
-        val trimmed = HybridEditCommands.moveCut(nonlinearProject(), "right", 59)
+        val trimmed = HybridEditCommands.moveCut(nonlinearProject(), "right", 59).withoutSourceBackings()
         assertEquals(1, trimmed.current.clips[1].span.length)
         rejected { HybridEditCommands.moveCut(trimmed, "right", 30) }
     }
@@ -385,7 +385,7 @@ class HybridEditCommandsTest {
         val edited = HybridEditCommands.putText(base, title()).let { it.copy(exports = listOf(
             ProjectExportRef(it.current.id, "export.mp4", ProjectExportSettings(1080, 1920, 30, 1, 1)))) }
         val restored = HybridEditCommands.apply(edited, ProjectCommand.RestoreAutomatic)
-        assertEquals(base.original.copy(id = 2, parentId = 1, restoresAutomaticSources = true), restored.current)
+        assertEquals(base.original.copy(id = 2, parentId = 1, restoresAutomaticSources = true), restored.current.copy(sourceBackings = emptyMap()))
         assertEquals(edited.exports, restored.exports)
         assertEquals(edited.assets, restored.assets)
         assertSame(base.original, restored.original)

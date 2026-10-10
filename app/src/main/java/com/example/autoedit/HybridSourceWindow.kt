@@ -5,6 +5,8 @@ import java.math.BigInteger
 /** Resolves hidden samples in the same output-phase coordinates as the current visible map. */
 internal class HybridSourceWindow(project: HybridProject, private val clip: HybridClip,
     private val comparisonBudget: ComparisonBudget) {
+    private val durable = project.current.sourceBackings[clip.id]
+    private val selectedRevisionId = project.current.id
     private data class Backing(val clip: HybridClip, val slipUs: Long, val automatic: Boolean)
 
     /** One reservation pool for both range windows and the ensuing edit, not per map. */
@@ -23,6 +25,7 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
     // arbitrary older curve cannot prove which hidden samples were selected. Redo and gaps
     // must not supply backing, and a rewrite ends provenance even if older overlaps match.
     private val backing: List<Backing> = buildList {
+        if (durable != null) return@buildList
         // The model validates reset events against the complete original source clips.
         if (project.current.id == project.original.id || project.current.restoresAutomaticSources) {
             add(Backing(clip, 0, true))
@@ -47,6 +50,21 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
                 parentId = revision.parentId
             }
         }
+    }
+
+    /** Legacy upgrade uses only the nearest proven containing window, never redo or a gap. */
+    fun retainedBacking(): HybridSourceBacking {
+        durable?.let { return it }
+        for (saved in backing) {
+            val start = clip.originalFrameOffset.toLong() - saved.clip.originalFrameOffset
+            val end = start + clip.span.length
+            if (!saved.automatic && (start < 0 || end > saved.clip.span.length)) continue
+            val retained = HybridSourceBacking(saved.clip.assetId, saved.clip.sourceMap,
+                saved.clip.originalFrameOffset, saved.slipUs, selectedRevisionId, saved.automatic)
+            retained.validate(clip, comparisonBudget)
+            return retained
+        }
+        return HybridSourceBacking.select(clip, selectedRevisionId)
     }
 
     private fun sameSourceDescriptor(selected: HybridClip, saved: HybridClip): Boolean {
@@ -115,6 +133,7 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
     private fun sample(localFrame: Long): Long {
         if (localFrame in 0..clip.span.length.toLong()) return clip.sourceMap.sample(localFrame.toInt())
         val phaseFrame = clip.originalFrameOffset.toLong() + localFrame
+        durable?.let { return it.sample(phaseFrame) }
         for (saved in backing) {
             val frame = phaseFrame - saved.clip.originalFrameOffset.toLong()
             if (frame in 0..saved.clip.span.length.toLong()) {
@@ -123,8 +142,8 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
                 }
             }
         }
-        // Only original or a verified chain to an automatic reset proves that extent. After
-        // a rewrite or pruned ancestry, durable backing belongs to integration A/A2.
+        // Without durable selection, only original or a verified chain to an automatic
+        // reset proves this extent; a rewrite or pruned legacy ancestry cannot supply it.
         val original = backing.firstOrNull { it.automatic }
         require(original != null) { "Сохранённая карта скрытых кадров недоступна; расширение клипа невозможно" }
         val frame = phaseFrame - original.clip.originalFrameOffset.toLong()

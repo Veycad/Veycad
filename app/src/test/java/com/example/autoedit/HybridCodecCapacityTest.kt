@@ -149,7 +149,7 @@ class HybridCodecCapacityTest {
         val bytes = ByteArrayOutputStream()
         DataOutputStream(bytes).use { out ->
             fun string(value: String) { val data = value.toByteArray(Charsets.UTF_8); out.writeInt(data.size); out.write(data) }
-            out.writeInt(0x56485942); out.writeInt(4)
+            out.writeInt(0x56485942); out.writeInt(5)
             string(project.id); out.writeInt(project.fps); out.writeLong(project.nextRevisionId)
             out.writeInt(project.assets.size)
             project.assets.forEach {

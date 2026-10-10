@@ -59,14 +59,14 @@ class HybridProjectCodecTest {
         assertEquals(revision, codec.decodeRevision(revisionBytes))
     }
 
-    @Test fun version4RoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
+    @Test fun version5RoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val base = storageProject()
         val revision = base.current.copy(id = 1, parentId = 0,
             clips = base.current.clips.map { it.copy(originalFrameOffset = -2) })
         val project = base.copy(current = revision, nextRevisionId = 2, undo = listOf(base.original))
         val encoded = codec.encode(project)
-        assertEquals(4, ByteBuffer.wrap(encoded).getInt(4))
+        assertEquals(5, ByteBuffer.wrap(encoded).getInt(4))
         val loaded = codec.decode(encoded)
         assertEquals(project, loaded)
         assertEquals(-2, loaded.current.clips.single().originalFrameOffset)
@@ -79,7 +79,7 @@ class HybridProjectCodecTest {
         val bytes = javaClass.getResourceAsStream("/hybrid-v2/project.bin")!!.use { it.readBytes() }
         assertEquals(2, ByteBuffer.wrap(bytes).getInt(4))
         val loaded = codec.decode(bytes)
-        assertEquals(HybridEditCommands.moveCut(editProject(), "right", 28), loaded)
+        assertEquals(HybridEditCommands.moveCut(editProject(), "right", 28).withoutSourceBackings(), loaded)
         assertEquals(-2, loaded.current.clips[1].originalFrameOffset)
         assertFalse(loaded.current.restoresAutomaticSources)
         assertFalse(loaded.original.restoresAutomaticSources)
@@ -124,7 +124,7 @@ class HybridProjectCodecTest {
         assertEquals(reset.current, store.loadRevision("project", reset.current.id))
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val resetBlob = codec.encodeRevisions(listOf(reset.current)).getValue(reset.current.id)
-        assertEquals(4, ByteBuffer.wrap(resetBlob).getInt(4))
+        assertEquals(5, ByteBuffer.wrap(resetBlob).getInt(4))
         assertEquals(reset.current, codec.decodeRevision(resetBlob))
         val edited = HybridEditCommands.slipClip(reset, "right", 123_456)
         assertFalse(edited.current.restoresAutomaticSources)
@@ -213,7 +213,7 @@ class HybridProjectCodecTest {
 
     @Test fun pointCountsAreCheckedAgainstAvailableBytesBeforeAllocation() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
-        val bytes = codec.encode(editProject())
+        val bytes = javaClass.getResourceAsStream("/hybrid-v4/project.bin")!!.use { it.readBytes() }
         val map = ByteBuffer.allocate(28).putInt(2).putInt(0).putLong(500_000)
             .putInt(30).putLong(1_500_000).array()
         val offset = (0..bytes.size - map.size).first { index -> map.indices.all { bytes[index + it] == map[it] } }
