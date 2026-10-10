@@ -78,7 +78,9 @@ data class EditableClipTiming(
     val visible: FrameRange,
     val startFrame: Long,
     val endFrameExclusive: Long,
-    val originFrameCount: Long = timeMap.frameCount
+    val originFrameCount: Long = timeMap.frameCount,
+    val phase: ClipPhase? = null,
+    val localTracks: List<ParameterTrack> = emptyList()
 ) {
     init {
         require(clipId.isNotBlank() && startFrame >= 0L)
@@ -88,7 +90,8 @@ data class EditableClipTiming(
     }
 }
 
-data class EditableFrameTiming(val fps: Int, val clips: List<EditableClipTiming>) {
+class EditableFrameTiming(val fps: Int, clips: List<EditableClipTiming>) {
+    val clips: List<EditableClipTiming> = montageSnapshot(clips.map { it.copy(localTracks = snapshotTracks(it.localTracks)) })
     val frameCount: Long get() = clips.last().endFrameExclusive
     init {
         require(fps == 30 || fps == 60)
@@ -98,4 +101,15 @@ data class EditableFrameTiming(val fps: Int, val clips: List<EditableClipTiming>
         require(clips.zipWithNext().all { (left, right) -> left.endFrameExclusive == right.startFrame })
         require(frameCount in 1..Int.MAX_VALUE.toLong())
     }
+
+    override fun equals(other: Any?): Boolean = other is EditableFrameTiming && fps == other.fps && clips == other.clips
+    override fun hashCode(): Int = 31 * fps + clips.hashCode()
+}
+
+/** Original output-frame origin and legacy boundary keep motion separate from source mapping. */
+data class ClipPhase(val firstFrame: Long, val startUs: Long, val durationUs: Long) {
+    init { require(firstFrame >= 0 && startUs >= 0 && durationUs > 0) }
+    fun timeUs(localFrame: Long, fps: Int): Long = frameTimeUs(Math.addExact(firstFrame, localFrame), fps)
+    fun progress(localFrame: Long, fps: Int): Float =
+        ((timeUs(localFrame, fps) - startUs).toDouble() / durationUs).toFloat().coerceIn(0f, 1f)
 }

@@ -7,7 +7,8 @@ data class EditableClip(
     val timeMap: ClipTimeMapping,
     val visible: FrameRange,
     val localTracks: List<ParameterTrack>,
-    val originFrameCount: Long = timeMap.frameCount
+    val originFrameCount: Long = timeMap.frameCount,
+    val phase: ClipPhase? = null
 ) {
     init {
         require(id.isNotBlank() && id == origin.id && sourceIndex == origin.sourceIndex)
@@ -36,7 +37,8 @@ data class ManualClipState(
     val clipId: String,
     val visible: FrameRange,
     val originFrameCount: Long,
-    val localTracks: List<ParameterTrack>
+    val localTracks: List<ParameterTrack>,
+    val phase: ClipPhase? = null
 ) {
     init {
         require(clipId.isNotBlank() && originFrameCount in 1..Int.MAX_VALUE.toLong())
@@ -70,11 +72,13 @@ internal data class EditableMontageProject(
     init {
         require(export.fps == shared.fps)
         require(shared.current.clips.map { it.id }.toSet() == shared.original.clips.map { it.id }.toSet())
-        baseline = projectRevision(shared.original)
-        current = projectRevision(shared.current)
+        baseline = revisionView(shared.original)
+        current = revisionView(shared.current)
     }
 
-    private fun projectRevision(revision: HybridRevision): MontageRevision {
+    /** Pure candidate projection; its ID need not be allocated/installed in HybridProject yet. */
+    internal fun revisionView(revision: HybridRevision): MontageRevision {
+        require(revision.clips.map { it.id }.toSet() == shared.original.clips.map { it.id }.toSet())
         val payload = revision.graph.manualMontageState
         val states = payload?.clips?.associateBy { it.clipId }.orEmpty()
         require(payload == null || states.keys == revision.clips.map { it.id }.toSet()) { "Manual clip IDs differ from shared revision" }
@@ -92,8 +96,8 @@ internal data class EditableMontageProject(
             require(state == null || state.originFrameCount == originFrameCount) { "Original motion phase count differs" }
             EditableClip(clip.id, sourceIndex, clip.original,
                 ClipTimeMapping.fromShared(shared.fps, sources[sourceIndex].durationUs, clip.sourceMap, visible.start),
-                visible, state?.localTracks.orEmpty(), originFrameCount)
+                visible, snapshotTracks(state?.localTracks.orEmpty()), originFrameCount, state?.phase)
         }
-        return MontageRevision(revision.id, clips, payload?.effects.orEmpty())
+        return MontageRevision(revision.id, montageSnapshot(clips), montageSnapshot(payload?.effects.orEmpty()))
     }
 }

@@ -14,7 +14,8 @@ data class MontageGraph(
     val effectGraph: GpuEffectGraph = GpuEffectGraph(),
     val version: Int = CURRENT_VERSION,
     val editableTiming: EditableFrameTiming? = null,
-    val manualMontageState: ManualMontageState? = null
+    val manualMontageState: ManualMontageState? = null,
+    val sourceAttachments: List<SourceAttachments> = emptyList()
 ) {
     init {
         require(sourceDurationMs > 0L && outputDurationMs > 0L && clips.isNotEmpty())
@@ -24,6 +25,7 @@ data class MontageGraph(
         require(parameterTracks.map { it.id }.distinct().size == parameterTracks.size)
         require(clips.map { it.id }.distinct().size == clips.size)
         require(overlays.map { it.id }.distinct().size == overlays.size)
+        require(sourceAttachments.map { it.sourceIndex }.distinct().size == sourceAttachments.size)
         editableTiming?.let { timing ->
             require(version == 3)
             require(timing.clips.map { it.clipId } == clips.map { it.id })
@@ -59,11 +61,16 @@ data class MontageGraph(
         /** Deliberate temporal separation for generic second decoder-backed source layers. */
         val secondarySourceOffsetMs: Long = 0L,
         /** Start of a different, already-directed output moment used as the secondary role. */
-        val secondaryTimelineStartMs: Long? = null
+        val secondaryTimelineStartMs: Long? = null,
+        val originId: String = id,
+        val phaseStart: Float = 0f,
+        val phaseEnd: Float = 1f,
+        val sampleWindow: EffectSampleWindow? = null
     ) {
         init {
             require(id.isNotBlank() && endMs > startMs && opacity in 0f..1f)
             require(secondaryTimelineStartMs == null || secondaryTimelineStartMs >= 0L)
+            require(originId.isNotBlank() && phaseStart in 0f..1f && phaseEnd in 0f..1f && phaseEnd > phaseStart)
         }
     }
 

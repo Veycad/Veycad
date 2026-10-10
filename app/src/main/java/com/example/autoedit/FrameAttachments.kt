@@ -2,6 +2,11 @@ package com.veycad.app
 
 import kotlin.math.abs
 
+/** Source identity is required: equal PTS from two videos must not share inferred planes. */
+data class SourceAttachments(val sourceIndex: Int, val timeline: FrameAttachmentTimeline) {
+    init { require(sourceIndex >= 0) }
+}
+
 /** Numeric, local-only per-frame ML products. No face template or original bitmap is retained. */
 data class FrameAttachments(
     val sourceTimeUs: Long,
