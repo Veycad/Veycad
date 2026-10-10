@@ -2,7 +2,6 @@ package com.veycad.app
 
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
-import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
@@ -278,8 +277,7 @@ object MediaCodecSpeedRampRenderer {
         var temporalActive = false
         frames.forEach { frame ->
             check(incoming.advanceTo(frame.sourceTimeUs) {
-                gl.awaitIncomingDecoderFrame()
-                gl.updateIncomingTexture()
+                gl.awaitTexture(0, decoders.checkCancelled)
             }) { "Incoming decoder did not reach clip frame" }
             val secondary = temporal?.takeIf { isTemporalLayer(frame.layer.kind, sigmaProfile) }?.let { decoder ->
                 val sourceTimeUs = temporalLayerSourceTimeUs(
@@ -289,8 +287,7 @@ object MediaCodecSpeedRampRenderer {
                 if (!temporalActive) decoder.beginRange(sourceTimeUs)
                 temporalActive = true
                 check(decoder.advanceTo(sourceTimeUs) {
-                    gl.awaitOutgoingDecoderFrame()
-                    gl.updateOutgoingTexture()
+                    gl.awaitTexture(1, decoders.checkCancelled)
                 }) { "Temporal layer decoder did not reach source frame" }
                 frame.copy(sourceTimeUs = sourceTimeUs)
             }
@@ -367,10 +364,10 @@ object MediaCodecSpeedRampRenderer {
         outgoing.beginRange(outgoingFrames.first().sourceTimeUs)
         incoming.beginRange(incomingFrames.first().sourceTimeUs)
         outgoingFrames.zip(incomingFrames).forEach { (outgoingFrame, incomingFrame) ->
-            check(outgoing.advanceTo(outgoingFrame.sourceTimeUs) { gl.awaitOutgoingDecoderFrame(); gl.updateOutgoingTexture() }) {
+            check(outgoing.advanceTo(outgoingFrame.sourceTimeUs) { gl.awaitTexture(1, decoders.checkCancelled) }) {
                 "Outgoing decoder did not reach overlap frame"
             }
-            check(incoming.advanceTo(incomingFrame.sourceTimeUs) { gl.awaitIncomingDecoderFrame(); gl.updateIncomingTexture() }) {
+            check(incoming.advanceTo(incomingFrame.sourceTimeUs) { gl.awaitTexture(0, decoders.checkCancelled) }) {
                 "Incoming decoder did not reach overlap frame"
             }
             gl.drawOverlap(incomingFrame, outgoingFrame, incoming.rotationDegrees, outgoing.rotationDegrees)
@@ -383,125 +380,24 @@ object MediaCodecSpeedRampRenderer {
         private val files: List<File>,
         private val incomingSurface: Surface,
         private val outgoingSurface: Surface,
-        checkCancelled: () -> Unit
+        val checkCancelled: () -> Unit
     ) {
         private val sourceDurationsUs = files.map { file -> checkCancelled(); requestSourceDurationUs(file) }
         private val slots = SourceDecoderSlots { index, role ->
             require(index in files.indices)
-            DecoderCursor(files[index], if (role == DecoderRole.INCOMING) incomingSurface else outgoingSurface)
+            VideoDecoderCursor(files[index], if (role == DecoderRole.INCOMING) incomingSurface else outgoingSurface, checkCancelled)
         }
 
         fun sourceDurationUs(sourceIndex: Int): Long = sourceDurationsUs[sourceIndex]
 
-        fun selectIncoming(sourceIndex: Int): DecoderCursor =
-            slots.acquire(sourceIndex, DecoderRole.INCOMING).decoder as DecoderCursor
+        fun selectIncoming(sourceIndex: Int): VideoDecoderCursor =
+            slots.acquire(sourceIndex, DecoderRole.INCOMING).decoder as VideoDecoderCursor
 
-        fun selectOutgoing(sourceIndex: Int): DecoderCursor =
-            slots.acquire(sourceIndex, DecoderRole.OUTGOING).decoder as DecoderCursor
+        fun selectOutgoing(sourceIndex: Int): VideoDecoderCursor =
+            slots.acquire(sourceIndex, DecoderRole.OUTGOING).decoder as VideoDecoderCursor
 
         fun release() {
             slots.releaseAll()
-        }
-    }
-
-    private class DecoderCursor(file: File, private val outputSurface: Surface) : AutoCloseable {
-        private val extractor = MediaExtractor()
-        private lateinit var decoder: MediaCodec
-        private var released = false
-        val rotationDegrees: Int
-        private var inputEnded = false
-        private var outputEnded = false
-        private var seeked = false
-        private var hasDecodedTexture = false
-        private var currentTexturePtsUs = Long.MIN_VALUE
-
-        init {
-            try {
-                extractor.setDataSource(file.absolutePath)
-                val track = (0 until extractor.trackCount).firstOrNull {
-                    extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
-                } ?: error("No video track")
-                rotationDegrees = MediaMetadataRetriever().let { retriever ->
-                    try { retriever.setDataSource(file.absolutePath); retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0 }
-                    finally { retriever.release() }
-                }
-                extractor.selectTrack(track)
-                val format = extractor.getTrackFormat(track)
-                decoder = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME) ?: error("No video mime"))
-                decoder.configure(format, outputSurface, null, 0)
-                decoder.start()
-            } catch (error: Throwable) {
-                release()
-                throw error
-            }
-        }
-
-        /** Starts one independently directed source range without recreating MediaCodec. */
-        fun beginRange(targetUs: Long) {
-            // A newly started decoder has nothing to flush. Flushing before its first queued
-            // sample stalls some Codec2 implementations when a Surface is rebound to a new file.
-            if (seeked) decoder.flush()
-            extractor.seekTo(targetUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
-            inputEnded = false
-            outputEnded = false
-            seeked = true
-            hasDecodedTexture = false
-            currentTexturePtsUs = Long.MIN_VALUE
-        }
-
-        fun advanceTo(targetUs: Long, onTextureFrame: () -> Unit): Boolean {
-            // Planned source time can be a few microseconds beyond the final decodable PTS because
-            // container duration is not the timestamp of its last frame. Keep the last valid
-            // texture at physical EOS rather than failing or shortening the output timeline.
-            if (outputEnded) return hasDecodedTexture
-            if (hasDecodedTexture && targetUs <= currentTexturePtsUs) return true
-            if (!seeked) {
-                extractor.seekTo(targetUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
-                seeked = true
-            }
-            val info = MediaCodec.BufferInfo()
-            var lastProgressNs = System.nanoTime()
-            while (!outputEnded) {
-                check(System.nanoTime() - lastProgressNs < CODEC_STALL_TIMEOUT_NS) { "Transition decoder stalled before reaching overlap frame" }
-                if (!inputEnded) {
-                    val inputIndex = decoder.dequeueInputBuffer(10_000)
-                    if (inputIndex >= 0) {
-                        val buffer = decoder.getInputBuffer(inputIndex) ?: error("Missing decoder input")
-                        val size = extractor.readSampleData(buffer, 0)
-                        if (size < 0) { decoder.queueInputBuffer(inputIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inputEnded = true }
-                        else { decoder.queueInputBuffer(inputIndex, 0, size, extractor.sampleTime, 0); extractor.advance() }
-                        lastProgressNs = System.nanoTime()
-                    }
-                }
-                when (val outputIndex = decoder.dequeueOutputBuffer(info, 10_000)) {
-                    MediaCodec.INFO_TRY_AGAIN_LATER, MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> Unit
-                    else -> if (outputIndex >= 0) {
-                        lastProgressNs = System.nanoTime()
-                        val render = info.size > 0
-                        decoder.releaseOutputBuffer(outputIndex, render)
-                        if (render) {
-                            onTextureFrame()
-                            hasDecodedTexture = true
-                            currentTexturePtsUs = info.presentationTimeUs
-                            if (info.presentationTimeUs >= targetUs) return true
-                        }
-                        outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-                    }
-                }
-            }
-            return hasDecodedTexture
-        }
-
-        override fun close() = release()
-
-        fun release() {
-            if (released) return
-            released = true
-            if (::decoder.isInitialized) {
-                runCatching { decoder.stop() }
-                runCatching { decoder.release() }
-            }
-            runCatching { extractor.release() }
         }
     }
 
