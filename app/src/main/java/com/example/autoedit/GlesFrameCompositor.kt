@@ -40,7 +40,8 @@ internal class GlesFrameCompositor(
     data class DrawEvidence(
         val frame: HighQualityFramePlan.Frame, val blend: GpuTransitionModel.FrameBlend?,
         val dualDecoder: Boolean, val secondarySourceTimeUs: Long?,
-        val decodedSourceTimeUs: Long, val decodedSecondarySourceTimeUs: Long?
+        val decodedSourceTimeUs: Long, val decodedSecondarySourceTimeUs: Long?,
+        val secondarySourceIndex: Int? = null
     )
     private lateinit var incomingInput: DecoderInput
     private lateinit var outgoingInput: DecoderInput
@@ -221,7 +222,11 @@ internal class GlesFrameCompositor(
             outgoingFrame != null,
             outgoingFrame?.sourceTimeUs,
             incomingInput.timestampUs(),
-            outgoingFrame?.let { secondarySamplerInput.timestampUs() }
+            outgoingFrame?.let { secondarySamplerInput.timestampUs() },
+            outgoingFrame?.let {
+                MediaCodecSpeedRampRenderer.boundSecondaryInput(incomingFrame, it,
+                    debugTextureProbe, debugProbeIncomingOnBothUnits).sourceIndex
+            }
         ))
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)

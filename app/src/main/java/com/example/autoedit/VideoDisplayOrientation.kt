@@ -12,6 +12,12 @@ internal object VideoDisplayOrientation {
         return if (geometry.rotation % 180 == 0) encodedAspect else 1.0 / encodedAspect
     }
 
+    fun cropsForFiles(files: List<File>, width: Int, height: Int,
+        checkCancelled: () -> Unit = {}): List<SourceFraming.Crop> = files.map { file ->
+        checkCancelled()
+        cropForFile(file, width, height)
+    }
+
     fun cropForFile(file: File, width: Int, height: Int): SourceFraming.Crop {
         val extractor = MediaExtractor()
         try {

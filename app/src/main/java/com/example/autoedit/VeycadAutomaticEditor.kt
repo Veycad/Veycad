@@ -19,8 +19,7 @@ internal object VeycadAutomaticEditor {
 
     data class Request(
         val context: Context,
-        val sourceFile: File,
-        val secondarySourceFile: File? = null,
+        val sources: MediaSourceSet,
         val musicFile: File,
         val outputFile: File,
         val style: EventMatchingDirector.Style? = null,
@@ -35,12 +34,51 @@ internal object VeycadAutomaticEditor {
         val checkCancelled: () -> Unit = {},
         val jobLease: File? = null
     ) {
+        val sourceFile: File get() = sources.items.first().file
+        val secondarySourceFile: File? get() = sources.items.getOrNull(1)?.file
+
+        /** Legacy callers are worker-thread callers; inspection uses real metadata and cancellation. */
+        constructor(
+            context: Context,
+            sourceFile: File,
+            secondarySourceFile: File? = null,
+            musicFile: File,
+            outputFile: File,
+            style: EventMatchingDirector.Style? = null,
+            recipe: MontageStyleCatalog.Recipe = MontageStyleCatalog.Recipe.SIGMA,
+            heartbeatEchoOffsetMs: Long = -67L,
+            width: Int = 720,
+            height: Int = 1_280,
+            bitrate: Int = 5_000_000,
+            capabilities: RenderPassPlanner.DeviceCapabilities = RenderPassPlanner.DeviceCapabilities.conservative(),
+            onProgress: (Progress) -> Unit = {},
+            checkCancelled: () -> Unit = {},
+            jobLease: File? = null
+        ) : this(context, inspectLegacySources(sourceFile, secondarySourceFile, checkCancelled),
+            musicFile, outputFile, style, recipe, heartbeatEchoOffsetMs, width, height, bitrate,
+            capabilities, onProgress, checkCancelled, jobLease)
+
+        companion object {
+            internal fun validateRecipeSources(sources: MediaSourceSet, recipe: MontageStyleCatalog.Recipe) {
+                val expected = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) 2 else 1
+                require(sources.items.size == expected) {
+                    "DUALITY requires exactly two video sources and other recipes require one"
+                }
+            }
+
+            internal fun inspectLegacySources(source: File, secondary: File?, checkCancelled: () -> Unit): MediaSourceSet {
+                require(secondary == null || secondary.canonicalPath != source.canonicalPath)
+                val inspector = MediaInputInspector(checkCancelled)
+                return MediaSourceSet(listOfNotNull(source, secondary).mapIndexed { index, file ->
+                    inspector.inspect("legacy-$index", file, file.name)
+                })
+            }
+        }
+
         init {
+            validateRecipeSources(sources, recipe)
             require(sourceFile.isFile && musicFile.isFile)
             require(sourceFile.canonicalPath != musicFile.canonicalPath)
-            require((secondarySourceFile != null) == (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP)) {
-                "DUALITY requires exactly two video sources and other recipes require one"
-            }
             secondarySourceFile?.let { secondary ->
                 require(secondary.isFile)
                 require(secondary.canonicalPath != sourceFile.canonicalPath)
@@ -282,8 +320,7 @@ internal object VeycadAutomaticEditor {
         val previousInspectorReport = VeykadRenderInspector.latest(request.context)?.report
         var executedPasses: Map<RenderPassPlanner.PassKind, Int> = emptyMap()
         val frames = MediaCodecSpeedRampRenderer.render(MediaCodecSpeedRampRenderer.Request(
-            masterFile = request.sourceFile,
-            secondaryFile = request.secondarySourceFile,
+            sourceFiles = request.sources.items.map { it.file },
             graph = alternative.graph,
             outputFile = file,
             width = request.width,
@@ -324,7 +361,12 @@ internal object VeycadAutomaticEditor {
             renderFps = if (request.recipe == MontageStyleCatalog.Recipe.HEARTBEAT) 60
                 else HighQualityFramePlan.DEFAULT_FPS,
             secondarySourceVisualMap = secondaryVisualMap,
-            checkCancelled = request.checkCancelled
+            checkCancelled = request.checkCancelled,
+            // DUALITY's authored grade historically excludes source-luma comparisons.
+            sourceFiles = if (request.recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) emptyList()
+                else request.sources.items.map { it.file },
+            sourceVisualMaps = listOf(pipeline.visualMap, secondaryVisualMap),
+            decodedFrameProvenance = VeykadRenderInspector.decodedFrameProvenance(artifacts)
         )
         val decodedAcceptance = RenderedMp4Acceptance.evaluate(
             alternative.graph,

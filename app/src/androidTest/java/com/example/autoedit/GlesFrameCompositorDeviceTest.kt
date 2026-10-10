@@ -105,6 +105,50 @@ class GlesFrameCompositorDeviceTest {
         } finally { compositor.close(); surface.release(); texture.release() }
     }
 
+    @Test fun held_and_outgoing_texture_provenance_follows_the_actual_sampler_including_debug_override() {
+        val size = OutputSize(64,64)
+        val graph = graph().let { original ->
+            val first = original.clips.single().copy(sourceIndex=19, sourceEndMs=400, outputDurationMs=400)
+            original.copy(outputDurationMs=800, clips=listOf(first,first.copy(id="incoming", sourceIndex=7,
+                transitionIn=MontageGraph.Transition.WHIP, beatAnchorMs=400)))
+        }
+        val frames = HighQualityFramePlan.build(graph).frames
+        val outgoing = frames.last { it.clipIndex==0 }
+        val incoming = frames.first { it.clipIndex==1 }
+        for (incomingOnBoth in listOf(false,true)) {
+            val outputTexture = SurfaceTexture(false).apply { setDefaultBufferSize(size.width,size.height) }
+            val outputSurface = Surface(outputTexture)
+            val collector = VeykadRenderInspector.Collector(graph,2)
+            val compositor = GlesFrameCompositor(EglRenderTarget.forDisplay(outputSurface,size),
+                RenderPassPlanner.plan(graph,RenderPassPlanner.DeviceCapabilities.conservative()),
+                graph.frameAttachments, debugTextureProbe=true, debugProbeIncomingOnBothUnits=incomingOnBoth,
+                sourceCrops=List(20) { SourceFraming.Crop(1f,1f) }, onDraw=collector::record)
+            try {
+                produceMarkers(compositor.decoderSurface(0),size,266_667L)
+                compositor.awaitTexture(0) {}
+                compositor.drawScheduled(outgoing.copy(outputTimeUs=incoming.outputTimeUs,
+                    transitionIn=MontageGraph.Transition.HARD_CUT, transitionProgress=-1f),0)
+                val held = collector.evidence().single()
+                assertEquals(19,held.sourceIndex)
+                assertEquals(0,held.clipIndex)
+                assertEquals(incoming.outputTimeUs,held.outputTimeUs)
+                assertEquals(266_667L,held.decodedSourceTimeUs)
+                produceMarkers(compositor.decoderSurface(1),size,266_667L)
+                compositor.awaitTexture(1) {}
+                produceMarkers(compositor.decoderSurface(0),size,33_333L)
+                compositor.awaitTexture(0) {}
+                compositor.drawOverlap(incoming,outgoing,0,0)
+                val overlap = collector.evidence().last()
+                assertEquals(7,overlap.sourceIndex)
+                assertEquals(1,overlap.clipIndex)
+                assertEquals(33_333L,overlap.decodedSourceTimeUs)
+                assertEquals(if(incomingOnBoth) 7 else 19,overlap.secondarySourceIndex)
+                assertEquals(if(incomingOnBoth) 33_333L else 266_667L,overlap.decodedSecondarySourceTimeUs)
+                assertEquals(GLES20.GL_NO_ERROR,GLES20.glGetError())
+            } finally { compositor.close(); outputSurface.release(); outputTexture.release() }
+        }
+    }
+
     private data class Result(val compositionPixels: ByteArray,val physicalPixels: ByteArray?,
         val evidence: GlesFrameCompositor.DrawEvidence,val passes: List<RenderPassPlanner.PassKind>,val encoderPtsUs: Long?=null)
 
