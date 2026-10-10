@@ -52,19 +52,34 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
         }
     }
 
-    /** Legacy upgrade uses only the nearest proven containing window, never redo or a gap. */
+    /** Freeze all proven legacy windows with the same current/newest-first precedence as sample(). */
     fun retainedBacking(): HybridSourceBacking {
         durable?.let { return it }
+        if (backing.isEmpty()) return HybridSourceBacking.select(clip, selectedRevisionId)
+        val windows = listOf(Backing(clip, 0, false)) + backing
+        val first = windows.minOf { it.clip.originalFrameOffset.toLong() }
+        val last = windows.maxOf { it.clip.originalFrameOffset.toLong() + it.clip.span.length }
+        // Reuse a full curve only if it represents every proven window, including translations.
+        // The first merely containing the visible trim is insufficient after an author-only edit.
         for (saved in backing) {
-            val start = clip.originalFrameOffset.toLong() - saved.clip.originalFrameOffset
-            val end = start + clip.span.length
-            if (!saved.automatic && (start < 0 || end > saved.clip.span.length)) continue
+            val start = saved.clip.originalFrameOffset.toLong()
+            if (!saved.automatic && (start > first || start + saved.clip.span.length < last)) continue
             val retained = HybridSourceBacking(saved.clip.assetId, saved.clip.sourceMap,
                 saved.clip.originalFrameOffset, saved.slipUs, selectedRevisionId, saved.automatic)
-            retained.validate(clip, comparisonBudget)
-            return retained
+            if (windows.all { window -> retained.copy(slipUs = Math.subtractExact(saved.slipUs, window.slipUs))
+                    .matches(window.clip, comparisonBudget) }) return retained
         }
-        return HybridSourceBacking.select(clip, selectedRevisionId)
+        // No one curve owns the envelope. Materialize the resolver's exact chosen samples,
+        // reserving work before allocation; no overlap with original/redo can widen this chain.
+        val length = last - first
+        require(length in 1 until HybridProjectCodec.MAX_SOURCE_POINTS.toLong()) {
+            "Для сохранения скрытых кадров требуется карта больше допустимого размера проекта"
+        }
+        comparisonBudget.reserve(length + 1)
+        val map = SourceTimeMap(List(length.toInt() + 1) { frame ->
+            SourceTimeMap.Point(frame, sample(first + frame - clip.originalFrameOffset))
+        })
+        return HybridSourceBacking(clip.assetId, map, first.toInt(), 0, selectedRevisionId, false)
     }
 
     private fun sameSourceDescriptor(selected: HybridClip, saved: HybridClip): Boolean {

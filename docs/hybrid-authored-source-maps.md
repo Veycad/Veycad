@@ -70,12 +70,18 @@ their reset event stays local to that revision, while durable selection survives
 later author changes and pruning. Scoped reset preserves author fields; full reset
 restores them. Undo/redo restore the exact table and never reuse allocated IDs.
 
-Legacy revisions have an empty table. A real command may retain only the nearest
-contiguous, proven containing ancestry window under the preceding comparison
-rules. Missing proof retains the visible window only or rejects an extension; no
-unseen samples are invented and old revision blobs are never rewritten. Legacy
-proof and candidate-window comparisons reserve work before enumerating sparse
-frame spans, with a shared 1000000-comparison command budget.
+Legacy revisions have an empty table. A real command retains the full envelope
+proven by contiguous selected ancestry under the preceding comparison rules.
+It reuses a containing curve only when that curve represents all proven windows;
+otherwise it materializes exact samples with current/newest-window precedence.
+Reset, rewrite and gap barriers still bound this envelope. Missing proof retains
+the visible window only or rejects an extension; no unseen samples are invented
+and old revision blobs are never rewritten. Automatic continuation survives only
+when the immutable original curve actually represents the selection; another
+recovered envelope preserves its saved boundaries but rejects continuation beyond
+them. Legacy proof, envelope materialization and candidate-window comparisons
+reserve work before enumerating sparse frame spans, with a shared
+1000000-comparison command budget and the existing map point bound.
 
 ## Physical storage and capacity
 
@@ -101,6 +107,11 @@ references within the generic manifest bounds; it does not promise unlimited
 products of maps and history. An over-limit snapshot fails explicitly without
 truncating history/samples. Header/count/length/hash are verified before allocating
 points; aggregate allocation is reserved before reading each unique payload.
+The writer first streams the canonical digest with bounded scratch space, then
+reserves the known unique byte extent before allocating its payload. Equal-content
+maps consume that budget once even when their object identities differ. A hash
+becomes verified only after successful file verification/publication, and a failed
+attempt releases its reservation without leaving a trusted cache entry.
 
 Maps and revision blobs are immutable, synced and written before the sole CURRENT
 replacement. Existing files are verified, never silently repaired. An interrupted

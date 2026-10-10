@@ -5,14 +5,18 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.IdentityHashMap
 
 /** Immutable author data. Neither analysis repair nor analysis eviction owns this directory. */
 class AuthoredSourceMapStore(private val directory: File) {
-    internal fun writer() = Writer()
+    internal fun writer(maxSnapshotBytes: Long = MAX_SNAPSHOT_MAP_BYTES,
+        beforePayloadAllocation: (Int) -> Unit = {}) = Writer(maxSnapshotBytes, beforePayloadAllocation)
     internal fun reader() = Reader()
 
-    internal inner class Writer {
+    internal inner class Writer(private val maxSnapshotBytes: Long, private val beforePayloadAllocation: (Int) -> Unit) {
+        init { require(maxSnapshotBytes in 0..MAX_SNAPSHOT_MAP_BYTES) }
         private val identities = IdentityHashMap<SourceTimeMap, String>()
         private val verified = hashSetOf<String>()
         private var writtenBytes = 0L
@@ -20,25 +24,42 @@ class AuthoredSourceMapStore(private val directory: File) {
         fun reference(map: SourceTimeMap): String = identities.getOrPut(map) {
             val count = map.points.size
             require(count in 2..HybridProjectCodec.MAX_SOURCE_POINTS) { "Authored source map count exceeds limit" }
-            val bytes = ByteArrayOutputStream(12 + count * 12)
-            DataOutputStream(bytes).use { output ->
-                output.writeInt(MAGIC); output.writeInt(1); output.writeInt(count)
-                map.points.forEach { output.writeInt(it.localFrame); output.writeLong(it.sourceTimeUs) }
-            }
-            val payload = bytes.toByteArray()
-            val hash = contentHash(payload)
-            if (verified.add(hash)) {
-                require(payload.size <= MAX_SNAPSHOT_MAP_BYTES - writtenBytes) { "Authored source map snapshot exceeds allocation limit" }
-                writtenBytes += payload.size
-                val file = ownedChild(directory, "$hash.map")
-                if (file.exists()) {
-                    require(readPayload(hash).contentEquals(payload)) { "Published authored map is corrupt: $hash" }
-                } else {
-                    atomicWrite(file, payload)
+            // DataOutputStream and MessageDigest use bounded scratch space, regardless of map size.
+            val digest = MessageDigest.getInstance("SHA-256")
+            DataOutputStream(object : OutputStream() {
+                override fun write(value: Int) = digest.update(value.toByte())
+                override fun write(bytes: ByteArray, offset: Int, length: Int) = digest.update(bytes, offset, length)
+            }).use { writeCanonical(map, it) }
+            val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            if (hash !in verified) {
+                val size = 12L + count * 12L
+                require(size <= maxSnapshotBytes - writtenBytes) { "Authored source map snapshot exceeds allocation limit" }
+                writtenBytes += size
+                var completed = false
+                try {
+                    beforePayloadAllocation(size.toInt())
+                    val bytes = ByteArrayOutputStream(size.toInt())
+                    DataOutputStream(bytes).use { writeCanonical(map, it) }
+                    val payload = bytes.toByteArray()
+                    val file = ownedChild(directory, "$hash.map")
+                    if (file.exists()) {
+                        require(readPayload(hash).contentEquals(payload)) { "Published authored map is corrupt: $hash" }
+                    } else {
+                        atomicWrite(file, payload)
+                    }
+                    verified.add(hash)
+                    completed = true
+                } finally {
+                    if (!completed) writtenBytes -= size
                 }
             }
             hash
         }
+    }
+
+    private fun writeCanonical(map: SourceTimeMap, output: DataOutputStream) {
+        output.writeInt(MAGIC); output.writeInt(1); output.writeInt(map.points.size)
+        map.points.forEach { output.writeInt(it.localFrame); output.writeLong(it.sourceTimeUs) }
     }
 
     /** One cache/allocation reservation per load, shared by original/current/all history. */
