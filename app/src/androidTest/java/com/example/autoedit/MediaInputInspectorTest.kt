@@ -65,6 +65,30 @@ class MediaInputInspectorTest {
         assertTrue("Duration was ${vfr.durationUs}", vfr.durationUs in 3_580_000L..3_650_000L)
     }
 
+    @Test fun explicitEosKeepsALongFinalHoldAndUsableDuration() {
+        val held = remux(video(), "long-final-hold.mp4",
+            videoPtsUs = List(49) { it * 10_000L }, endPtsUs = 600_000L)
+        assertVideoTiming(held, firstPtsUs = 0L, lastPtsUs = 480_000L, durationUs = 600_000L)
+        val source = MediaInputInspector().inspect("held", held, held.name)
+        assertEquals(600_000L, source.durationUs)
+        GalleryImportPolicy.validate(MediaSourceSet(listOf(source)))
+    }
+
+    @Test fun smallNonzeroFirstPtsDoesNotShortenExplicitTrackDuration() {
+        val audio = File(fixture.context.cacheDir, "offset-anchor.m4a")
+        fixture.context.resources.openRawResource(R.raw.heartbeat_author).use { input ->
+            audio.outputStream().use { output -> input.copyTo(output) }
+        }
+        // Audio starts at zero, preserving the video track's 5 ms initial offset.
+        // On the API36 MP4 extractor, track duration includes that initial empty edit.
+        val offset = remux(video(), "small-offset.mp4", audio = audio,
+            videoPtsUs = List(50) { 5_000L + it * 10_000L }, endPtsUs = 505_000L)
+        assertVideoTiming(offset, firstPtsUs = 5_000L, lastPtsUs = 495_000L, durationUs = 505_000L)
+        val source = MediaInputInspector().inspect("offset", offset, offset.name)
+        assertEquals(505_000L, source.durationUs)
+        GalleryImportPolicy.validate(MediaSourceSet(listOf(source)))
+    }
+
     @Test fun audioPresenceIsDetectedAndAudioOnlyIsRejected() {
         val audio = File(fixture.context.cacheDir, "music.m4a")
         fixture.context.resources.openRawResource(R.raw.heartbeat_author).use { input ->
@@ -106,7 +130,8 @@ class MediaInputInspectorTest {
     }
 
     private fun remux(input: File, name: String, rotation: Int = 0, startUs: Long = 0,
-        variablePts: Boolean = false, colorTransfer: Int? = null, audio: File? = null): File {
+        variablePts: Boolean = false, colorTransfer: Int? = null, audio: File? = null,
+        videoPtsUs: List<Long>? = null, endPtsUs: Long? = null): File {
         val target = File(fixture.context.cacheDir, name)
         val video = MediaExtractor()
         val sound = audio?.let { MediaExtractor().apply { setDataSource(it.path) } }
@@ -129,16 +154,20 @@ class MediaInputInspectorTest {
             val info = android.media.MediaCodec.BufferInfo()
             video.selectTrack(videoIndex)
             var frame = 0
-            while (video.sampleTime >= 0) {
+            while (video.sampleTime >= 0 && (videoPtsUs == null || frame < videoPtsUs.size)) {
                 buffer.clear()
                 val size = video.readSampleData(buffer, 0)
-                val pts = startUs + if (variablePts) {
+                val pts = videoPtsUs?.get(frame) ?: (startUs + if (variablePts) {
                     frame * 40_000L + if (frame % 2 == 1) 20_000L else 0L
-                } else video.sampleTime
+                } else video.sampleTime)
                 info.set(0, size, pts, video.sampleFlags)
                 muxer.writeSampleData(videoTrack, buffer, info)
                 video.advance()
                 frame++
+            }
+            if (endPtsUs != null) {
+                info.set(0, 0, endPtsUs, android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                muxer.writeSampleData(videoTrack, ByteBuffer.allocate(0), info)
             }
             if (sound != null && audioIndex != null && audioTrack != null) {
                 sound.selectTrack(audioIndex)
@@ -157,5 +186,26 @@ class MediaInputInspectorTest {
             sound?.release()
         }
         return target
+    }
+
+    private fun assertVideoTiming(file: File, firstPtsUs: Long, lastPtsUs: Long, durationUs: Long) {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.path)
+            val index = (0 until extractor.trackCount).first {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)!!.startsWith("video/")
+            }
+            assertEquals(durationUs, extractor.getTrackFormat(index).getLong(MediaFormat.KEY_DURATION))
+            extractor.selectTrack(index)
+            assertEquals(firstPtsUs, extractor.sampleTime)
+            var last = -1L
+            while (extractor.sampleTrackIndex >= 0) {
+                last = extractor.sampleTime
+                if (!extractor.advance()) break
+            }
+            assertEquals(lastPtsUs, last)
+        } finally {
+            extractor.release()
+        }
     }
 }

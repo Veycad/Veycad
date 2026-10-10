@@ -69,23 +69,9 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
 
     private data class Samples(val firstPtsUs: Long, val lastPtsUs: Long, val penultimatePtsUs: Long?) {
         fun durationUs(format: MediaFormat): Long {
-            val declared = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
-            val span = lastPtsUs - firstPtsUs
-            val finalStep = penultimatePtsUs?.let { lastPtsUs - it } ?: run {
-                val rate = format.optionalInt(MediaFormat.KEY_FRAME_RATE)?.takeIf { it > 0 }
-                if (rate != null) 1_000_000L / rate else declared.takeIf { it > 0 } ?: 0L
-            }
-            require(finalStep > 0 && span <= Long.MAX_VALUE - finalStep) { "Некорректная длительность видео" }
-            val observed = span + finalStep
-            // Some muxers include the initial PTS in KEY_DURATION, others store the span.
-            // Prefer a plausible declared final-frame end, so VFR tails do not inherit the
-            // preceding gap. Only missing/inconsistent duration metadata needs estimation.
-            val normalized = if (declared >= firstPtsUs) declared - firstPtsUs else 0L
-            return when {
-                normalized > span && normalized - span <= finalStep -> normalized
-                declared > span && declared - span <= finalStep -> declared
-                else -> observed
-            }
+            val declared = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else null
+            return mediaInputDurationUs(firstPtsUs, lastPtsUs, penultimatePtsUs, declared,
+                format.optionalInt(MediaFormat.KEY_FRAME_RATE))
         }
     }
 
