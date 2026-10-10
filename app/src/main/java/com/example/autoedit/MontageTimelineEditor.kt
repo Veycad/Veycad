@@ -139,11 +139,8 @@ internal object MontageTimelineEditor {
         }
         if (visible.start >= clip.visible.start && visible.endExclusive <= clip.visible.endExclusive) return clip.timeMap
         val saved = (project.shared.undo.sortedByDescending { it.id } + project.shared.original).distinctBy { it.id }
-        val maps = saved.map { revision ->
+        val maps = saved.map { revision -> lazy {
             val candidate = project.revisionView(revision).clips.single { it.id == clip.id }
-            require(revision.graph.manualMontageState != null || candidate.visible.count == original.span.length.toLong()) {
-                "Saved trim is missing original frame coordinates"
-            }
             val left = maxOf(clip.visible.start, candidate.visible.start)
             val right = minOf(clip.visible.endExclusive, candidate.visible.endExclusive)
             val delta = if (right > left && candidate.phase == clip.phase) {
@@ -151,15 +148,29 @@ internal object MontageTimelineEditor {
                 if ((left..right).all { frame -> Math.subtractExact(clip.timeMap.sourceTimeUs(frame), candidate.timeMap.sourceTimeUs(frame)) == shift }) shift else null
             } else null
             SavedMap(candidate, revision.clips.single { it.id == clip.id }.sourceMap, delta)
-        }
+        } }
         val currentMap = current.clips.single { it.id == clip.id }.sourceMap
-        val edgeMaps = listOf(SavedMap(clip, currentMap, 0L)) + maps.filter { it.delta != null }
         fun sample(frame: Long): Long {
             if (frame in clip.visible.start..clip.visible.endExclusive) return clip.timeMap.sourceTimeUs(frame)
-            val covering = maps.firstOrNull { frame in it.clip.visible.start..it.clip.visible.endExclusive }
-            if (covering != null) {
-                val shift = requireNotNull(covering.delta) { "Saved source mapping is incompatible with the current clip" }
-                return Math.addExact(covering.clip.timeMap.sourceTimeUs(frame), shift)
+            val edgeMaps = mutableListOf(SavedMap(clip, currentMap, 0L))
+            var completeWindowKnown = clip.visible.start <= 0 && clip.visible.endExclusive >= clip.originFrameCount
+            for ((index, revision) in saved.withIndex()) {
+                val source = revision.clips.single { it.id == clip.id }
+                if (revision.graph.manualMontageState == null && source.span.length != original.span.length) {
+                    // An older coordinate-less trim supplies neither samples nor edge provenance
+                    // once a newer compatible full original window is known. Never infer its offset.
+                    require(completeWindowKnown) { "Saved trim is missing original frame coordinates" }
+                    continue
+                }
+                val map = maps[index].value
+                if (frame in map.clip.visible.start..map.clip.visible.endExclusive) {
+                    val shift = requireNotNull(map.delta) { "Saved source mapping is incompatible with the current clip" }
+                    return Math.addExact(map.clip.timeMap.sourceTimeUs(frame), shift)
+                }
+                if (map.delta != null) {
+                    edgeMaps += map
+                    if (map.clip.visible.start <= 0 && map.clip.visible.endExclusive >= clip.originFrameCount) completeWindowKnown = true
+                }
             }
             require(frame < 0 || frame > clip.originFrameCount) { "Original source samples are unavailable in shared history" }
             // Outside all recorded material, continue the widest compatible saved edge, retaining

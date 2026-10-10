@@ -166,6 +166,39 @@ class MontageTimelineEditorTest {
         assertArrayEquals(samples.copyOfRange(9, 52), projectSamples(both.shared.current))
     }
 
+    @Test fun obsoleteMetadataLessTrimDoesNotBlockNewerCompleteMapRecovery() {
+        val complete = completeMapAfterMetadataLessTrim()
+        val trimmed = fixtureCommit(complete, prepare(complete, TimelineCommand.Trim("A1", ClipEdge.START, 9)).candidate)
+        val restored = prepare(trimmed, TimelineCommand.Trim("A1", ClipEdge.START, 0)).candidate
+        assertArrayEquals(LongArray(61) { 1_000_000L + (it / 2).toLong() * (it / 2) * 1000 }, projectSamples(restored))
+    }
+
+    @Test fun obsoleteMetadataLessTrimDoesNotBlockKnownEdgeExtension() {
+        val complete = completeMapAfterMetadataLessTrim()
+        val extended = prepare(complete, TimelineCommand.Trim("A1", ClipEdge.END, 69)).candidate
+        assertArrayEquals(LongArray(61) { 1_000_000L + (it / 2).toLong() * (it / 2) * 1000 }, projectSamples(extended).copyOfRange(0, 61))
+        assertEquals(2_431_000L, extended.clips.first().sourceMap.sample(69))
+    }
+
+    @Test fun ambiguousNewerHistoryStillCannotFallBackToOlderCompleteMap() {
+        val base = ManualMontageFixtures.linearProject()
+        val short = fixtureCommit(base, prepare(base, TimelineCommand.Trim("A1", ClipEdge.START, 9)).candidate)
+        val current = prepare(short, TimelineCommand.Trim("A1", ClipEdge.START, 18)).candidate
+        val ambiguous = short.shared.current.copy(graph = short.shared.current.graph.copy(manualMontageState = null))
+        val history = short.copy(shared = short.shared.copy(current = ambiguous))
+        val project = fixtureCommit(history, current)
+        assertTrue(MontageTimelineEditor.prepare(project, TimelineCommand.Trim("A1", ClipEdge.START, 0)) is TimelinePreparation.Rejected)
+    }
+
+    private fun completeMapAfterMetadataLessTrim(): EditableMontageProject {
+        val base = ManualMontageFixtures.linearProject()
+        val short = fixtureCommit(base, prepare(base, TimelineCommand.Trim("A1", ClipEdge.END, 40)).candidate)
+        val old = short.shared.current.copy(graph = short.shared.current.graph.copy(manualMontageState = null))
+        val history = short.copy(shared = short.shared.copy(current = old))
+        val map = SourceTimeMap((0..60).map { SourceTimeMap.Point(it, 1_000_000L + (it / 2).toLong() * (it / 2) * 1000) })
+        return fixtureCommit(history, replaceMap(base.shared.original, map))
+    }
+
     @Test fun slipTrimExtendRestoresNonlinearRepeatedAndSparseSamples() {
         for (fps in listOf(30, 60)) {
             val base = ManualMontageFixtures.linearProject(fps)
