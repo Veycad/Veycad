@@ -14,12 +14,19 @@ class ReferenceMontageProfileTest {
             ReferenceMontageProfile.GLITCH_START_US, ReferenceMontageProfile.GLITCH_END_US,
             ReferenceMontageProfile.GLITCH_AMOUNT)
         val authored = GpuEffectGraph(listOf(node))
+        // Renaming a segment retains its authored origin and therefore its flat envelope.
+        val renamedAuthored = GpuEffectGraph(listOf(node.copy(id = "manual-slice-segment")))
+        assertEquals(node.amount, renamedAuthored.sample(node.startUs).glitch, 0f)
         for (time in listOf(7_900_000L, 8_000_000L, 8_100_000L)) {
             assertEquals(ReferenceMontageProfile.GLITCH_AMOUNT, authored.sample(time).glitch, 0f)
+            assertEquals(ReferenceMontageProfile.GLITCH_AMOUNT, renamedAuthored.sample(time).glitch, 0f)
         }
         assertEquals(0f, authored.sample(node.startUs - 1).glitch, 0f)
         assertEquals(0f, authored.sample(node.endUs).glitch, 0f)
-        val generic = GpuEffectGraph(listOf(node.copy(id = "whip-glitch")))
+        assertEquals(0f, renamedAuthored.sample(node.startUs - 1).glitch, 0f)
+        assertEquals(0f, renamedAuthored.sample(node.endUs).glitch, 0f)
+        // A generic cue has a generic origin; changing only the segment ID is insufficient.
+        val generic = GpuEffectGraph(listOf(node.copy(id = "whip-glitch", originId = "whip-glitch")))
         assertEquals(0f, generic.sample(node.startUs).glitch, 0f)
         assertEquals(node.amount, generic.sample((node.startUs + node.endUs) / 2).glitch, 0f)
     }
