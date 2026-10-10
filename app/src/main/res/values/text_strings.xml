@@ -1,0 +1,32 @@
+<resources>
+    <string name="text_editor_title">Текст и субтитры</string>
+    <string name="text_result_action">Добавить текст</string>
+    <string name="text_editor_description">Заголовок, плашки и речь в кадре</string>
+    <string name="text_choose">Выбрать видео</string>
+    <string name="text_export">Экспортировать MP4</string>
+    <string name="text_recognize">Распознать речь</string>
+    <string name="text_hook">Заголовок · первые 3 секунды</string>
+    <string name="text_plate">Добавить плашку</string>
+    <string name="text_caption">Добавить фразу</string>
+    <string name="text_regenerate_title">Заменить исправленные субтитры?</string>
+    <string name="text_regenerate_body">Распознавание заменит ваши изменения текста и времени. Оформление сохранится.</string>
+    <string name="text_speech_help">Русский, English или авто. Распознавание работает на телефоне и может ошибаться — проверьте фразы перед экспортом.</string>
+    <string name="text_source_help">Текст добавится к выбранному видео. Распознаётся звук именно этого файла.</string>
+    <item name="textChooseButton" type="id" />
+    <item name="textExportButton" type="id" />
+    <item name="textHookButton" type="id" />
+    <item name="textPlateButton" type="id" />
+    <item name="textCaptionButton" type="id" />
+    <item name="textSpeechButton" type="id" />
+    <item name="textCancelButton" type="id" />
+    <item name="textPreview" type="id" />
+    <item name="textContentField" type="id" />
+    <item name="textStartField" type="id" />
+    <item name="textEndField" type="id" />
+    <item name="textFontField" type="id" />
+    <item name="textPositionField" type="id" />
+    <item name="textColorField" type="id" />
+    <item name="textAnimationField" type="id" />
+    <item name="textBackgroundField" type="id" />
+    <item name="textReviewedField" type="id" />
+</resources>

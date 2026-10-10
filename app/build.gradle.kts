@@ -1,10 +1,57 @@
+import java.security.MessageDigest
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
 plugins {
     id("com.android.application")
+}
+
+// Network access is build-time only. The application contains the verified model in assets.
+val speechAssets = layout.buildDirectory.dir("generated/speechAssets")
+val prepareSpeechAssets by tasks.registering {
+    val revision = "5359861c739e955e79d9a303bcbc70fb988958b1"
+    val checksum = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+    inputs.property("revision", revision)
+    inputs.property("checksum", checksum)
+    outputs.file(speechAssets.map { it.file("speech/ggml-base.bin") })
+    doLast {
+        val cache = File(System.getProperty("user.home"), ".cache/veycad-speech").apply { mkdirs() }
+        val model = File(cache, "ggml-base.bin")
+        fun sha(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().buffered().use { input ->
+                val bytes = ByteArray(128*1024)
+                while (true) { val n=input.read(bytes); if(n<0) break; digest.update(bytes,0,n) }
+            }
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+        if (!model.isFile || sha(model) != checksum) {
+            val partial = File(cache, "ggml-base.download")
+            try {
+                URI("https://huggingface.co/ggerganov/whisper.cpp/resolve/$revision/ggml-base.bin").toURL().openConnection().apply {
+                    connectTimeout=30000; readTimeout=120000
+                }.getInputStream().use { input -> partial.outputStream().use { input.copyTo(it) } }
+                check(sha(partial)==checksum) { "Speech model SHA-256 mismatch" }
+                Files.move(partial.toPath(),model.toPath(),StandardCopyOption.REPLACE_EXISTING)
+            } finally { partial.delete() }
+        }
+        val target = speechAssets.get().file("speech/ggml-base.bin").asFile
+        target.parentFile.mkdirs(); model.copyTo(target, overwrite=true)
+    }
+}
+tasks.configureEach {
+    // Both lint model writers and analysis/report tasks inspect generated assets.
+    if ((name.startsWith("merge") && name.endsWith("Assets")) ||
+        name.contains("Lint") || name.startsWith("lint")) {
+        dependsOn(prepareSpeechAssets)
+    }
 }
 
 android {
     namespace = "com.veycad.app"
     compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.veycad.app"
@@ -13,6 +60,10 @@ android {
         versionCode = 17
         versionName = "0.1.16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild.cmake {
+            arguments += listOf("-DFETCHCONTENT_BASE_DIR=" + File(System.getProperty("user.home"), ".cache/veycad-speech/cmake").path.replace('\\','/'))
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
     }
 
     buildTypes {
@@ -24,7 +75,7 @@ android {
         }
         create("uiTest") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".uitest"
+            applicationIdSuffix = if (providers.gradleProperty("textDeviceTest").orNull == "true") ".texttest" else ".uitest"
             matchingFallbacks += "debug"
         }
     }
@@ -38,7 +89,7 @@ android {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a")
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
             isUniversalApk = true
         }
     }
@@ -47,6 +98,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+    externalNativeBuild.cmake {
+        path = file("src/main/cpp/CMakeLists.txt")
+        version = "3.22.1"
+        // Short isolated staging path also supports Windows hosts without long-path policy.
+        buildStagingDirectory = File(System.getProperty("user.home"), ".cache/veycad-native/${rootDir.path.hashCode().toUInt()}")
+    }
+    androidResources { noCompress += "bin" }
+    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/speechAssets").get().asFile)
 
     lint {
         // This product currently has one Russian-localized UI. Keep correctness, permissions,
