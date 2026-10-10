@@ -35,7 +35,18 @@ class HybridProjectStore(
         check(previous.result.project.current.id == expectedRevisionId) { "Project changed since it was loaded" }
         require(project.nextRevisionId >= previous.result.project.nextRevisionId) { "Revision IDs cannot be reused" }
         require(project.original.id == previous.result.project.original.id && project.fps == previous.result.project.fps)
-        publish(project, previous)
+        val publishedAssets = previous.result.project.assets
+        val publishedById = publishedAssets.associateBy { it.id }
+        project.assets.forEach { asset ->
+            val published = publishedById[asset.id]
+            require(published == null || published == asset) {
+                "Published asset ${asset.id} is immutable"
+            }
+        }
+        // Revision blobs refer to asset IDs, including exports no longer present in undo history.
+        // Retain their bindings and ordering; new imports are appended in the caller's order.
+        val retainedAssets = publishedAssets + project.assets.filter { it.id !in publishedById }
+        publish(project.copy(assets = retainedAssets), previous)
     }
 
     fun list(): List<HybridProject> = locked {

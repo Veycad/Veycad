@@ -105,4 +105,63 @@ class HybridProjectStoreTest {
         store.save(changed, 0)
         assertEquals(opened.missingAnalysisHashes, store.loadWithAnalysisStatus("project").missingAnalysisHashes)
     }
+    @Test fun publishedSourceBindingCannotBeReplacedWithoutChangingRevision() {
+        val store = HybridProjectStore(temporary.newFolder())
+        val project = initial(store)
+        store.create(project)
+        val assets = ProjectAssetStore(store.directory(project.id))
+        val replacement = assets.import(temporary.newFile().apply { writeText("different footage") },
+            ProjectAsset.Kind.VIDEO, 2_000_000)
+        val original = project.assets.first()
+        val changes = listOf(
+            original.copy(fileName = replacement.fileName, contentHash = replacement.contentHash),
+            original.copy(durationUs = 3_000_000),
+            original.copy(displayName = "A different source label"))
+        val pointer = File(store.directory(project.id), "CURRENT").readBytes()
+        for (changed in changes) {
+            val rebound = project.copy(assets = project.assets.map { if (it.id == original.id) changed else it })
+            assertThrows(IllegalArgumentException::class.java) { store.save(rebound, project.current.id) }
+            assertArrayEquals(pointer, File(store.directory(project.id), "CURRENT").readBytes())
+        }
+        val reopened = store.load(project.id)
+        assertEquals(project, reopened)
+        assertEquals("video", assets.resolve(reopened.assets.first()).readText())
+    }
+    @Test fun prunedExportKeepsItsSourceRecordsAndCommittedAssetOrder() {
+        val store = HybridProjectStore(temporary.newFolder())
+        val initial = initial(store)
+        store.create(initial)
+        val sources = ProjectAssetStore(store.directory(initial.id))
+        val historicalVideo = sources.import(temporary.newFile().apply { writeText("historical video") },
+            ProjectAsset.Kind.VIDEO, 2_000_000).copy(displayName = "Historical footage")
+        val historicalMusic = sources.import(temporary.newFile().apply { writeText("historical music") },
+            ProjectAsset.Kind.AUDIO, 2_000_000).copy(displayName = "Historical soundtrack")
+        val historical = initial.current.copy(id = 1, parentId = 0,
+            clips = initial.current.clips.map { it.copy(assetId = historicalVideo.id) },
+            music = initial.current.music.copy(assetId = historicalMusic.id))
+        var project = initial.copy(current = historical, nextRevisionId = 2,
+            assets = initial.assets + listOf(historicalVideo, historicalMusic),
+            undo = listOf(initial.current), exports = listOf(ProjectExportRef(1, "historical.mp4",
+                ProjectExportSettings(1080, 1920, 30, 1000, 100))))
+        store.save(project, 0)
+        assertEquals(initial.assets + listOf(historicalVideo, historicalMusic), store.load(project.id).assets)
+        // Apply more than 50 commands; revision 1 falls out of the editable history.
+        for (id in 2L..55L) {
+            project = project.copy(current = initial.current.copy(id = id, parentId = id - 1),
+                nextRevisionId = id + 1, undo = (project.undo + project.current).takeLast(50))
+        }
+        assertFalse(project.undo.any { it.id == historical.id })
+        val newest = sources.import(temporary.newFile().apply { writeText("new unused import") },
+            ProjectAsset.Kind.VIDEO, 2_000_000)
+        // The caller no longer carries historical assets, and supplies existing records out of order.
+        store.save(project.copy(assets = listOf(newest) + initial.assets.reversed()), 1)
+        val reopened = store.load(project.id)
+        val exported = store.loadRevision(project.id, reopened.exports.single().revisionId)
+        val byId = reopened.assets.associateBy { it.id }
+        assertEquals(historicalVideo, byId[exported.clips.single().assetId])
+        assertEquals(historicalMusic, byId[exported.music.assetId])
+        assertEquals("historical video", sources.resolve(byId.getValue(exported.clips.single().assetId)).readText())
+        assertEquals("historical music", sources.resolve(byId.getValue(exported.music.assetId)).readText())
+        assertEquals(initial.assets + listOf(historicalVideo, historicalMusic, newest), reopened.assets)
+    }
 }
