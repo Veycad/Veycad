@@ -77,6 +77,90 @@ class MultiSourceRequestTest {
         assertEquals(833_333L, evidence.decodedSecondarySourceTimeUs)
     }
 
+    @Test fun heldBoundaryKeepsActualSourceTimeClipTransformAndFaceMap() {
+        val graph = boundaryGraph()
+        val plan = HighQualityFramePlan.build(graph).frames
+        val maps = List<VisualEventMap?>(20) { index -> VisualEventMap(2_000_000, emptyList(),
+            listOf(VisualEventMap.Observation(333_333, face = if (index == 19) VisualEventMap.Face(.92f, 0f) else null))) }
+        for ((boundaryUs, sourceIndex, clipIndex) in listOf(Triple(400_000L, 19, 0), Triple(800_000L, 7, 1))) {
+            val scheduled = plan.single { it.outputTimeUs == boundaryUs }
+            val held = plan.last { it.clipIndex == clipIndex }.copy(outputTimeUs = boundaryUs,
+                transitionIn = MontageGraph.Transition.HARD_CUT, transitionProgress = -1f)
+            val collector = VeykadRenderInspector.Collector(graph, 1)
+            collector.record(held, null, false, decodedSourceTimeUs = 333_333)
+            val witness = collector.evidence().single()
+            val provenance = VeykadRenderInspector.DecodedFrameProvenance(witness.sourceIndex,
+                witness.clipIndex, witness.sourceTimeUs, witness.decodedSourceTimeUs!!, witness.transition)
+            val actual = RenderedVisualSampler.withDecodedFrameProvenance(scheduled, plan,
+                graph.frameAttachments, 0, provenance)
+            assertEquals(sourceIndex, actual.sourceIndex)
+            assertEquals(clipIndex, actual.clipIndex)
+            assertEquals(333_333L, actual.sourceTimeUs)
+            assertEquals(boundaryUs, actual.outputTimeUs)
+            assertEquals(held.transform, actual.transform)
+            assertEquals(held.effects, actual.effects)
+            assertEquals(MontageGraph.Transition.HARD_CUT, actual.transitionIn)
+            assertEquals(-1f, actual.transitionProgress!!, 0f)
+            assertEquals(if (sourceIndex == 19) .92f else 0f,
+                RenderedVisualSampler.expectedFaceConfidence(actual, maps), 0f)
+        }
+    }
+
+    @Test fun missingProvenanceKeepsLegacyDecodedClockAndPlannedFrameIdentity() {
+        val graph = boundaryGraph()
+        val plan = HighQualityFramePlan.build(graph).frames
+        val scheduled = plan.single { it.outputTimeUs == 400_000L }
+        assertSame(scheduled, RenderedVisualSampler.withDecodedFrameProvenance(scheduled, plan,
+            graph.frameAttachments, null, null))
+        val resolved = RenderedVisualSampler.withDecodedFrameProvenance(scheduled, plan,
+            graph.frameAttachments, 100_000, null)
+        assertEquals(7, resolved.sourceIndex)
+        assertEquals(1, resolved.clipIndex)
+        assertEquals(100_000L, resolved.sourceTimeUs)
+        assertEquals(scheduled.transform, resolved.transform)
+        assertEquals(scheduled.transitionIn, resolved.transitionIn)
+    }
+
+    @Test fun sameSourceHeldBetweenDifferentClipsStillUsesPreviousFrameTransform() {
+        val initial = boundaryGraph()
+        val graph = initial.copy(clips = initial.clips.map { it.copy(sourceIndex = 19) })
+        val plan = HighQualityFramePlan.build(graph).frames
+        val incoming = plan.single { it.outputTimeUs == 400_000L }
+        val outgoing = plan.last { it.clipIndex == 0 }
+        val provenance = VeykadRenderInspector.DecodedFrameProvenance(19, 0,
+            outgoing.sourceTimeUs, 333_333, MontageGraph.Transition.HARD_CUT)
+        val resolved = RenderedVisualSampler.withDecodedFrameProvenance(incoming, plan,
+            graph.frameAttachments, null, provenance)
+        assertEquals(0, resolved.clipIndex)
+        assertEquals(outgoing.transform, resolved.transform)
+        assertNotEquals(incoming.transform, resolved.transform)
+    }
+
+    @Test fun regularProvenanceKeepsScheduledStateAndInconsistentEvidenceFailsClosed() {
+        val graph = boundaryGraph()
+        val plan = HighQualityFramePlan.build(graph).frames
+        val incoming = plan.single { it.outputTimeUs == 400_000L }
+        val provenance = VeykadRenderInspector.DecodedFrameProvenance(7, 1,
+            incoming.sourceTimeUs, 33_333, incoming.transitionIn)
+        val actual = RenderedVisualSampler.withDecodedFrameProvenance(incoming, plan,
+            graph.frameAttachments, 0, provenance)
+        assertEquals(incoming.copy(sourceTimeUs = 33_333), actual)
+        assertThrows(IllegalArgumentException::class.java) {
+            RenderedVisualSampler.withDecodedFrameProvenance(incoming, plan,
+                graph.frameAttachments, null, provenance.copy(sourceIndex = 19))
+        }
+    }
+
+    private fun boundaryGraph() = MontageGraph(2000, 1200, clips = listOf(19, 7, 0).mapIndexed { index, source ->
+        MontageGraph.Clip("boundary-$index", 0, 400, 400, MontageGraph.ShotRole.ACTION,
+            if (index == 0) MontageGraph.Transition.HARD_CUT else MontageGraph.Transition.WHIP,
+            MontageGraph.Motion.PUSH_IN, 1f, index * 400L, sourceIndex = source,
+            transform = MontageGraph.ClipTransform(listOf(
+                MontageGraph.ClipTransform.Keyframe(0f, 1f + index * .1f),
+                MontageGraph.ClipTransform.Keyframe(1f, 1.2f + index * .1f))),
+            transitionDurationMs = if (index == 0) null else 100)
+    })
+
     private fun observation(face: VisualEventMap.Face?) = VisualEventMap.Observation(
         sourceTimeUs = 0, face = face, composition = VisualEventMap.Composition(.5f, .5f, .5f, .5f, .5f))
 

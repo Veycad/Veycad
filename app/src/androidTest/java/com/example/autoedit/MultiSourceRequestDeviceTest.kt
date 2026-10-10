@@ -20,6 +20,11 @@ class MultiSourceRequestDeviceTest {
         val files = List(20) { index -> File(directory, "source-$index.mp4").also {
             seed.copyTo(it, overwrite = true)
         } }
+        SyntheticVideo.create(files[19], 2000, width = 160, height = 240, lumaBase = 20)
+        SyntheticVideo.create(files[7], 2000, width = 240, height = 160, lumaBase = 130)
+        SyntheticVideo.create(files[0], 2000, width = 192, height = 192, lumaBase = 155)
+        assertNotEquals(VideoDisplayOrientation.cropForFile(files[19], 160, 240),
+            VideoDisplayOrientation.cropForFile(files[7], 160, 240))
         val clips = listOf(19, 7, 0).mapIndexed { index, sourceIndex -> MontageGraph.Clip(
             "clip-$index", 0, 400, 400, MontageGraph.ShotRole.ACTION,
             if (index == 0) MontageGraph.Transition.HARD_CUT else MontageGraph.Transition.WHIP,
@@ -45,8 +50,22 @@ class MultiSourceRequestDeviceTest {
         assertEquals(setOf(19, 7, 0), observed)
         assertTrue((0 until json.length()).any { json.getJSONObject(it).optInt("secondary_source_index", -1) == 19 })
         val samples = RenderedVisualSampler.sample(output, graph, sourceFiles = files,
-            sourceVisualMaps = List(20) { null }, decodedSourceTimes = VeykadRenderInspector.decodedSourceClock(artifacts))
+            sourceVisualMaps = List(20) { null }, decodedSourceTimes = VeykadRenderInspector.decodedSourceClock(artifacts),
+            decodedFrameProvenance = VeykadRenderInspector.decodedFrameProvenance(artifacts))
         assertEquals(setOf(19, 7, 0), samples.mapNotNull { it.decodedSourceIndex }.toSet())
+        val witnesses = VeykadRenderInspector.decodedFrameProvenance(artifacts)
+        for ((outputUs, expectedSource, expectedClip) in listOf(Triple(400_000L, 19, 0), Triple(800_000L, 7, 1))) {
+            val witness = requireNotNull(witnesses[outputUs])
+            assertEquals(expectedSource, witness.sourceIndex)
+            assertEquals(expectedClip, witness.clipIndex)
+            val sample = samples.minBy { kotlin.math.abs(it.outputTimeUs - outputUs) }
+            assertTrue(kotlin.math.abs(sample.outputTimeUs - outputUs) <= 1)
+            assertEquals(witness.sourceIndex, sample.decodedSourceIndex)
+            assertEquals(witness.clipIndex, sample.decodedClipIndex)
+            assertEquals(witness.decodedSourceTimeUs, sample.decodedSourceTimeUs)
+            // Distinct actual pixels expose a swapped portrait/landscape source witness.
+            if (outputUs == 400_000L) assertTrue(sample.luma < .25f) else assertTrue(sample.luma > .45f)
+        }
     }
 
     @Test fun legacyWrapperInspectsOnWorkerAndKeepsCaptureLinkArguments() {

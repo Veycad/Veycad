@@ -365,7 +365,8 @@ internal object VeycadAutomaticEditor {
             // DUALITY's authored grade historically excludes source-luma comparisons.
             sourceFiles = if (request.recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) emptyList()
                 else request.sources.items.map { it.file },
-            sourceVisualMaps = listOf(pipeline.visualMap, secondaryVisualMap)
+            sourceVisualMaps = listOf(pipeline.visualMap, secondaryVisualMap),
+            decodedFrameProvenance = VeykadRenderInspector.decodedFrameProvenance(artifacts)
         )
         val decodedAcceptance = RenderedMp4Acceptance.evaluate(
             alternative.graph,
