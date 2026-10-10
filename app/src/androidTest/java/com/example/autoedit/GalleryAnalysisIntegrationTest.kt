@@ -6,12 +6,14 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.os.SystemClock
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.nio.ByteBuffer
 import java.util.concurrent.CancellationException
 
 /** Actual AVC/Surface fixtures. Compilation alone does not constitute device evidence. */
@@ -21,6 +23,7 @@ class GalleryAnalysisIntegrationTest {
         val source = MediaInputInspector().inspect("landscape", file, file.name)
         val moments = GallerySourceAnalyzer().analyze(source) {}
         assertTrue(moments.isNotEmpty())
+        assertFalse(source.hasAudio)
         assertTrue(moments.all { it.features.faceConfidence == null && it.endUs <= source.videoEndPtsUs })
         val actual = videoPts(file)
         assertTrue(moments.all { it.features.timeUs in actual })
@@ -28,10 +31,18 @@ class GalleryAnalysisIntegrationTest {
 
     @Test fun nonzeroVfrPtsAndIncompleteGopRemainActualAtEof() {
         val inputPts = LongArray(23) { i -> 120_000L + i * 42_000L + (i / 3) * 31_000L }
-        withClip("nonzero-vfr", inputPts) { file ->
+        val explicitVideoEosUs = inputPts.last() + 33_334L
+        withClip("nonzero-vfr", inputPts, anchorAtZero = true) { file ->
             val source = MediaInputInspector().inspect("vfr", file, file.name)
-            val pts = videoPts(file)
+            val timing = videoTiming(file)
+            val pts = timing.pts
+            Log.i("GalleryPtsFixture", "actualFirstUs=${pts.first()} actualLastUs=${pts.last()} " +
+                "trackDurationUs=${timing.declaredDurationUs} explicitVideoEosUs=$explicitVideoEosUs " +
+                "sourceDurationUs=${source.durationUs} sourceOriginUs=${source.firstVideoPtsUs} " +
+                "sourceEndUs=${source.videoEndPtsUs} sourceEndMinusExplicitEosUs=${source.videoEndPtsUs - explicitVideoEosUs} " +
+                "lastSampleFlags=${timing.lastSampleFlags}")
             assertTrue(pts.first() > 0)
+            assertTrue(source.hasAudio)
             assertEquals(pts.first(), source.firstVideoPtsUs)
             assertEquals(pts.first() + source.durationUs, source.videoEndPtsUs)
             assertTrue(pts.zipWithNext().map { it.second - it.first }.distinct().size > 1)
@@ -46,6 +57,8 @@ class GalleryAnalysisIntegrationTest {
             assertTrue(observed.first() > requested.first())
             assertEquals(pts.last(), observed.last())
             val moments = GallerySourceAnalyzer().analyze(source) {}
+            Log.i("GalleryPtsFixture", "maxMomentEndUs=${moments.maxOfOrNull { it.endUs }} " +
+                "momentsAfterExplicitVideoEos=${moments.count { it.endUs > explicitVideoEosUs }}")
             assertTrue(moments.isNotEmpty())
             assertTrue(moments.all { it.features.timeUs in pts && it.startUs >= pts.first() && it.endUs <= source.videoEndPtsUs })
             // Neither boundary invents a frame for a request after the last real sample.
@@ -102,26 +115,109 @@ class GalleryAnalysisIntegrationTest {
 
     private fun regularPts(count: Int) = LongArray(count) { (it * 1_000_000L + 29) / 30 }
 
-    private fun withClip(name: String, pts: LongArray, run: (File) -> Unit) {
+    private fun withClip(name: String, pts: LongArray, anchorAtZero: Boolean = false, run: (File) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val file = File(context.cacheDir, "gallery-$name-${System.nanoTime()}.mp4")
-        try { createTextureVideo(file, pts); run(file) } finally { file.delete() }
+        val encoded = if (anchorAtZero) File(file.path + ".unanchored.mp4") else file
+        try {
+            createTextureVideo(encoded, pts)
+            if (anchorAtZero) remuxWithZeroStartAudio(encoded, file, pts.first(), pts.last() + 33_334L)
+            run(file)
+        } finally { file.delete(); if (encoded != file) encoded.delete() }
     }
 
-    private fun videoPts(file: File): List<Long> {
+    private data class FixtureVideoTiming(val pts: List<Long>, val declaredDurationUs: Long?, val lastSampleFlags: Int)
+
+    private fun videoPts(file: File): List<Long> = videoTiming(file).pts
+
+    private fun videoTiming(file: File): FixtureVideoTiming {
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(file.path)
             val track = (0 until extractor.trackCount).first { extractor.getTrackFormat(it)
                 .getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+            val format = extractor.getTrackFormat(track)
+            val duration = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else null
             extractor.selectTrack(track)
             val pts = mutableListOf<Long>()
+            var lastFlags = 0
+            var lastPts = -1L
             while (extractor.sampleTrackIndex >= 0) {
                 pts += extractor.sampleTime
+                if (extractor.sampleTime > lastPts) {
+                    lastPts = extractor.sampleTime
+                    lastFlags = extractor.sampleFlags
+                }
                 if (!extractor.advance()) break
             }
-            return pts.distinct().sorted()
+            return FixtureVideoTiming(pts.distinct().sorted(), duration, lastFlags)
         } finally { extractor.release() }
+    }
+
+    /** Same zero-start AAC anchor as MediaInputInspectorTest's passing nonzero-origin fixture.
+     * A video-only MP4 rebases its first PTS to zero on API36. Copy actual AVC sample bytes
+     * and their relative VFR spacing; the AAC track anchors movie time while video starts later.
+     */
+    private fun remuxWithZeroStartAudio(input: File, target: File, videoOriginUs: Long, videoEosUs: Long) {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val audio = File(target.path + ".anchor.m4a")
+        val video = MediaExtractor()
+        val sound = MediaExtractor()
+        var muxer: MediaMuxer? = null
+        var started = false
+        try {
+            context.resources.openRawResource(R.raw.heartbeat_author).use { source ->
+                audio.outputStream().use { destination -> source.copyTo(destination) }
+            }
+            muxer = MediaMuxer(target.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            video.setDataSource(input.path)
+            sound.setDataSource(audio.path)
+            val videoIndex = (0 until video.trackCount).first { video.getTrackFormat(it)
+                .getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+            val soundIndex = (0 until sound.trackCount).first { sound.getTrackFormat(it)
+                .getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
+            val videoTrack = muxer.addTrack(video.getTrackFormat(videoIndex))
+            val soundTrack = muxer.addTrack(sound.getTrackFormat(soundIndex))
+            video.selectTrack(videoIndex)
+            sound.selectTrack(soundIndex)
+            val encodedOriginUs = video.sampleTime
+            check(encodedOriginUs >= 0 && sound.sampleTime == 0L) { "Fixture needs video samples and a zero-start AAC anchor" }
+            muxer.start()
+            started = true
+            val buffer = ByteBuffer.allocate(1_048_576)
+            val info = MediaCodec.BufferInfo()
+            var lastVideoUs = -1L
+            while (video.sampleTrackIndex >= 0) {
+                buffer.clear()
+                val size = video.readSampleData(buffer, 0)
+                check(size > 0)
+                val pts = videoOriginUs + video.sampleTime - encodedOriginUs
+                info.set(0, size, pts, video.sampleFlags)
+                muxer.writeSampleData(videoTrack, buffer, info)
+                lastVideoUs = maxOf(lastVideoUs, pts)
+                if (!video.advance()) break
+            }
+            check(lastVideoUs < videoEosUs)
+            // Record an independently authored raw video endpoint, including the final hold.
+            info.set(0, 0, videoEosUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+            muxer.writeSampleData(videoTrack, ByteBuffer.allocate(0), info)
+            while (sound.sampleTime in 0L..2_999_999L) {
+                buffer.clear()
+                val size = sound.readSampleData(buffer, 0)
+                check(size > 0)
+                info.set(0, size, sound.sampleTime, sound.sampleFlags)
+                muxer.writeSampleData(soundTrack, buffer, info)
+                if (!sound.advance()) break
+            }
+            muxer.stop()
+            started = false
+        } finally {
+            if (started) runCatching { muxer?.stop() }
+            runCatching { muxer?.release() }
+            runCatching { video.release() }
+            runCatching { sound.release() }
+            audio.delete()
+        }
     }
 
     /** Small real texture encoder; last sample intentionally does not complete a GOP. */
