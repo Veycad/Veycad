@@ -24,6 +24,7 @@ import com.google.mlkit.vision.segmentation.Segmentation
 import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 /**
  * Sequentially decodes the encoded MP4 and measures the decoder output itself.
@@ -171,14 +172,15 @@ internal object RenderedVisualSampler {
         val bufferInfo = MediaCodec.BufferInfo()
         var inputEnded = false
         var outputEnded = false
-        val sampleTargetsUs = samplingTargets(graph, intervalUs)
+        val renderPlan = HighQualityFramePlan.build(graph, renderFps)
+        val sampleTargetsUs = samplingTargets(graph, renderPlan, intervalUs)
         val heartbeatTailStartUs = if (HeartbeatMontageProfile.appliesTo(graph))
             HeartbeatPulseAudit.tailSamplingTargetsUs().first() - 1L else null
         var nextSampleIndex = 0
         var previous: Features? = null
         var previousOutputMask: FloatArray? = null
         var previousEntranceTravel: Float? = null
-        val framePlan = HighQualityFramePlan.build(graph,renderFps).frames.map { frame ->
+        val framePlan = renderPlan.frames.map { frame ->
             withDecodedSourceTime(frame, graph.frameAttachments, decodedSourceTimes[frame.outputTimeUs])
         }
         var idleIterations = 0
@@ -831,6 +833,15 @@ internal object RenderedVisualSampler {
     ): Boolean = transition == MontageGraph.Transition.FOREGROUND_REENTRY &&
         progress?.let { it in 0f..FOREGROUND_DARK_STAGE_END } == true
 
+    /** Keep raw author anchors alongside canonical witnesses from the actual render schedule. */
+    internal fun samplingTargets(
+        graph: MontageGraph,
+        plan: HighQualityFramePlan.Plan,
+        intervalUs: Long
+    ): List<Long> = (samplingTargets(graph, intervalUs) + RenderQaSampling.targets(graph, plan, intervalUs))
+        .distinct()
+        .sorted()
+
     internal fun samplingTargets(graph: MontageGraph, intervalUs: Long): List<Long> {
         require(intervalUs > 0L)
         val durationUs = graph.outputDurationMs * 1_000L
@@ -865,8 +876,9 @@ internal object RenderedVisualSampler {
             } + HeartbeatPulseAudit.tailSamplingTargetsUs().asSequence()
         } else emptySequence()
         val fearCheckpoints = if (FearStrobeProfile.appliesTo(graph)) {
-            HighQualityFramePlan.build(graph, FearStrobeProfile.REFERENCE_FPS).frames.asSequence()
-                .map { it.outputTimeUs } + FearStrobeProfile.pulses.asSequence().flatMap { pulse ->
+            generateSequence(0) { it + 1 }
+                .map { index -> (index * (1_000_000.0 / FearStrobeProfile.REFERENCE_FPS)).roundToLong() }
+                .takeWhile { it < durationUs } + FearStrobeProfile.pulses.asSequence().flatMap { pulse ->
                 sequenceOf(pulse.startUs, (pulse.endUs - 1L).coerceAtLeast(pulse.startUs))
             } + FearStrobeProfile.scenes.asSequence().map { it.startUs }
         } else emptySequence()
