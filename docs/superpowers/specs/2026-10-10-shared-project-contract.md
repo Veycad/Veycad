@@ -10,6 +10,10 @@ Scoped RestoreMontage реализован в `2562f53777c1ad86dc078754bdafecfd5
 
 A2a реализована в `cb4e1a794e2b2d302311f7f6d9de62944c97190b`: canonical authored maps, долговечный выбранный backing и независимые measured timing fields.129 различных целевых JVM-тестов прошли; независимое task review и exact-head CI ещё ожидаются. Точный API и границы — [authored source maps](../../hybrid-authored-source-maps.md). A2b/manual payload, staging, runtime и полная фиксация анализа ещё не подключены.
 
+Первое A2a review выявило два важных замечания: слишком узкий backing при миграции доступной legacy ancestry и aggregate check после writer allocation. Fix round1 `97f14e24a7e82e6bd9ccc08adf1f6ae746bdec7a` сохраняет полный доказанный envelope и резервирует уникальные карты до allocation; failed hash не попадает в verified cache.96 целевых JVM-тестов прошли, независимое повторное review ещё ожидается. Новый gallery timing-proof/version handoff из `27e7cdff744c64c5247fca0a357e3b86a9c9c428` назначен отдельному A2t до потребителей: явно nullable recognized version, без синтетического proof для old/partial facts. Это дополнительный открытый gate, а не обещание поддержки всех контейнеров.
+
+Checkpoint PR #15 `f51a595b` включён владельцем в main. Это завершённое ядро до A2; локальные A2a/fix ещё не опубликованы. Follow-up ветка будет основана на актуальном remote main с сохранением прежней истории и отдельными проверками интеграции; весь гибридный режим пока не готов.
+
 ## Доступно в checkpoint
 
 | Файл | Стабильный API |

@@ -67,6 +67,12 @@ Commit: `feat(storage): сохранять ручные фазы и исходн
 
 ## B. SourceDraft, отменяемый импорт и атомарное продвижение
 
+### Prerequisite A2t: версия доказанных presentation bounds
+
+После scoped A2a fixes/review и до A2b/B выполнить отдельный совместимый checkpoint timing proof. Reviewed gallery runtime `27e7cdff744c64c5247fca0a357e3b86a9c9c428` содержит nullable `VideoPresentationBounds(firstPtsUs,endPtsUs,timingVersion=1)`; поддержанная матрица ограничена explicit track ID и nonfragmented ISO-BMFF timing/edit evidence. Core сохраняет явную nullable recognized timing version вместе с независимыми first/end и immutable physical identity. Прежние/частичные nullable Long facts не превращаются в version1 proof; gallery требует reinspection/fork. Declared duration, legacy requests, final holds, authored maps/backings и allocator/CAS остаются прежними. Точные signatures закрепляются после реализации/ревью.
+
+До encoder change получить настоящие physicalv5 fixtures; новый decoder явно читает v1-v5 без rewrite или синтетической версии. Scoped RED/GREEN: complete proof import→save/reopen/projection, partial/legacy/future-version отказ для gallery, physical identity/version immutability/CURRENT и old revision/export bytes. Отдельный агент, commit и review; exact CI и реальные Android/rawEOS measurements остаются отдельными gates. A2a сама ещё проходит fix/review; A2t пока не реализована.
+
 Read the gallery owner's `docs/superpowers/specs/2026-10-10-gallery-import-staging-contract.md` in gallery-text-spec worktree for current constraints. Do not duplicate its ContentResolver picker/metadata inspector. Core supplies persistent transaction, draft and promotion primitives to that adapter.
 
 Proposed minimal API (exact names pinned after implementation/review):
