@@ -34,6 +34,11 @@ android {
     if (providers.gradleProperty("customMusicTargeted").orNull == "true") {
         sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicDiagnostic/java"
     }
+    // Remote diagnostic only: prebuilt JNI never enters an application source set.
+    if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
+        sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicSoftwareDiagnostic/kotlin"
+        sourceSets.getByName("androidTest").jniLibs.srcDir(layout.buildDirectory.dir("customMusicSoftwareDiagnostic/jniLibs"))
+    }
 
     buildFeatures {
         buildConfig = true
