@@ -170,8 +170,13 @@ SpeechTranscriber/JNI, без дополнительного recognizer или p
 - [x] Провести независимое ревью, scoped commit `07ec407`; P3 phantom token
   воспроизведён regression RED 7/1 failure → GREEN 17/5 suites.
   ARM64 NDK syntax-only прошёл; это не native build.
-- [ ] Проверить JNI на реальной модели, коротком и последнем неполном окне;
-  выполнить exact-head CI без ослабления границ времени.
+- [x] Запустить JNI на реальной модели, коротком и последнем неполном окне.
+  Baseline `a5310149` успешен: 917 JVM / 121 suites, 285 Python и native build
+  трёх ABI без ошибок/пропусков. Android UI: 82 cases, 1 failure tick800>756
+  в auto-RU MP4, errors/skips0; 30s/6s tail прошёл. Общий PASS не заявляется.
+  Исправление bounded decode domain выполняется до sampling, со своим patch
+  SHA в header v2; raw rows не обрезаются, strict parser не ослабляется.
+  Проверки исправления обязательны для exact head и фиксируются в PR 12.
 - [x] TDD валидатора: hashes/WAV/provenance, 8 pilot + 2 holdout speakers,
   две независимые разметки, WER/coverage и median/p95 обеих границ.
   Отдельные alignment/confidence gates, неизменяемые evidence/report files.
@@ -180,7 +185,7 @@ SpeechTranscriber/JNI, без дополнительного recognizer или p
   P2 calibration gate/duplicate audio/hardlink overwrite воспроизведены до
   исправлений. Preregistration связывает source/protocol/Unicode до holdout.
   Инструменты и протокол сохраняются отдельным scoped commit.
-- [ ] Обновить checked contract, PR и результаты CI последнего коммита.
+- [x] Обновить контракт и PR; результаты каждого CI закреплять за его коммитом.
   Отсутствующие RU gold/holdout, acoustic alignment, A25 и человеческая
   приёмка остаются явно открытыми; структурные тесты не заменяют измерения.
 

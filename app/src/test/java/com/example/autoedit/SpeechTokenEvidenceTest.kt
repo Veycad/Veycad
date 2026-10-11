@@ -78,6 +78,16 @@ class SpeechTokenEvidenceTest {
         assertTrue(observed.cues.isEmpty()); assertTrue(observed.tokens.isEmpty())
         assertEquals(commit,observed.backendCommit); assertEquals("ru",observed.language)
     }
+    @Test fun boundedDecoderPatchIdentityIsRequiredForV2AndCannotChangeBetweenWindows() {
+        val header="H\t2\t$commit\t${"a".repeat(64)}\t16000\t1\t7275\t100\t200\t${"b".repeat(64)}"
+        val first=SpeechTokenParser.window(arrayOf(header),0,28800,16000,"auto")
+        assertEquals("b".repeat(64),first.backendPatchSha256)
+        assertThrows(SpeechFailureException::class.java) {
+            SpeechTokenParser.window(arrayOf(header.replace("b".repeat(64),"bad")),0,16000,16000,"auto")
+        }
+        val second=SpeechTokenParser.window(arrayOf(header.replace("b".repeat(64),"c".repeat(64))),12800,28800,16000,"auto")
+        assertThrows(IllegalArgumentException::class.java) { SpeechRawEvidence(listOf(first,second)) }
+    }
     @Test fun cancellationPreservesTheFirstExceptionEvenForOneShotCallback() {
         val failure=java.util.concurrent.CancellationException("one shot")
         var first=true

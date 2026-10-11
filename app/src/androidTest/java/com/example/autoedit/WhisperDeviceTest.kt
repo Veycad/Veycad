@@ -31,6 +31,7 @@ class WhisperDeviceTest {
             if(outcome is SpeechOutcome.Failure) throw outcome.cause
             val success=outcome as SpeechOutcome.Success
             val raw=success.evidence.rawEvidence!!
+            assertTrue(raw.windows.all { it.backendPatchSha256?.matches(Regex("[0-9a-f]{64}"))==true })
             assertEquals(listOf(0L,28*16000L),raw.windows.map { it.startFrame })
             assertEquals(listOf(30*16000,6*16000),raw.windows.map { it.frames })
             assertTrue(raw.windows.all { it.languageOrigin==SpeechLanguageOrigin.BACKEND_DETECTED })
@@ -104,6 +105,7 @@ class WhisperDeviceTest {
         val observed=quietResult.evidence.rawEvidence!!.windows.single()
         assertEquals(SpeechTokenParser.BACKEND_COMMIT,observed.backendCommit)
         assertTrue(observed.bridgeSha256.matches(Regex("[0-9a-f]{64}")))
+        assertTrue(observed.backendPatchSha256?.matches(Regex("[0-9a-f]{64}"))==true)
         assertEquals(SpeechLanguageOrigin.REQUESTED,observed.languageOrigin)
         assertTrue(observed.tokens.isNotEmpty()); assertTrue(observed.words.any { it.text.lowercase().contains("субтитр") })
         assertTrue(observed.words.all { !it.confidenceCalibrated })

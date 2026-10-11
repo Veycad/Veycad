@@ -74,9 +74,10 @@ extern "C" JNIEXPORT jobjectArray JNICALL Java_com_veycad_app_WhisperNative_reco
         const char *actual_language=lang_id>=0 && lang_id<=whisper_lang_max_id() ? whisper_lang_str(lang_id) : nullptr;
         if(!actual_language) lang_id=-1;
         const int eot=whisper_token_eot(ctx);
-        rows.push_back(std::string("H\t1\t48f628a84833905ee4a0658ee6d4a5c915ce1997\t")+
+        rows.push_back(std::string("H\t2\t48f628a84833905ee4a0658ee6d4a5c915ce1997\t")+
             VEYCAD_WHISPER_BRIDGE_SHA+"\t"+std::to_string(length)+"\t"+std::to_string(lang_id)+"\t"+
-            hex_bytes(actual_language)+"\t"+std::to_string(eot)+"\t"+std::to_string(whisper_n_vocab(ctx)));
+            hex_bytes(actual_language)+"\t"+std::to_string(eot)+"\t"+std::to_string(whisper_n_vocab(ctx))+"\t"+
+            VEYCAD_WHISPER_PATCH_SHA);
         for(int i=0;i<whisper_full_n_segments(ctx);++i) {
             rows.push_back("S\t"+std::to_string(i)+"\t"+std::to_string(whisper_full_get_segment_t0(ctx,i))+"\t"+
                 std::to_string(whisper_full_get_segment_t1(ctx,i))+"\t"+

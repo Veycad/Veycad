@@ -192,11 +192,38 @@ PHRASE, wordTimings/confidence null и accuracyMeasured=false сохранены
 Он воспроизвёл RED 7 tests / 1 failure; после проверки segment>=0 связанная
 серия 17/5 suites прошла. Код raw-token checkpoint закоммичен в `07ec407`.
 NDK clang ARM64 syntax-only проверка прошла; она не заменяет native build.
-Actual JNI: **PENDING** до завершения удалённого Android CI актуального коммита.
+Runtime checkpoint `a5310149` завершён с ошибкой, описанной ниже.
 Существующие сценарии EN/RU/тихой речи/тишины и однократной отмены усилены
 raw assertions; новый 34 s fixture проверяет
 30 s окно и последний 6 s хвост, auto language и неизменность borrowed PCM.
 Это synthetic smoke, а не размеченный gold corpus или числовая точность слов.
+
+Baseline коммита `a53101496244fbb8476dfb314c701380a7eff80a` прошёл
+[remote clean baselineVerify](https://github.com/Veycad/Veycad/actions/runs/38150340778)
+за 7m42s: фактические XML содержат 917 JVM tests / 121 suites, JSON — 285
+Python tests; failures/errors/skips 0. Native build всех трёх ABI,
+lint и security contract успешны. Artifact `11706765398` скачан и сверен
+с remote digest; ZIP SHA-256
+`50c8408de32459c232784e3ca411f28ce5a5ce95a7bbc4c9d67a6366816c49a3`.
+Android UI `a5310149` [завершён с FAILURE](https://github.com/Veycad/Veycad/actions/runs/38150340742):
+82 cases (2 permissions + 80 screens), failures 1, errors/skips 0.
+`automaticLanguageRecognizesRussianSpeech` отклонил segment tick 800 при
+допустимом максимуме 756: backend видел encoder padding после 7.56 s входа.
+Остальные сценарии, включая новый 30 s/6 s tail, прошли; это не общий PASS.
+Artifact `11706604969`, ZIP SHA-256
+`c08f1fdd1e9bb1b55ce6ba635e3ecf0219fa8286b0c0a9edd726803a25236fd7`.
+
+Исправление ограничивает timestamp vocabulary остатком `seek_end-seek` до
+normalization/sampling в обоих decoder call sites и три fallback seek_delta.
+Исходные JNI rows не обрезаются, parser сохраняет строгие границы. Guarded
+CMake patch работает с private copy исходника, не меняет shared download;
+неизвестный source SHA или число anchors отклоняются до записи. Header v2
+содержит отдельный фактический SHA patch script; v1 research fixtures читаются
+с прежней строгой проверкой. Лёгкая script-only проверка private copy и guard
+прошла, но она не является компиляцией/native runtime. Проверки последнего
+коммита и итог исправления фиксируются в [PR 12](https://github.com/Veycad/Veycad/pull/12).
+Известный риск token-energy шкалы ненулевых сегментов закреплённого backend
+остаётся частью word-quality исследования, без доказанной акустической точности.
 
 [Валидатор](speech-word-quality.md) подготовлен для реальных 8 pilot + 2 holdout
 говорящих и независимых аннотаций. Ни такого корпуса, ни выполненных acoustic

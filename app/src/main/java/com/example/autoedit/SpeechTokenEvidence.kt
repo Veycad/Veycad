@@ -28,7 +28,8 @@ internal class SpeechTokenWord(val identity:SpeechWordIdentity,val text:String,
 }
 internal class SpeechWindowEvidence(val startFrame:Long,val frames:Int,val backendCommit:String,
     val bridgeSha256:String,val language:String?,val languageOrigin:SpeechLanguageOrigin,
-    cues:List<CaptionCue>,segments:List<SpeechRawSegment>,tokens:List<SpeechRawToken>,words:List<SpeechTokenWord>) {
+    cues:List<CaptionCue>,segments:List<SpeechRawSegment>,tokens:List<SpeechRawToken>,words:List<SpeechTokenWord>,
+    val backendPatchSha256:String?=null) {
     val cues=frozen(cues); val segments=frozen(segments); val tokens=frozen(tokens); val words=frozen(words)
 }
 internal data class SpeechSuppressedDuplicate(val kept:SpeechWordIdentity,val suppressed:SpeechWordIdentity)
@@ -40,7 +41,8 @@ internal class SpeechRawEvidence(windows:List<SpeechWindowEvidence>) {
     val suppressedDuplicates:List<SpeechSuppressedDuplicate>
     init {
         require(windows.zipWithNext().all { (a,b)->a.startFrame<b.startFrame })
-        require(windows.all { it.backendCommit==windows.first().backendCommit && it.bridgeSha256==windows.first().bridgeSha256 })
+        require(windows.all { it.backendCommit==windows.first().backendCommit && it.bridgeSha256==windows.first().bridgeSha256 &&
+            it.backendPatchSha256==windows.first().backendPatchSha256 })
         val merged=mutableListOf<SpeechTokenWord>(); val suppressed=mutableListOf<SpeechSuppressedDuplicate>()
         for(window in this.windows) {
             val used=mutableSetOf<SpeechWordIdentity>()
@@ -63,7 +65,7 @@ private fun frameUs(frames:Long):Long {
     return frames*1_000_000/16000
 }
 
-/** ASCII v1 rows carry raw ticks and hex bytes, never independently decoded BPE pieces. */
+/** ASCII rows carry raw ticks/hex bytes; v2 also identifies the bounded-decoding backend patch. */
 internal object SpeechTokenParser {
     const val BACKEND_COMMIT="48f628a84833905ee4a0658ee6d4a5c915ce1997"
     private val lexical=Regex("[\\p{L}\\p{M}\\p{N}]+(?:['’\\-][\\p{L}\\p{M}\\p{N}]+)*")
@@ -83,7 +85,9 @@ internal object SpeechTokenParser {
         require(requestedLanguage in setOf("auto","ru","en"))
         val offsetUs=frameUs(offsetFrames); val durationUs=frameUs(totalFrames); val windowUs=frameUs(windowFrames.toLong())
         val header=rows.first().split('\t')
-        require(header.size==9 && header[0]=="H" && header[1]=="1" && header[2]==BACKEND_COMMIT)
+        require(header[0]=="H" && ((header.size==9 && header[1]=="1") || (header.size==10 && header[1]=="2")))
+        require(header[2]==BACKEND_COMMIT)
+        val patchSha=if(header[1]=="2") header[9].also { require(it.matches(Regex("[0-9a-f]{64}"))) } else null
         require(header[3].matches(Regex("[0-9a-f]{64}")) && header[4].toInt()==windowFrames)
         val languageId=header[5].toInt(); val language=unicode(bytes(header[6])).ifEmpty { null }
         require(languageId>=-1 && (language==null || language.matches(Regex("[a-z]{2,3}"))))
@@ -141,7 +145,7 @@ internal object SpeechTokenParser {
         }
         SpeechWindowEvidence(offsetFrames,windowFrames,header[2],header[3],language,
             if(requestedLanguage=="auto") SpeechLanguageOrigin.BACKEND_DETECTED else SpeechLanguageOrigin.REQUESTED,
-            cues,segments,tokens,words)
+            cues,segments,tokens,words,patchSha)
     } catch(failure:SpeechFailureException) { throw failure }
     catch(failure:Exception) { throw SpeechFailureException(SpeechFailureCode.RESULT_INVALID,failure) }
 }
