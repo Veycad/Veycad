@@ -236,12 +236,18 @@ object VeykadRenderInspector {
     ): Summary {
         val temporalLayerKinds = if (ReferenceMontageProfile.appliesTo(graph))
             emptySet() else temporalLayerKinds
-        val authored = graph.clips.mapIndexedNotNull { index, clip ->
+        val clips = graph.clips.map { it.copy(transitionIn = graph.renderTransition(it)) }
+        val overlays = graph.renderOverlays()
+        val authored = clips.mapIndexedNotNull { index, clip ->
             (index to clip).takeIf { clip.transitionIn in visibleTransitions }
         }
+        // Source indices name ordered selections, not physical uniqueness or visual quality.
+        // Unknown secondary identity retains the legacy same-source threshold.
+        fun differentSourceRoles(frame: FrameEvidence): Boolean =
+            frame.secondarySourceIndex != null && frame.secondarySourceIndex != frame.sourceIndex
         val hasCameraIntent = graph.clips.any { it.motion != MontageGraph.Motion.HOLD ||
             it.transform != MontageGraph.ClipTransform.hold() }
-        val configuredTemporalSeparationUs = graph.overlays.asSequence()
+        val configuredTemporalSeparationUs = overlays.asSequence()
             .filter { it.overlayKind in temporalLayerKinds }
             .mapNotNull { it.secondarySourceOffsetMs }
             .filter { it != 0L }
@@ -310,7 +316,7 @@ object VeykadRenderInspector {
             if (authored.any { it.second.transitionIn == MontageGraph.Transition.BLACKOUT } && (frames.maxOfOrNull { it.blackout } ?: 0f) < .55f) {
                 add("blackout_below_visible_threshold")
             }
-            if (graph.overlays.any {
+            if (overlays.any {
                     it.overlayKind in setOf(
                         MontageGraph.OverlayKind.DOUBLE_EXPOSURE,
                         MontageGraph.OverlayKind.MIRROR_SLICE,
@@ -320,19 +326,19 @@ object VeykadRenderInspector {
                 } && frames.none { it.layerOpacity > .01f }) {
                 add("authored_reference_layers_missing_from_shader")
             }
-            val authoredTemporalLayers = graph.overlays.any {
+            val authoredTemporalLayers = overlays.any {
                 it.overlayKind in temporalLayerKinds
             }
             if (authoredTemporalLayers && frames.none {
                     it.layerOpacity > .01f && it.secondarySourceTimeUs != null &&
-                        it.secondarySourceTimeUs != it.sourceTimeUs
+                        (differentSourceRoles(it) || it.secondarySourceTimeUs != it.sourceTimeUs)
                 }) {
                 add("authored_temporal_layer_missing_second_source_pts")
             }
             if (authoredTemporalLayers && frames.any {
                     it.layerKind in temporalLayerKinds && it.layerOpacity >= .25f &&
                         (it.secondarySourceTimeUs == null ||
-                            abs(it.secondarySourceTimeUs - it.sourceTimeUs) < configuredTemporalSeparationUs)
+                            (!differentSourceRoles(it) && abs(it.secondarySourceTimeUs - it.sourceTimeUs) < configuredTemporalSeparationUs))
                 }) {
                 add("temporal_layer_sources_too_close_to_read")
             }
@@ -351,18 +357,18 @@ object VeykadRenderInspector {
             if (visibleTemporalFrames.any {
                     it.decodedSourceTimeUs != null && it.decodedSourceTimeUs >= 0L &&
                         it.decodedSecondarySourceTimeUs != null && it.decodedSecondarySourceTimeUs >= 0L &&
-                        it.decodedSourceTimeUs == it.decodedSecondarySourceTimeUs
+                        !differentSourceRoles(it) && it.decodedSourceTimeUs == it.decodedSecondarySourceTimeUs
                 }) {
                 add("temporal_layer_identical_decoded_source_pts")
             }
             if (visibleTemporalFrames.any { !it.dualDecoder }) {
                 add("temporal_layer_without_two_live_decoders")
             }
-            if (graph.overlays.any { it.overlayKind == MontageGraph.OverlayKind.SUBJECT_STAGE } &&
+            if (overlays.any { it.overlayKind == MontageGraph.OverlayKind.SUBJECT_STAGE } &&
                 subjectStageSourcePts < MINIMUM_LIVE_SUBJECT_STAGE_SOURCE_PTS) {
                 add("subject_stage_source_frozen")
             }
-            if (graph.overlays.any { it.overlayKind == MontageGraph.OverlayKind.SUBJECT_STAGE } &&
+            if (overlays.any { it.overlayKind == MontageGraph.OverlayKind.SUBJECT_STAGE } &&
                 subjectStageFrames.none { it.maskConfidence >= .80f }) {
                 add("subject_stage_missing_live_mask")
             }
@@ -387,7 +393,7 @@ object VeykadRenderInspector {
             layerFrames = frames.count { it.layerOpacity > .01f },
             temporalLayerFrames = frames.count {
                 it.layerOpacity > .01f && it.secondarySourceTimeUs != null &&
-                    it.secondarySourceTimeUs != it.sourceTimeUs
+                    (differentSourceRoles(it) || it.secondarySourceTimeUs != it.sourceTimeUs)
             },
             foregroundReentrySourcePts = foregroundReentrySourcePts,
             subjectStageSourcePts = subjectStageSourcePts

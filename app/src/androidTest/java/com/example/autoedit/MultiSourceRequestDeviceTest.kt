@@ -31,7 +31,14 @@ class MultiSourceRequestDeviceTest {
             MontageGraph.Motion.HOLD, 1f, index * 400L, sourceIndex = sourceIndex,
             transitionDurationMs = if (index == 0) null else 100)
         }
-        val graph = MontageGraph(2000, 1200, clips = clips)
+        val sourceSemantics = listOf(19 to .2f, 7 to .9f, 0 to .5f).map { (index, confidence) ->
+            SourceAttachments(index, FrameAttachmentTimeline((0..4).map { step ->
+                FrameAttachments(step * 100_000L,
+                    mask = FrameAttachments.Plane(1, 1, listOf(confidence), confidence))
+            }))
+        }
+        val graph = MontageGraph(2000, 1200, clips = clips, sourceAttachments = sourceSemantics,
+            manualOverrides = ManualRenderOverrides())
         val interrupted = File(directory, "cancelled.mp4")
         var checks = 0
         assertThrows(IllegalStateException::class.java) {
@@ -63,6 +70,9 @@ class MultiSourceRequestDeviceTest {
             assertEquals(witness.sourceIndex, sample.decodedSourceIndex)
             assertEquals(witness.clipIndex, sample.decodedClipIndex)
             assertEquals(witness.decodedSourceTimeUs, sample.decodedSourceTimeUs)
+            val shaderFrame = (0 until json.length()).map(json::getJSONObject).single { it.getLong("output_us") == outputUs }
+            assertEquals(if (expectedSource == 19) .2 else .9, shaderFrame.getDouble("mask_confidence"), .0001)
+            assertEquals(witness.decodedSourceTimeUs, shaderFrame.getLong("mask_source_us"))
             // Distinct actual pixels expose a swapped portrait/landscape source witness.
             if (outputUs == 400_000L) assertTrue(sample.luma < .25f) else assertTrue(sample.luma > .45f)
         }

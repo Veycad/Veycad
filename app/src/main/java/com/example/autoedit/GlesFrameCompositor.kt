@@ -32,7 +32,8 @@ internal class GlesFrameCompositor(
     private val sourceCrops: List<SourceFraming.Crop> = listOf(SourceFraming.Crop(1f, 1f)),
     private val onDraw: (DrawEvidence) -> Unit = {},
     private val onPassExecuted: (RenderPassPlanner.PassKind) -> Unit = {},
-    private val programDriver: GlProgramOwnership.Driver = GlesProgram
+    private val programDriver: GlProgramOwnership.Driver = GlesProgram,
+    private val sourceAttachments: List<SourceAttachments> = emptyList()
 ) : AutoCloseable {
     private val width = target.size.width
     private val height = target.size.height
@@ -151,9 +152,16 @@ internal class GlesFrameCompositor(
         GLES20.glUseProgram(program)
         val transform = FloatArray(16); Matrix.setIdentityM(transform, 0)
         val incomingCrop = sourceCrops[incomingFrame.sourceIndex]
+        val actualPts = incomingInput.timestampUs()
+        val attachments = if (sourceAttachments.isNotEmpty() ||
+            incomingFrame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY || sigmaProfile
+        ) {
+            MediaCodecSpeedRampRenderer.decodedAttachments(incomingFrame, actualPts,
+                attachmentTimeline, sourceAttachments)
+        } else incomingFrame.attachments
         val fearPivot = if (fearProfile && incomingFrame.transform.scale > 1.0001f) {
             fearPivotByClip.getOrPut(incomingFrame.clipIndex) {
-                val face = incomingFrame.attachments?.faceRegion
+                val face = attachments?.faceRegion
                 if (face != null && face.confidence >= .75f) {
                     Pair(
                         (.5f + (face.centerX - .5f) / incomingCrop.x).coerceIn(.2f, .8f),
@@ -206,16 +214,9 @@ internal class GlesFrameCompositor(
         }
         // This call is adjacent to glDrawArrays on purpose: the Inspector reports technology
         // that reached the shader, not merely effects present in a MontageGraph.
-        val actualPts = incomingInput.timestampUs()
         val secondarySamplerInput = MediaCodecSpeedRampRenderer.boundSecondaryInput(
             incomingInput, outgoingInput, debugTextureProbe, debugProbeIncomingOnBothUnits
         )
-        val attachments = if (
-            incomingFrame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY ||
-                sigmaProfile
-        ) {
-            attachmentTimeline.interpolated(actualPts)
-        } else incomingFrame.attachments
         onDraw(DrawEvidence(
             incomingFrame.copy(attachments = attachments),
             blend,
@@ -259,7 +260,7 @@ internal class GlesFrameCompositor(
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, openingTitleTexture)
         GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uOpeningTitleTexture"), 5)
-        val openingTitle = authoredTitle?.sampleAt?.invoke(incomingFrame.outputTimeUs)
+        val openingTitle = authoredTitle?.sampleAt?.invoke(incomingFrame.globalOutputTimeUs)
         GLES20.glUniform1f(
             GLES20.glGetUniformLocation(program, "uOpeningTitle"),
             openingTitle?.let { it.atlasRow + 1f } ?: 0f
@@ -331,7 +332,7 @@ internal class GlesFrameCompositor(
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uFinalFade"), incomingFrame.layer.finalFadeOpacity)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uSigmaProfile"), if (sigmaProfile) 1f else 0f)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uEntranceTravel"),
-            if (sigmaProfile) SigmaComposition.entranceTravel(incomingFrame.outputTimeUs)
+            if (sigmaProfile && incomingFrame.transitionEffectsAllowed) SigmaComposition.entranceTravel(incomingFrame.originalOutputTimeUs)
             else ForegroundReentryMotion.verticalTravel(blend?.foregroundReentry ?: 0f))
         GLES20.glUniform3f(GLES20.glGetUniformLocation(program, "uLayerColour"), incomingFrame.layer.red, incomingFrame.layer.green, incomingFrame.layer.blue)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uLayerMode"), incomingFrame.layer.blendMode.ordinal.toFloat())
@@ -347,7 +348,9 @@ internal class GlesFrameCompositor(
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uDualityProfile"),
             if (dualityProfile) 1f else 0f)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uOutputTime"),
-            incomingFrame.outputTimeUs / 1_000_000f)
+            incomingFrame.globalOutputTimeUs / 1_000_000f)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uOriginalTime"),
+            incomingFrame.originalOutputTimeUs / 1_000_000f)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uTextureProbe"), if (debugTextureProbe) 1f else 0f)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uFaceRegionProbe"), if (debugFaceRegionProbe) 1f else 0f)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uHeartbeatImagePivot"), if (debugHeartbeatImagePivot) 1f else 0f)

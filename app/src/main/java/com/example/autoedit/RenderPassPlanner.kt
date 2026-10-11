@@ -56,27 +56,30 @@ object RenderPassPlanner {
     }
 
     fun plan(graph: MontageGraph, capabilities: DeviceCapabilities): Plan {
+        val clips = graph.clips.map { it.copy(transitionIn = graph.renderTransition(it)) }
+        val nodes = graph.renderNodes()
         val quality = selectQuality(capabilities)
-        val hasTransition = graph.clips.drop(1).any { it.transitionIn !in setOf(
+        val hasTransition = clips.drop(1).any { it.transitionIn !in setOf(
             MontageGraph.Transition.HARD_CUT, MontageGraph.Transition.OPEN, MontageGraph.Transition.FINAL_HOLD
         ) }
-        val hasDirectionalBlur = graph.clips.any { it.transitionIn == MontageGraph.Transition.WHIP }
-        val coverage = graph.frameAttachments.coverage()
-        val hasForegroundReentry = coverage.masks > 0 && graph.clips.any {
+        val hasDirectionalBlur = clips.any { it.transitionIn == MontageGraph.Transition.WHIP }
+        val coverages = if (graph.sourceAttachments.isEmpty()) listOf(graph.frameAttachments.coverage())
+            else graph.sourceAttachments.map { it.timeline.coverage() }
+        val hasForegroundReentry = coverages.any { it.masks > 0 } && clips.any {
             it.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY
         }
-        val hasDepth = coverage.depths > 0 && graph.clips.any {
+        val hasDepth = coverages.any { it.depths > 0 } && clips.any {
             it.transitionIn == MontageGraph.Transition.OCCLUSION ||
                 it.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY
         }
-        val hasGlow = graph.effectGraph.nodes.any { it.kind == GpuEffectGraph.Kind.GLOW }
+        val hasGlow = nodes.any { it.kind == GpuEffectGraph.Kind.GLOW }
         val cheap = buildSet {
             add("transform")
             add("grade")
-            if (graph.effectGraph.nodes.any { it.kind == GpuEffectGraph.Kind.DEFOCUS_BLUR }) add("defocus-sampling")
-            if (graph.overlays.isNotEmpty()) add("layer-blend")
-            if (graph.effectGraph.nodes.any { it.kind == GpuEffectGraph.Kind.GLITCH }) add("chromatic-split")
-            if (graph.effectGraph.nodes.any { it.kind == GpuEffectGraph.Kind.LENS_BLUR }) add("lens-warp")
+            if (nodes.any { it.kind == GpuEffectGraph.Kind.DEFOCUS_BLUR }) add("defocus-sampling")
+            if (graph.renderOverlays().isNotEmpty()) add("layer-blend")
+            if (nodes.any { it.kind == GpuEffectGraph.Kind.GLITCH }) add("chromatic-split")
+            if (nodes.any { it.kind == GpuEffectGraph.Kind.LENS_BLUR }) add("lens-warp")
         }
         val passes = ArrayList<Pass>()
         passes += Pass("source", PassKind.SOURCE_AND_CHEAP_EFFECTS, emptyList(), 1f, cheap)

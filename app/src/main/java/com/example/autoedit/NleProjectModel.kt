@@ -16,19 +16,17 @@ data class NleProjectMetadata(
 
 /** Explicit migrations replace scattered renderer fallbacks when the NLE schema changes. */
 object MontageGraphMigration {
-    fun toCurrent(graph: MontageGraph): MontageGraph = when (graph.version) {
-        MontageGraph.CURRENT_VERSION -> graph
-        1 -> graph.copy(
-            version = MontageGraph.CURRENT_VERSION,
-            metadata = NleProjectMetadata(
-                schemaVersion = MontageGraph.CURRENT_VERSION,
-                revision = graph.metadata.revision + 1L,
-                parentRevision = graph.metadata.revision,
-                generator = "veycad-v1-migration"
-            ),
-            parameterTracks = if (graph.parameterTracks.isEmpty()) ParameterTrackFactory.fromLegacy(graph) else graph.parameterTracks
-        )
-        else -> error("Unsupported MontageGraph schema ${graph.version}")
+    fun toCurrent(graph: MontageGraph): MontageGraph {
+        var current = graph
+        while (current.version < MontageGraph.CURRENT_VERSION) {
+            val nextVersion = current.version + 1
+            // Schema migration must not resample legacy interpolation or change recipe identity.
+            current = current.copy(version = nextVersion, metadata = current.metadata.copy(
+                schemaVersion = nextVersion,
+                revision = Math.addExact(current.metadata.revision, 1L),
+                parentRevision = current.metadata.revision))
+        }
+        return current
     }
 }
 

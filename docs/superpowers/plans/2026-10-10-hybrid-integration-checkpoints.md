@@ -31,6 +31,8 @@ Commit: `feat(storage): сохранять полный общий проект 
 
 ## A1r. Канонический сброс монтажной части
 
+Реализовано в `2562f53777c1ad86dc078754bdafecfd5548759d`: RestoreMontage/apply, одна core ревизия, сохранение author payload и объяснимый atomic rejection.90 целевых тестов,13 новых; независимое task review чистое. Повторный reset/no-op использует bounded contiguous ancestry (retained50/shared1млн сравнений); gaps требуют одну reset ревизию до повторного no-op. A2 durable backing остаётся обязательным. Полный CI нового этапа ещё ожидается.
+
 Дополнительное делегированное решение владельца: ручной `RestoreBaseline` сохраняет текущие музыку, текст, стиль и locks. Полный `RestoreAutomatic` продолжает восстанавливать всю исходную ревизию. После связной A1 выполнить отдельным агентом и независимо проверить `ProjectCommand.RestoreMontage` и `HybridEditCommands.restoreMontage(project)`.
 
 Команда восстанавливает `original.graph` и `original.clips`, сохраняя текущие music, texts, style, lockedCutIds, visualSettings и textState. Ядро выделяет одну ревизию через собственный allocator/history и durable `restoresAutomaticSources` event; обычный `commitRevision` не получает права подделывать событие. Повтор unchanged reset — no-op; одинаковые видимые samples не означают одинаковый выбор скрытой кривой. Undo/redo и reopen сохраняют этот выбор.
