@@ -105,7 +105,8 @@ reader; `stream-clock-copy.json` хранит валидную копию до �
 Обязательные проверки: `./gradlew clean baselineVerify` и
 `tools/run_ui_tests.ps1` на выделенном эмуляторе. Приёмку на физическом телефоне
 и на реальных треках со сменой темпа необходимо указывать отдельно в PR.
-# Точечная диагностика сохранённого MP4
+
+## Точечная диагностика сохранённого MP4
 
 В workflow `Android UI` отдельный manual input `custom_music_targeted=true`
 запускает диагностику сохранённого синтетического MP4 из CI `38054343649`
@@ -140,3 +141,74 @@ shutdown эмулятора. Исходные JSON/MP4, thresholds и `quality_g
 не меняются. Контроль относится к одному synthetic source/frozen graph;
 он не доказывает отсутствие регрессии всей функции (в базе нет CUSTOM_MUSIC),
 PCM_FLOAT headroom, приёмку на телефоне или человеческий просмотр.
+
+### Подтверждённые результаты checkpoint 20d64c5a
+
+[Baseline 38059647486](https://github.com/Veycad/Veycad/actions/runs/38059647486)
+и [UI 38059647484](https://github.com/Veycad/Veycad/actions/runs/38059647484)
+прошли на `20d64c5a5aaea2e2f0b4966fc6f01f0ed09fe0e5`. Два канонических UI XML
+подтвердили 74 выполненных теста без failures/errors/skips. PR merge checkout
+`33b68e3f0643ce95acb46bdf8f3e075448388492` имеет parents `[a0395e26,20d64c5a]`.
+Все восемь SHA manifest в artifact `11672718841` проверены; полный native JSON
+имеет SHA `02f556e7b7f188ca5f45b6f3400dde846bc4382e0e4f5e885de8b92e003c1054`.
+Это новый native render/output, SHA MP4 `09bb26563846c418b5452d035beb2a83fb528e4bca68e5d46c37eed6d259f187`.
+Его QA, 160 VisualSamples и 480 actual execution frames совпали с CI143;
+`quality_gate=false` и прежние три issue сохраняются.
+
+[Отдельный diagnostic 38059771527](https://github.com/Veycad/Veycad/actions/runs/38059771527)
+также прошёл на exact 20d64c5a: три выполненных теста без failures/errors/skips.
+Artifact `11672478425`, 29 051 278 bytes, SHA ZIP
+`a120d6a34f1136d3b1a7f9227453b5aa2d6a6386468e1e82f2874509fde45ce0`,
+содержит 34 manifest-bound payloads. Saved-MP4 decode здесь использует **старый**
+CI143 MP4 с SHA `c2c9eae62f9e1f0e5ecd253d17b0cacd140a65e282bf0995a03425e4b344ea9f`.
+Android `c2.goldfish.h264.decoder` прочитал 480 payload frames до EOS, нашёл все
+16 выбранных кадров и восемь BLACKOUT targets. У 12 PTS offset=0, у четырёх
+offset=-1 мкс; actual PTS сохранены отдельно от requested PTS.
+
+Пики соседних grids пересчитаны независимо в Float32; в таблицу входят только
+пары с правым actual PTS внутри исходного BLACKOUT окна, сосед после окна исключён.
+
+| Окно, секунды | Дополнительный диагностический пик |
+| --- | ---: |
+| 1.488–1.593 | 0.26118720 |
+| 5.488–5.593 | 0.73333335 |
+| 9.488–9.593 | 0.79360729 |
+| 13.488–13.593 | 0.59269410 |
+
+Среднее `0.59520549` не является native `transitionPeak=0.015068494` и не
+подменяет gate. Decode подтверждает, что прежняя QA-сетка пропускает внутренние
+BLACKOUT кадры. Canonical selector для production QA принадлежит общему core.
+
+Независимое сравнение visual controls base `a0395e26` / current `20d64c5a`
+подтвердило `equivalent=true`: 480 planned fingerprints, 480 actual source clocks,
+480 decoded YUV fingerprints, 160 colour samples и пара на 12 с равны.
+Сохранённые plan и actual source/clip не тождественны на четырёх held outgoing
+границах, но поведение одинаково в base/current. Weighted colour delta на 12 с
+равна `0.35320183634757996` в обоих контролях. Encoded container SHA различаются;
+сравниваются decoded pixels, а не bytes контейнера. Эти два **новых** рендера имеют
+`audioTrack=null`, поэтому не дают нового PCM_FLOAT witness или общей приёмки режима.
+Native decodedAudio в targeted report перенесён из CI143 и не является новым decode.
+
+### Контракт следующей интеграции с общим core
+
+На проверенном `main a32a6a849abb3c781c21790c409b484f0fb65488` уже есть
+canonical `RenderQaSampling` и manual/shared runtime. Перенос только QA-файлов
+из прежнего owner checkpoint 90021ca1 в legacy music graph не даёт замкнутого набора зависимостей:
+helper зависит от `EffectSampleWindow`, `renderOverlays/renderNodes`, а sampler —
+от editable timing, manual overrides и source attachments. Второй selector не нужен.
+
+Additive handoff владельца core должен сохранить один `MontageGraph.AudioTrack`
+с третьим параметром `sourceStartUs: Long = 0L` и проверкой `sourceStartUs >= 0`.
+Главный конфликт: в main AudioTrack пока содержит только sourceId/gain;
+whole-file замена потеряет offset или новые manual поля. В full export выбранный
+трек повторяет `[sourceStartUs, trackDurationUs)`, не возвращаясь к вступлению.
+В `AudioExportPlan.window` main пока повторяет `[0, trackDurationUs)` по global
+phase; для музыки со сдвигом global phase должна вычисляться по длине выбранного
+остатка, при default offset=0 прежний контракт сохраняется. Preview/window export
+и full export должны пользоваться одним audio clock, а новые manual frame/graph
+поля и фактические decoded PTS должны сохраняться.
+
+Требуются проверки offset=0, внутреннего offset, повторения короткого остатка,
+window по global phase, MP3/WAV preroll и encoder delay/padding на объединённом SHA.
+Старые зелёные gates 20d64c5a относятся к базе a039, а не к будущей интеграции.
+PCM_FLOAT history, качество реальных треков, телефон и человеческая приёмка открыты.
