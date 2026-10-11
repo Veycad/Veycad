@@ -57,10 +57,15 @@ CALIBRATED_WORD зарезервированы для будущей доказ�
 Для смешанных языков хранится результат каждого окна, а не язык последнего
 окна для всего файла. Requested `auto` не заменяется detected `ru` в cache key.
 
-JNI возвращает ASCII v1 header, сегменты и token bytes/IDs/ticks/probabilities.
+JNI возвращает ASCII v2 header, сегменты и token bytes/IDs/ticks/probabilities.
+V2 добавляет отдельный SHA bounded-decoding patch script; v1 fixtures без patch
+остаются читаемыми. Decode domain ограничен реальным остатком входа до sampling,
+исходные emitted ticks не обрезаются. Pinned upstream проверяется SHA, изменённый
+whisper.cpp создаётся в private binary directory, shared source не меняется.
 Header содержит фактический SHA-256 компилируемого `whisper_jni.cpp`, число
-frames, язык и vocabulary IDs. Это hash bridge, а не hash нового DTW patch;
-core backend не изменён. Разные окончания строк могут дать разные source hashes,
+frames, язык и vocabulary IDs. Hash bridge отличается от отдельного hash
+bounded-decoding patch script. Core backend применяет этот patch; DTW или
+акустический aligner не добавлены. Разные окончания строк могут дать разные source hashes,
 поэтому отчёт фиксирует фактически встроенный hash проверенного APK.
 Unicode восстанавливается по потоку bytes; byte offsets связывают целые слова
 с contributing token IDs. Min/max эвристических token intervals маркируется

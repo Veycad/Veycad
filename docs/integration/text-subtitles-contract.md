@@ -83,7 +83,8 @@ Malformed native rows дают `RESULT_INVALID`, а не отсутствие р
 
 JNI включает token timestamps для сегментации, но публичный результат содержит
 фразы. Research outcome дополнительно сохраняет immutable raw сегменты/токены,
-язык каждого окна, backend commit и фактический SHA-256 исходника JNI bridge.
+язык каждого окна, backend commit, SHA-256 исходника JNI bridge и отдельный
+SHA bounded-decoding patch script в header v2 (`backendPatchSha256`).
 Hex bytes объединяются до UTF-8 decoding; производные слова используют ссылки
 на contributing tokens и маркируются TOKEN_HEURISTIC. UNKNOWN/нулевые token
 intervals оставляют слово untimed. На перекрытии выбирается один наблюдённый
@@ -161,8 +162,13 @@ Raw-token implementation: `07ec407122cfbeff063ebe2db6ee4b39f4ea6708`.
 общий state использует TextEditProject types. Renderer сохраняет sourceAttachments,
 текст и авторские титры семплируются по globalOutputTimeUs; encoder/progress
 остаются на локальных часах. Targeted speech/frame/core/legacy-codec серия:
-46 tests / 8 suites, failures/errors 0. Native build и полная Android-серия
-этого нового checkpoint требуют exact-head CI; прежние результаты не переносятся.
+46 tests / 8 suites, failures/errors 0. Baseline `a5310149` прошёл exact-head CI:
+917 JVM / 121 suites, 285 Python, native build трёх ABI и lint; ошибок/пропусков нет.
+Android UI `a5310149`: 82 cases, 1 failure segment tick800>756, errors/skips0.
+Новый bounded-decoding patch ограничивает timestamp vocabulary реальным остатком
+до sampling и fallback seek_delta, не обрезает emitted raw rows; parser strict.
+Итог проверок исправления фиксируется для последнего коммита в PR 12;
+прежние результаты не переносятся.
 
 На импортированной main общий HybridProjectCodec ещё не сохраняет plate/kind
 и cue confidence/manual review: ACCENT может превратиться в DARK, TITLE —
@@ -175,3 +181,18 @@ Raw-token implementation: `07ec407122cfbeff063ebe2db6ee4b39f4ea6708`.
 `2026-10-10-text-subtitles-integration-design.md` / `...-integration.md`;
 owner spec/plan PR 12 остаются на прежних путях. Исторические Vosk/второй store
 в integration spec заменены её верхним согласованием: действующий STT один.
+
+## Owner review стыка с общим codec
+
+Контракт core `2026-10-11-text-core-compatibility-contract.md`, checkpoint
+`d5a47a0d`, проверен против опубликованной модели PR 12 `a5310149`
+(blob `c975659e`). Definitions/defaults, один codec и граница additive version
+upgrade после A2a/A2t согласованы, включая original/current/history,
+CAS/undo/redo и export snapshots. Реализация и будущие проверки не приняты.
+
+Обнаружено конкретное расхождение wire proposal: MONO/SCALE нельзя запрещать
+для всех старых physical versions. Опубликованный `a5310149` уже записывает
+и читает эти enum names в общем `FORMAT_VERSION=4`. Новый reader обязан
+продолжать принимать такие v4 проекты и snapshots/history; нужна настоящая
+a531-v4 fixture. Version bump относится к новым plate/kind/cue evidence полям;
+его окончательный номер выбирает владелец codec после preceding storage version.
