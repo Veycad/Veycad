@@ -15,6 +15,11 @@ class UiXmlRunListener : RunListener() {
         var seconds: Double = 0.0, val failures: MutableList<Failure> = mutableListOf(),
         var skipped: Boolean = false)
     private val cases = linkedMapOf<Description, Case>()
+    override fun testRunStarted(description: Description) {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.endsWith(".uitest"))
+        UiNativeEvidence.resetRun(context.filesDir)
+    }
     override fun testStarted(description: Description) {
         cases[description] = Case(description, SystemClock.elapsedRealtime())
     }
@@ -65,5 +70,17 @@ class UiXmlRunListener : RunListener() {
             xml.flush()
         }
         check(temporary.renameTo(target))
+    }
+}
+
+/** Preserve only this run's codec evidence across UI cases; never preserve product state. */
+internal object UiNativeEvidence {
+    private const val DIRECTORY = "source-audio-native-evidence"
+    fun resetRun(files: File) {
+        val evidence=File(files,DIRECTORY)
+        check(!evidence.exists() || evidence.deleteRecursively()) { "Cannot clear previous native evidence" }
+    }
+    fun resetCase(files: File) {
+        files.listFiles()?.filter { it.name != DIRECTORY }?.forEach { it.deleteRecursively() }
     }
 }

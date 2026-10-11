@@ -9,7 +9,7 @@ import json
 import hashlib
 import struct
 from unittest.mock import patch
-from verify_source_aac import analyze, authenticate_artifacts, verify
+from verify_source_aac import analyze, authenticate_artifacts, validate_evidence_archive, verify
 
 
 class SourceAacOracleTest(unittest.TestCase):
@@ -81,7 +81,7 @@ class SourceAacOracleTest(unittest.TestCase):
                 elif case == "missing-file":
                     del files[path]
                 elif case == "ambiguous-file":
-                    files["files/other/av-30.mp4"] = files[path]
+                    files["files/source-audio-native-evidence/other/av-30.mp4"] = files[path]
                 else:
                     entry = json.loads(files[manifest])
                     if case == "duplicate-path":
@@ -106,6 +106,31 @@ class SourceAacOracleTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "must be fresh"):
                 verify(directory)
             decoder.assert_not_called()
+
+    def test_collection_rejects_remote_error_empty_and_truncated_tar_before_decode(self):
+        with tempfile.TemporaryDirectory() as directory, patch("verify_source_aac.run") as decoder:
+            archive = Path(directory) / "source-audio-native-evidence.tar"
+            archive.write_bytes(b"tar: files/source-audio-native-evidence: No such file or directory\n" + bytes(1024))
+            with self.assertRaisesRegex(ValueError, "complete tar"):
+                verify(directory)
+            with tarfile.open(archive, "w"):
+                pass
+            with self.assertRaisesRegex(ValueError, "Empty source AAC transfer"):
+                verify(directory)
+            self.archive(directory, self.evidence())
+            validate_evidence_archive(archive)  # actual nonempty tar must pass transfer validation
+            complete = archive.read_bytes()
+            archive.write_bytes(complete[:700])
+            with self.assertRaisesRegex(ValueError, "complete tar"):
+                verify(directory)
+            archive.write_bytes(complete[:1024])  # a complete first member but no end-of-archive blocks
+            with self.assertRaisesRegex(ValueError, "Truncated source AAC tar terminator"):
+                verify(directory)
+            archive.write_bytes(complete + b"x" + bytes(511))
+            with self.assertRaisesRegex(ValueError, "trailing source AAC tar bytes"):
+                verify(directory)
+            decoder.assert_not_called()
+        self.reject_before_decode({**self.evidence(), "../outside": b"bad"}, "Unsafe/unexpected evidence path")
 
     def test_complete_device_hash_set_authenticates_exact_paths_and_bytes(self):
         with tempfile.TemporaryDirectory() as directory:

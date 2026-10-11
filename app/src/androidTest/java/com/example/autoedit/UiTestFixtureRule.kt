@@ -45,7 +45,7 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         instrumentation.runOnMainSync { app.resetSession() }
         context.getSystemService(android.app.NotificationManager::class.java).cancelAll()
         cleanGallery()
-        context.filesDir.listFiles()?.forEach { it.deleteRecursively() }
+        UiNativeEvidence.resetCase(context.filesDir)
         context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
         File(context.applicationInfo.dataDir, "shared_prefs").listFiles()?.forEach { file ->
             context.getSharedPreferences(file.nameWithoutExtension, 0).edit().clear().commit()

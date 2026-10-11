@@ -91,8 +91,41 @@ internal object AacEncoderMuxer {
     }
 
     /** Existing AAC encoder owner, progressively drains each packet straight into a single-track
-     * M4A. No PCM timeline or AAC packet list. Scratch is the caller's <=1024-frame buffer. */
+     * M4A. No PCM timeline or AAC packet list; one 1024-frame input block waits for final EOS. */
     private data class SourceTiming(val codecName: String, val delayFrames: Int)
+
+    /** Own exactly one copied stereo block. EOS shares the last nonempty work's real start PTS;
+     * C2's partial flush must not acquire a new empty-work timestamp at the input endpoint. */
+    internal class SourceInputBlocks(private val queue: (ShortArray, Int, Long, Boolean) -> Unit) {
+        private val pending=ShortArray(2048)
+        var retainedFrames=0; private set
+        var acceptedFrames=0L; private set
+        var queuedFrames=0L; private set
+        private var ended=false
+        fun append(samples: ShortArray, count: Int) {
+            check(!ended)
+            require(count in 1..1024 && samples.size>=count*2)
+            var offset=0
+            while (offset<count) {
+                if (retainedFrames==1024) flush(false)
+                val copied=minOf(count-offset,1024-retainedFrames)
+                samples.copyInto(pending,retainedFrames*2,offset*2,(offset+copied)*2)
+                retainedFrames+=copied; acceptedFrames+=copied; offset+=copied
+            }
+        }
+        fun finish() {
+            check(!ended && acceptedFrames>0)
+            ended=true
+            flush(true)
+            check(queuedFrames==acceptedFrames)
+        }
+        private fun flush(last: Boolean) {
+            check(retainedFrames in 1..1024)
+            queue(pending,retainedFrames,queuedFrames,last)
+            queuedFrames+=retainedFrames; retainedFrames=0
+        }
+        fun close() { ended=true; retainedFrames=0 }
+    }
 
     /** No guessed codec offset. A bounded probe establishes this selected encoder/config and the
      * actual extractor/decoder/container contract on each preparation, including first/last PCM.
@@ -109,7 +142,7 @@ internal object AacEncoderMuxer {
             val trimmedFile = File.createTempFile("aac-probe-", ".m4a", directory)
             trimmed = trimmedFile
             fun encode(file: File, timing: SourceTiming) {
-                StreamingEncoder(file, checkCancelled, timing).use { sink ->
+                StreamingEncoder(file, checkCancelled, timing, diagnostics = true).use { sink ->
                     val samples = ShortArray(2048)
                     var frame = 0
                     while (frame < 48000) {
@@ -148,7 +181,7 @@ internal object AacEncoderMuxer {
             return timing
         } catch (caught: Throwable) { failure = caught; throw caught }
         finally {
-            android.util.Log.i("SourceAacTiming", "calibrationElapsedUs=${(System.nanoTime()-startedNs)/1000}; probePCM=2048 shorts; packet retention=0; codecs sequential")
+            android.util.Log.i("SourceAacTiming", "calibrationElapsedUs=${(System.nanoTime()-startedNs)/1000}; probeScratchPCM=4096 bytes; encoderPendingPCM=4096 bytes; packet retention=0; codecs sequential")
             var cleanup: Throwable? = null
             for (file in listOfNotNull(raw,trimmed)) try { Files.deleteIfExists(file.toPath()) }
                 catch (caught: Throwable) { if (cleanup == null) cleanup=caught else cleanup.addSuppressed(caught) }
@@ -158,14 +191,18 @@ internal object AacEncoderMuxer {
 
     /** Measures actual sample positions and sample count, without a whole-probe PCM allocation. */
     private fun probeMarkers(file: File, checkCancelled: () -> Unit): Pair<List<Long>, Long> {
+        logProbeContainer(file, "before-decode", checkCancelled)
         val peaks = DoubleArray(3)
         val positions = LongArray(3) { -1 }
         var frames = 0L
         val metrics=MediaCodecAudioDecoder.StreamMetrics()
+        var chunks=0L
         MediaCodecAudioDecoder.sourceProvider(mapOf("probe" to file), metrics, checkCancelled).open("probe",0)!!.use { stream ->
             check(stream.format == PcmFormat(48000,2))
             while (true) {
                 val chunk = stream.read() ?: break
+                if (chunks < 256) android.util.Log.i("SourceAacTiming", "ledger=${file.name} decodedChunk=$chunks pts=${chunk.startPtsUs} frames=${chunk.frames} format=${stream.format}")
+                chunks++
                 repeat(chunk.frames) { i ->
                     val position = (chunk.startPtsUs * 48000 + 500000) / 1000000 + i
                     val region = when (position) { in 0..10000 -> 0; in 18000..34000 -> 1; in 40000..55000 -> 2; else -> -1 }
@@ -176,16 +213,38 @@ internal object AacEncoderMuxer {
             }
         }
         check(metrics.openDecoders == 0 && metrics.retainedChunks == 0)
-        android.util.Log.i("SourceAacTiming", "probeFrames=$frames peakOpen=${metrics.peakOpenDecoders} peakRetained=${metrics.peakRetainedChunks} maxDecoderBufferBytes=${metrics.peakDecoderBufferBytes}")
+        android.util.Log.i("SourceAacTiming", "ledger=${file.name} probeFrames=$frames chunks=$chunks ledgerTruncated=${chunks>256} peakOpen=${metrics.peakOpenDecoders} peakRetained=${metrics.peakRetainedChunks} maxDecoderBufferBytes=${metrics.peakDecoderBufferBytes}")
         check(peaks.all { it > .25 }) { "AAC boundary marker missing: ${peaks.toList()}" }
         return positions.toList() to frames
     }
 
+    /** One-second probes only. Stream metadata/packet facts to logcat, never retain media. */
+    private fun logProbeContainer(file: File, stage: String, checkCancelled: () -> Unit) {
+        val extractor=MediaExtractor()
+        try {
+            extractor.setDataSource(file.path); extractor.selectTrack(0)
+            android.util.Log.i("SourceAacTiming", "ledger=${file.name} container=$stage bytes=${file.length()} format=${extractor.getTrackFormat(0)}")
+            var packets=0L
+            while (extractor.sampleTrackIndex>=0) {
+                checkCancelled()
+                val size=if (Build.VERSION.SDK_INT>=Build.VERSION_CODES.P) extractor.sampleSize else -1L
+                if (packets<256) android.util.Log.i("SourceAacTiming", "ledger=${file.name} containerPacket=$packets pts=${extractor.sampleTime} bytes=$size flags=${extractor.sampleFlags}")
+                packets++; extractor.advance()
+            }
+            android.util.Log.i("SourceAacTiming", "ledger=${file.name} containerPackets=$packets ledgerTruncated=${packets>256}")
+        } finally { extractor.release() }
+    }
+
     private class StreamingEncoder(private val file: File, val checkCancelled: () -> Unit,
-        private val timing: SourceTiming) : PcmSink, AutoCloseable {
+        private val timing: SourceTiming, private val diagnostics: Boolean = false) : PcmSink, AutoCloseable {
         private val config = Config(48_000, 2)
+        private val logPackets = diagnostics || BuildConfig.DEBUG
         private val encoder = createEncoder(config, timing.codecName)
         private var packets = 0L
+        private var inputWorks = 0L
+        private var outputEvents = 0L
+        private var submittedFrames = 0L
+        private var inputEosQueued = false
         private var muxer: MediaMuxer? = null
         private var track = -1
         private var muxStarted = false
@@ -193,7 +252,8 @@ internal object AacEncoderMuxer {
         private var eos = false
         private var progress = System.nanoTime()
         private val info = MediaCodec.BufferInfo()
-        var frames = 0L; private set
+        private val input = SourceInputBlocks(::queueBlock)
+        val frames get() = input.acceptedFrames
         var peakPacketBytes = 0; private set
 
         init {
@@ -214,18 +274,27 @@ internal object AacEncoderMuxer {
 
         override fun write(format: PcmFormat, startFrame: Long, samples: ShortArray, frames: Int) {
             check(!finished && format == PcmFormat(48_000, 2) && startFrame == this.frames)
-            require(frames in 1..1024 && samples.size >= frames * 2)
-            var offset = 0
-            while (offset < frames) {
+            checkCancelled()
+            input.append(samples,frames)
+        }
+
+        private fun queueBlock(samples: ShortArray, count: Int, start: Long, last: Boolean) {
+            check(!inputEosQueued && start==submittedFrames)
+            while (true) {
                 checkProgress()
                 val index = encoder.dequeueInputBuffer(10_000)
                 if (index >= 0) {
                     val target = requireNotNull(encoder.getInputBuffer(index)).apply { clear(); order(ByteOrder.LITTLE_ENDIAN) }
-                    val count = minOf(frames - offset, target.remaining() / 4)
-                    check(count > 0) { "AAC input cannot fit a PCM frame" }
-                    repeat(count * 2) { target.putShort(samples[offset * 2 + it]) }
-                    encoder.queueInputBuffer(index, 0, count * 4, AudioExportPlan.presentationTimeUs(this.frames, 48_000), 0)
-                    this.frames += count; offset += count; progress = System.nanoTime()
+                    check(target.remaining()>=count*4) { "AAC input cannot fit the bounded PCM block" }
+                    repeat(count * 2) { target.putShort(samples[it]) }
+                    val pts=AudioExportPlan.presentationTimeUs(start, 48_000)
+                    val flags=if(last) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0
+                    if (logPackets && inputWorks<256) android.util.Log.i("SourceAacTiming", "ledger=${file.name} input=$inputWorks start=$start frames=$count pts=$pts flags=$flags acceptedFrames=$frames queuedBefore=$submittedFrames")
+                    encoder.queueInputBuffer(index, 0, count * 4, pts, flags)
+                    inputWorks++
+                    submittedFrames+=count; inputEosQueued=last; progress = System.nanoTime()
+                    drain()
+                    return
                 }
                 drain()
             }
@@ -237,13 +306,15 @@ internal object AacEncoderMuxer {
                 when (val index = encoder.dequeueOutputBuffer(info, 0)) {
                     MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                         check(!muxStarted) { "AAC encoder changed output format twice" }
-                        android.util.Log.i("SourceAacTiming", "encoder=${encoder.name} actualOutput=${encoder.outputFormat}")
+                        android.util.Log.i("SourceAacTiming", "ledger=${file.name} encoder=${encoder.name} actualOutput=${encoder.outputFormat}")
                         track = muxer!!.addTrack(encoder.outputFormat)
                         muxer!!.start(); muxStarted = true; progress = System.nanoTime()
                     }
                     MediaCodec.INFO_TRY_AGAIN_LATER -> return
                     else -> if (index >= 0) {
                         try {
+                            if (logPackets && outputEvents<256) android.util.Log.i("SourceAacTiming", "ledger=${file.name} output=$outputEvents packet=$packets pts=${info.presentationTimeUs} bytes=${info.size} flags=${info.flags} acceptedFrames=$frames queuedFrames=$submittedFrames inputEos=$inputEosQueued")
+                            outputEvents++
                             if (info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
                                 check(muxStarted)
                                 // Preserve every delayed tail packet. The measured priming offset is
@@ -270,16 +341,10 @@ internal object AacEncoderMuxer {
 
         fun finish() {
             check(!finished && frames > 0)
-            var queued = false
+            input.finish()
+            check(inputEosQueued && submittedFrames==frames)
             while (!eos) {
                 checkProgress()
-                if (!queued) {
-                    val index = encoder.dequeueInputBuffer(10_000)
-                    if (index >= 0) {
-                        encoder.queueInputBuffer(index, 0, 0, AudioExportPlan.presentationTimeUs(frames, 48_000), MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        queued = true; progress = System.nanoTime()
-                    }
-                }
                 drain()
             }
             check(muxStarted)
@@ -287,10 +352,13 @@ internal object AacEncoderMuxer {
             // final coded AU duration, then crop only the presentation edit. A shortened EOS
             // also shortens mdhd/stts, hiding the padding from the extractor's gapless contract.
             muxer!!.stop(); muxStarted = false; finished = true
+            if (diagnostics) logProbeContainer(file,"coded-before-edit",checkCancelled)
             if (timing.delayFrames > 0) AacMp4Trim.apply(file, frames, timing.delayFrames)
         }
 
         override fun close() {
+            android.util.Log.i("SourceAacTiming", "ledger=${file.name} close inputWorks=$inputWorks acceptedFrames=$frames queuedFrames=$submittedFrames retainedFrames=${input.retainedFrames} pendingCapacityBytes=4096 packets=$packets outputEvents=$outputEvents inputEos=$inputEosQueued eos=$eos finished=$finished ledgerTruncated=${inputWorks>256 || outputEvents>256}")
+            input.close()
             try { try { encoder.stop() } finally { encoder.release() } }
             finally { try { if (muxStarted) runCatching { muxer?.stop() } } finally { muxer?.release() } }
         }

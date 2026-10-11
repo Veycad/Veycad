@@ -60,6 +60,41 @@ def run(args):
     return subprocess.check_output(args, stderr=subprocess.PIPE)
 
 
+def validate_evidence_archive(archive):
+    """Validate transfer before publication; adb exec-out can return remote error text as stdout."""
+    archive = Path(archive)
+    length = archive.stat().st_size
+    if length < 1024 or length % 512:
+        raise ValueError("Source AAC transfer is not a complete tar (possibly remote command error)")
+    with tarfile.open(archive) as package:
+        seen = set()
+        files = 0
+        payload_end = 0
+        for member in package.getmembers():
+            relative = Path(member.name)
+            if (relative.is_absolute() or ".." in relative.parts or member.issym() or member.islnk()
+                    or relative.parts[:2] != ("files", "source-audio-native-evidence")):
+                raise ValueError("Unsafe/unexpected evidence path/link")
+            if not member.isdir() and not member.isfile():
+                raise ValueError("Unsupported evidence member")
+            if member.size > 32 * 1024 * 1024 or member.offset_data + member.size > length:
+                raise ValueError("Oversized/truncated evidence member")
+            if relative in seen:
+                raise ValueError("Duplicate/ambiguous evidence member")
+            seen.add(relative)
+            files += int(member.isfile())
+            payload_end = max(payload_end, ((member.offset_data + member.size + 511) // 512) * 512)
+        if not files:
+            raise ValueError("Empty source AAC transfer; native evidence directory missing or empty")
+        if length - payload_end < 1024:
+            raise ValueError("Truncated source AAC tar terminator")
+        with archive.open("rb") as raw:
+            raw.seek(payload_end)
+            while block := raw.read(8192):
+                if any(block):
+                    raise ValueError("Invalid/trailing source AAC tar bytes")
+
+
 def verify(root):
     archives = list(Path(root).rglob("source-audio-native-evidence.tar"))
     if len(archives) != 1:
@@ -68,20 +103,9 @@ def verify(root):
     destination = archive.parent / "source-audio-host-oracle"
     if destination.exists():
         raise ValueError("Oracle destination must be fresh; stale evidence is not accepted")
+    validate_evidence_archive(archive)
     destination.mkdir(exist_ok=True)
     with tarfile.open(archive) as package:
-        seen = set()
-        for member in package.getmembers():
-            relative = Path(member.name)
-            if relative.is_absolute() or ".." in relative.parts or member.issym() or member.islnk():
-                raise ValueError("Unsafe evidence path/link")
-            if not member.isdir() and not member.isfile():
-                raise ValueError("Unsupported evidence member")
-            if member.size > 32 * 1024 * 1024:
-                raise ValueError("Oversized evidence member")
-            if relative in seen:
-                raise ValueError("Duplicate/ambiguous evidence member")
-            seen.add(relative)
         package.extractall(destination, filter="data")
     authenticated = authenticate_artifacts(destination)
     manifests = list(destination.rglob("float-oracle.json"))
@@ -138,4 +162,7 @@ def verify(root):
 
 
 if __name__ == "__main__":
-    verify(sys.argv[1])
+    if len(sys.argv) == 3 and sys.argv[1] == "--validate-archive":
+        validate_evidence_archive(sys.argv[2])
+    else:
+        verify(sys.argv[1])

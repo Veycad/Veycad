@@ -48,6 +48,15 @@ pending chunk plus its output conversion, and mux one 16 MiB compressed-sample b
 and music together may open two decoders. Runtime measurements are required to accept these
 bounds on real codecs.
 
+Source encoding owns one additional 4096-byte stereo PCM block. It coalesces borrowed writes
+into 1024-frame blocks and holds the last full or partial block until `finish`, placing EOS on
+that nonempty work at its actual starting sample PTS. It does not pad PCM or restamp codec output.
+The inspected API36 C2 encoder computes subsequent flush timestamps from the current input work;
+an empty EOS after a partial block instead changes that base. This is a source-backed correction
+pending exact-head native proof, not a claim that API35 implements the same flush behavior.
+The public [MediaCodec EOS contract](https://developer.android.com/reference/android/media/MediaCodec#end-of-stream-handling)
+permits EOS on the final valid input buffer; it also says an empty EOS timestamp is ignored.
+
 Source AAC timing is measured for each selected encoder component with the exact 48 kHz,
 stereo, 192 kbps configuration. Two sequential one-second synthetic probes use the existing
 encoder and decoder owners: the first measures stable early/middle/late marker delay; the second
@@ -68,11 +77,17 @@ Final mux preserves the extractor's already-negative audio PTS; it must not subt
 `KEY_DURATION` can describe coded media duration including priming/padding; presentation duration
 comes from the edit, and acceptance separately checks actual decoded sample count and A/V end.
 
-Calibration owns at most one encoder or decoder at a time and one 2048-short PCM scratch buffer;
+Calibration owns at most one encoder or decoder at a time, a 4096-byte probe scratch buffer and
+the encoder's separate 4096-byte pending block;
 it closes before source/music decoding starts. Probe stream metrics and elapsed microseconds are
 logged separately under `SourceAacTiming`, not included in caller provider metrics or total RSS.
 Temporary probes are removed on success/failure/cancellation. This costs two short encode/decode
 passes per preparation; there is no persistent or cross-project calibration cache.
+Probe ledgers record input start/count/PTS/EOS, accepted versus submitted frames, raw output
+PTS/size/flags before the strict packet guard, container packets/format and decoded chunks/counts.
+They stream to `SourceAacTiming` logcat with a 256-row cap per stream and explicit truncation/count
+summary; debug preparations also log input/output rows. No media or packet list is retained for
+diagnostics. A failure before container/decode reaches those stages leaves them unproven.
 
 The UI runner retains generated WAV/M4A/MP4 evidence byte-for-byte using a binary stream and
 archives its SHA256. CI's separate FFmpeg native float AAC oracle checks the exact device-recorded
@@ -83,6 +98,11 @@ human listening acceptance.
 Each of the five consumed files has a device-recorded path/SHA256 sidecar written after its native
 assertions. The host verifies the complete expected set and whole-file hashes before any decode,
 including marker containers' non-audio bytes, and rejects missing, extra or ambiguous entries.
+Instrumentation clears the evidence directory once per run and preserves only that named
+directory across later UI-case resets. Other app state still resets normally. Transfer goes to
+an owned `.partial`; nonempty safe tar validation must succeed before publication/hash. Remote
+error text, empty/truncated or ambiguous archives fail with retained diagnostics while native XML
+is still collected. These transfer checks do not replace the five-artifact acceptance gate.
 
 The container policy follows the inspected AOSP
 [MPEG4Writer negative-start edit handling](https://android.googlesource.com/platform/frameworks/av/+/android-15.0.0_r1/media/libstagefright/MPEG4Writer.cpp)
