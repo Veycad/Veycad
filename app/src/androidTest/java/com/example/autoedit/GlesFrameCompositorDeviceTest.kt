@@ -207,12 +207,22 @@ class GlesFrameCompositorDeviceTest {
                 globalOutputTimeUs = 2_500_000, originalOutputTimeUs = 1_000_000)
             compositor.drawScheduled(frame, 0)
             compositor.drawScheduled(frame.copy(outputTimeUs = 33_333, transitionEffectsAllowed = false), 0)
-            assertEquals(listOf(0L, 33_333L), presentations)
+            compositor.drawScheduled(frame.copy(outputTimeUs = 66_667, globalOutputTimeUs = 3_500_000,
+                originalOutputTimeUs = 2_000_000), 0)
+            assertEquals(listOf(0L, 33_333L, 66_667L), presentations)
             assertEquals(2.5f, uniforms[0][0], .00001f)
             assertEquals(1f, uniforms[0][1], .00001f)
             assertEquals(.525f, uniforms[0][2], .00001f)
             assertEquals(1f, uniforms[0][3], .00001f)
+            assertEquals(2.5f, uniforms[1][0], .00001f)
+            assertEquals(1f, uniforms[1][1], .00001f)
             assertEquals(0f, uniforms[1][2], .00001f)
+            assertEquals(1f, uniforms[1][3], .00001f)
+            // Re-enabling must use the new original scene clock, not latch the disabled zero.
+            assertEquals(3.5f, uniforms[2][0], .00001f)
+            assertEquals(2f, uniforms[2][1], .00001f)
+            assertEquals(.27f, uniforms[2][2], .00001f)
+            assertEquals(0f, uniforms[2][3], .00001f)
             assertEquals(GLES20.GL_NO_ERROR, GLES20.glGetError())
         } finally { compositor.close(); outputSurface.release(); outputTexture.release() }
     }

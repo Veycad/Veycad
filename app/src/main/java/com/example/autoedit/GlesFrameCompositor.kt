@@ -332,8 +332,11 @@ internal class GlesFrameCompositor(
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uFinalFade"), incomingFrame.layer.finalFadeOpacity)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uSigmaProfile"), if (sigmaProfile) 1f else 0f)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uEntranceTravel"),
-            if (sigmaProfile && incomingFrame.transitionEffectsAllowed) SigmaComposition.entranceTravel(incomingFrame.originalOutputTimeUs)
-            else ForegroundReentryMotion.verticalTravel(blend?.foregroundReentry ?: 0f))
+            when {
+                !incomingFrame.transitionEffectsAllowed -> 0f
+                sigmaProfile -> SigmaComposition.entranceTravel(incomingFrame.originalOutputTimeUs)
+                else -> ForegroundReentryMotion.verticalTravel(blend?.foregroundReentry ?: 0f)
+            })
         GLES20.glUniform3f(GLES20.glGetUniformLocation(program, "uLayerColour"), incomingFrame.layer.red, incomingFrame.layer.green, incomingFrame.layer.blue)
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uLayerMode"), incomingFrame.layer.blendMode.ordinal.toFloat())
         GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uLayerKind"), incomingFrame.layer.kind.ordinal.toFloat())
