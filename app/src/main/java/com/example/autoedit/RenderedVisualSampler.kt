@@ -177,21 +177,19 @@ internal object RenderedVisualSampler {
         decodedUs: Long?,
         provenance: VeykadRenderInspector.DecodedFrameProvenance?,
         sources: List<SourceAttachments> = emptyList(),
-        refreshAllTransitions: Boolean = false
+        refreshAllTransitions: Boolean = false,
+        sigmaProfile: Boolean = false,
+        expectedDrawFrames: List<HighQualityFramePlan.Frame> = LiveDecoderTransitionPlan.drawFrames(plan, sigmaProfile)
     ): HighQualityFramePlan.Frame {
         if (provenance == null) return withDecodedSourceTime(frame, timeline, decodedUs, sources, refreshAllTransitions)
-        val held = provenance.clipIndex != frame.clipIndex || provenance.sourceIndex != frame.sourceIndex
-        val reference = if (held) {
-            // Mirror the renderer's first-overlap hold of the previous clip's final planned frame.
-            val previous = requireNotNull(plan.lastOrNull {
-                it.clipIndex == provenance.clipIndex && it.sourceIndex == provenance.sourceIndex &&
-                    it.outputTimeUs < frame.outputTimeUs
-            }) { "Rendered frame source/clip is absent from the supplied plan" }.also {
-                require(it.sourceTimeUs == provenance.sourceTimeUs) { "Rendered hold does not match its source frame" }
-            }
-            MediaCodecSpeedRampRenderer.heldBoundaryFrame(previous, frame, provenance.transition)
-        } else frame
-        return withDecodedSourceTime(reference, timeline, provenance.decodedSourceTimeUs, sources, refreshAllTransitions)
+        val reference = expectedDrawFrames[RenderQaFrameIndex(expectedDrawFrames).nearest(frame.outputTimeUs)]
+        require(reference.outputTimeUs == frame.outputTimeUs) { "Frame is absent from the supplied draw schedule" }
+        require(provenance.clipIndex == reference.clipIndex && provenance.sourceIndex == reference.sourceIndex &&
+            provenance.sourceTimeUs == reference.sourceTimeUs && provenance.transition == reference.transitionIn) {
+            "Rendered provenance does not match the expected draw schedule"
+        }
+        return withDecodedSourceTime(reference, timeline, provenance.decodedSourceTimeUs,
+            sources, refreshAllTransitions)
     }
 
     /** A rounded 60 fps target can be 1 us above a decoder's truncated PTS. */
@@ -253,6 +251,7 @@ internal object RenderedVisualSampler {
         var previousMaskSource: Int? = null
         val framePlan = plan.frames
         val frameIndex = RenderQaFrameIndex(framePlan)
+        val expectedDrawFrames = LiveDecoderTransitionPlan.drawFrames(framePlan, ReferenceMontageProfile.appliesTo(graph))
         var idleIterations = 0
         while (!outputEnded) {
             checkCancelled()
@@ -292,7 +291,8 @@ internal object RenderedVisualSampler {
                         val provenance = decodedFrameProvenance[plannedFrame.outputTimeUs]
                         val scheduledFrame = withDecodedFrameProvenance(plannedFrame, framePlan,
                             graph.frameAttachments, decodedSourceTimes[plannedFrame.outputTimeUs], provenance,
-                            graph.sourceAttachments, refreshAllTransitions = graph.manualOverrides != null)
+                            graph.sourceAttachments, refreshAllTransitions = graph.manualOverrides != null,
+                            expectedDrawFrames = expectedDrawFrames)
                         val sourceRetriever = sourceReference.retriever(scheduledFrame.sourceIndex)
                         val framing = sourceReference.crop(scheduledFrame.sourceIndex)
                         val authoredTransition = transitionAt(scheduledFrame)

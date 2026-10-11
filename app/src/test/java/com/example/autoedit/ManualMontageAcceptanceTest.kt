@@ -42,9 +42,82 @@ class ManualMontageAcceptanceTest {
         }
     }
 
+    @Test fun boundaryHoldHasStrictSourceAndBoundaryIdentityAtBothFps() {
+        for (fps in listOf(30, 60)) {
+            val graph = transitionProject(fps, MontageGraph.Transition.WHIP).originalGraph
+                .copy(manualOverrides = ManualRenderOverrides())
+            val plan = HighQualityFramePlan.build(graph, fps)
+            val samples = plan.frames.map { frame ->
+                val boundary = frame.outputTimeUs == 2_000_000L
+                RenderedMp4Acceptance.VisualSample(frame.outputTimeUs, .2f, .5f, .5f, .5f, 0f, false, 0f,
+                    decodedSourceIndex = if (boundary) 0 else frame.sourceIndex,
+                    decodedClipIndex = if (boundary) 0 else frame.clipIndex)
+            }
+            fun evaluate(evidence: List<RenderedMp4Acceptance.VisualSample>) = ManualMontageAcceptance.evaluate(
+                graph, container(), evidence,
+                DecodedAudioQuality.evaluate(FloatArray(plan.frames.size) { .1f }, fps, 1, plan.durationUs, 33_334, true), fps)
+            assertTrue(evaluate(samples).issues.toString(), evaluate(samples).passed)
+            assertTrue(evaluate(samples.map { if (it.outputTimeUs == 2_000_000L) it.copy(decodedSourceIndex = 1,
+                decodedClipIndex = 1) else it }).issues.contains("source-revision-mismatch"))
+            val next = plan.frames.first { it.outputTimeUs > 2_000_000L }.outputTimeUs
+            assertTrue(evaluate(samples.map { if (it.outputTimeUs == next) it.copy(decodedSourceIndex = 0,
+                decodedClipIndex = 0) else it }).issues.contains("source-revision-mismatch"))
+        }
+    }
+
+    @Test fun singleRetainedBlackoutFrameNeedsItsIncomingSourceAndCentralPhaseAtBothFps() {
+        for (fps in listOf(30, 60)) {
+            val start = if (fps == 30) 1L else 3L
+            val graph = trimTransition(transitionProject(fps, MontageGraph.Transition.BLACKOUT), start, start + 1)
+            val plan = HighQualityFramePlan.build(graph, fps)
+            val only = plan.frames.single { it.clipIndex == 1 }
+            assertTrue(only.transitionProgress!! > .25f && only.transitionProgress!! < .75f)
+            assertEquals(only, LiveDecoderTransitionPlan.drawFrames(plan.frames).single { it.outputTimeUs == only.outputTimeUs })
+            assertTrue(transitionReport(graph, fps) { .2f }.passed)
+            assertFalse(transitionReport(graph, fps) { 0f }.passed)
+        }
+    }
+
+    @Test fun inspectorUsesRetainedWindowsAndStillRejectsMissingRetainedEffects() {
+        for (fps in listOf(30, 60)) for (type in listOf(MontageGraph.Transition.WHIP,
+            MontageGraph.Transition.BLACKOUT, MontageGraph.Transition.FOREGROUND_REENTRY)) {
+            val project = transitionProject(fps, type, durationMs = if (type == MontageGraph.Transition.FOREGROUND_REENTRY) 100 else null)
+            val removed = trimTransition(project, fps.toLong(), fps.toLong() + 1)
+            val removedPlan = HighQualityFramePlan.build(removed, fps)
+            val removedCollector = VeykadRenderInspector.Collector(removed, removedPlan.frames.size, removedPlan.frames)
+            removedPlan.frames.forEach { removedCollector.record(it, TransitionTimeline.blendFor(it), true) }
+            assertTrue("removed $type $fps ${removedCollector.summary().issues}", removedCollector.summary().accepted)
+            val retained = trimTransition(project, 1, 2)
+            val plan = HighQualityFramePlan.build(retained, fps)
+            val correct = VeykadRenderInspector.Collector(retained, plan.frames.size, plan.frames)
+            val missing = VeykadRenderInspector.Collector(retained, plan.frames.size, plan.frames)
+            plan.frames.forEach { correct.record(it, TransitionTimeline.blendFor(it), true)
+                missing.record(it, null, false) }
+            assertTrue("retained $type $fps ${correct.summary().issues}", correct.summary().accepted)
+            assertFalse("missing $type $fps", missing.summary().accepted)
+        }
+    }
+
+    @Test fun inspectorCameraIntentUsesSuppressedWhipButKeepsIndependentScaleAndOtherMotion() {
+        val base = transitionProject(30, MontageGraph.Transition.WHIP).originalGraph
+        fun graph(motion: MontageGraph.Motion, scale: Float) = base.copy(clips = base.clips.map { it.copy(
+            transitionIn = MontageGraph.Transition.HARD_CUT, motion = motion,
+            transform = MontageGraph.ClipTransform(listOf(0f, 1f).map { at -> MontageGraph.ClipTransform.Keyframe(at, scale,
+                translateX = .1f, rotationDegrees = 5f) })) }, manualOverrides = ManualRenderOverrides())
+        fun summary(graph: MontageGraph): VeykadRenderInspector.Summary {
+            val plan = HighQualityFramePlan.build(graph, 30)
+            val collector = VeykadRenderInspector.Collector(graph, plan.frames.size, plan.frames)
+            plan.frames.forEach { collector.record(it.copy(transform = MontageGraph.ClipTransform.Keyframe(0f, 1f)), null, false) }
+            return collector.summary()
+        }
+        assertFalse(summary(graph(MontageGraph.Motion.WHIP_LEFT, 1f)).issues.contains("virtual_camera_not_visible"))
+        assertTrue(summary(graph(MontageGraph.Motion.WHIP_LEFT, 1.2f)).issues.contains("virtual_camera_not_visible"))
+        assertTrue(summary(graph(MontageGraph.Motion.HOLD, 1f)).issues.contains("virtual_camera_not_visible"))
+    }
+
     private fun transitionReport(graph: MontageGraph, fps: Int, strength: (HighQualityFramePlan.Frame) -> Float): ManualMontageAcceptance.Report {
         val plan = HighQualityFramePlan.build(graph, fps)
-        val samples = plan.frames.map { frame -> RenderedMp4Acceptance.VisualSample(frame.outputTimeUs,
+        val samples = LiveDecoderTransitionPlan.drawFrames(plan.frames).map { frame -> RenderedMp4Acceptance.VisualSample(frame.outputTimeUs,
             strength(frame), .5f, .5f, .5f, 0f, false, 0f, decodedSourceIndex = frame.sourceIndex, decodedClipIndex = frame.clipIndex) }
         return ManualMontageAcceptance.evaluate(graph,
             container().copy(videoLastPtsUs = plan.durationUs, audioLastPtsUs = plan.durationUs), samples,
@@ -59,11 +132,11 @@ class ManualMontageAcceptanceTest {
             as TimelinePreparation.Prepared).candidate.graph
     }
 
-    private fun transitionProject(fps: Int, type: MontageGraph.Transition, fractional: Boolean = false): EditableMontageProject {
+    private fun transitionProject(fps: Int, type: MontageGraph.Transition, fractional: Boolean = false, durationMs: Long? = null): EditableMontageProject {
         val base = ManualMontageFixtures.generatedGraph()
         val graph = base.copy(clips = base.clips.mapIndexed { index, clip -> when (index) {
             0 -> clip.copy(outputDurationMs = if (fractional) 1201 else 2000)
-            1 -> clip.copy(transitionIn = type)
+            1 -> clip.copy(transitionIn = type, transitionDurationMs = durationMs)
             else -> clip.copy(transitionIn = MontageGraph.Transition.HARD_CUT)
         } }, outputDurationMs = if (fractional) 5201 else 6000, overlays = emptyList(), parameterTracks = emptyList())
         fun asset(id: String, kind: ProjectAsset.Kind) = ProjectAsset(id, "$id.bin", kind, 10_000_000, "0".repeat(64), id)
@@ -127,7 +200,7 @@ class ManualMontageAcceptanceTest {
             as TimelinePreparation.Prepared).candidate
         val plan = HighQualityFramePlan.build(candidate.graph)
         assertTrue(plan.frames.filter { it.clipIndex == 0 }.all { it.transitionProgress == -1f })
-        val evidence = plan.frames.distinctBy { it.clipIndex }.map { frame ->
+        val evidence = LiveDecoderTransitionPlan.drawFrames(plan.frames).map { frame ->
             RenderedMp4Acceptance.VisualSample(frame.outputTimeUs, .2f, .5f, .5f, .5f, 0f, false, 0f,
                 decodedSourceIndex = frame.sourceIndex, decodedClipIndex = frame.clipIndex)
         }

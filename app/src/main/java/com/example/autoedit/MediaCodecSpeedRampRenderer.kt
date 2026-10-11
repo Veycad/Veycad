@@ -97,7 +97,8 @@ object MediaCodecSpeedRampRenderer {
         request.outputFile.delete()
         val videoOnlyFile = File(request.outputFile.parentFile, request.outputFile.nameWithoutExtension + ".video.mp4")
         videoOnlyFile.delete()
-        val inspector = VeykadRenderInspector.Collector(request.graph, plan.frames.size)
+        val drawFrames = LiveDecoderTransitionPlan.drawFrames(plan.frames, ReferenceMontageProfile.appliesTo(request.graph))
+        val inspector = VeykadRenderInspector.Collector(request.graph, plan.frames.size, drawFrames)
         val encoder = createEncoder(request)
         var inputSurface: Surface? = null
         var glOwner: GlesFrameCompositor? = null
@@ -148,8 +149,8 @@ object MediaCodecSpeedRampRenderer {
                         // GLES drivers expose that first colour-conversion as black. Legacy
                         // transitions hold a verified texture for one sample. Sigma's authored
                         // whip must start at the beat, including the first scheduled sample.
-                        val overlapStart = if (ReferenceMontageProfile.appliesTo(request.graph) &&
-                            frames.first().transitionIn == MontageGraph.Transition.WHIP) 0 else 1
+                        val overlapStart = LiveDecoderTransitionPlan.overlapStart(overlap,
+                            ReferenceMontageProfile.appliesTo(request.graph))
                         if (overlapStart > 0) {
                             val held = heldBoundaryFrame(framesByClip.getValue(clipIndex - 1).last(),
                                 overlap.incoming.first())

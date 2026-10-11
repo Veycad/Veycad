@@ -115,6 +115,34 @@ class ManualRendererHandoffTest {
         }
     }
 
+    @Test fun provenanceCannotSubstitutePreviousClipOutsideTheSingleScheduledHold() {
+        val plan = HighQualityFramePlan.build(ManualMontageFixtures.generatedGraph()).frames
+        val outgoing = plan.last { it.clipIndex == 0 }
+        val incoming = plan.filter { it.clipIndex == 1 }
+        val hold = VeykadRenderInspector.DecodedFrameProvenance(0, 0, outgoing.sourceTimeUs,
+            100_000, MontageGraph.Transition.HARD_CUT)
+        assertEquals(0, RenderedVisualSampler.withDecodedFrameProvenance(incoming.first(), plan,
+            FrameAttachmentTimeline(), null, hold).clipIndex)
+        assertThrows(IllegalArgumentException::class.java) {
+            RenderedVisualSampler.withDecodedFrameProvenance(incoming[1], plan, FrameAttachmentTimeline(), null, hold)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RenderedVisualSampler.withDecodedFrameProvenance(incoming.first(), plan, FrameAttachmentTimeline(), null,
+                hold.copy(sourceIndex = 19))
+        }
+        val hardCutPlan = plan.map { if (it.clipIndex == 1) it.copy(
+            transitionIn = MontageGraph.Transition.HARD_CUT, transitionProgress = -1f) else it }
+        assertThrows(IllegalArgumentException::class.java) {
+            RenderedVisualSampler.withDecodedFrameProvenance(hardCutPlan.first { it.clipIndex == 1 }, hardCutPlan,
+                FrameAttachmentTimeline(), null, hold)
+        }
+        val singletonPlan = listOf(outgoing, incoming.first().copy(transitionProgress = .5f))
+        assertThrows(IllegalArgumentException::class.java) {
+            RenderedVisualSampler.withDecodedFrameProvenance(singletonPlan.last(), singletonPlan,
+                FrameAttachmentTimeline(), null, hold)
+        }
+    }
+
     private fun timeline(confidence: Float) = FrameAttachmentTimeline(listOf(0L, 100_000L).map { pts ->
         FrameAttachments(pts, mask = FrameAttachments.Plane(1, 1, listOf(1f), confidence))
     })

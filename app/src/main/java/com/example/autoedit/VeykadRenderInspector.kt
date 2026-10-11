@@ -94,7 +94,8 @@ object VeykadRenderInspector {
         val faceRegion: FrameAttachments.FaceRegion? = null,
         val effectiveSourceSpeed: Float? = null,
         val sourceIndex: Int = 0,
-        val secondarySourceIndex: Int? = null
+        val secondarySourceIndex: Int? = null,
+        val rotationDegrees: Float = 0f
     )
 
     data class Summary(
@@ -122,7 +123,8 @@ object VeykadRenderInspector {
         val accepted: Boolean get() = issues.isEmpty()
     }
 
-    class Collector(private val graph: MontageGraph, private val plannedFrames: Int) {
+    class Collector(private val graph: MontageGraph, private val plannedFrames: Int,
+        private val expectedDrawFrames: List<HighQualityFramePlan.Frame>? = null) {
         private val frames = ArrayList<FrameEvidence>(plannedFrames)
 
         /** Adapts shared compositor values without coupling GLES ownership to this collector. */
@@ -165,6 +167,7 @@ object VeykadRenderInspector {
                 scale = frame.transform.scale,
                 translateX = frame.transform.translateX,
                 translateY = frame.transform.translateY,
+                rotationDegrees = frame.transform.rotationDegrees,
                 blur = blend?.directionalBlur ?: 0f,
                 blackout = maxOf(
                     blend?.blackout ?: 0f,
@@ -193,7 +196,7 @@ object VeykadRenderInspector {
 
         fun evidence(): List<FrameEvidence> = frames.toList()
 
-        fun summary(): Summary = evaluate(graph, plannedFrames, frames)
+        fun summary(): Summary = evaluate(graph, plannedFrames, frames, expectedDrawFrames)
     }
 
     data class Artifacts(
@@ -232,21 +235,38 @@ object VeykadRenderInspector {
     internal fun evaluate(
         graph: MontageGraph,
         plannedFrames: Int,
-        frames: List<FrameEvidence>
+        frames: List<FrameEvidence>,
+        expectedDrawFrames: List<HighQualityFramePlan.Frame>? = null
     ): Summary {
         val temporalLayerKinds = if (ReferenceMontageProfile.appliesTo(graph))
             emptySet() else temporalLayerKinds
         val clips = graph.clips.map { it.copy(transitionIn = graph.renderTransition(it)) }
         val overlays = graph.renderOverlays()
-        val authored = clips.mapIndexedNotNull { index, clip ->
-            (index to clip).takeIf { clip.transitionIn in visibleTransitions }
+        // The renderer supplies its exact FPS/window/hold-adapted plan. Legacy diagnostic
+        // callers keep descriptor expectations; never rebuild a different plan here.
+        val expectedBlends = expectedDrawFrames?.mapNotNull { frame ->
+            TransitionTimeline.blendFor(frame)?.takeIf {
+                maxOf(it.directionalBlur, it.blackout, it.occlusionMask, it.foregroundReentry) > .0001f
+            }?.let { frame to it }
         }
+        val activeClips = expectedBlends?.map { it.first.clipIndex }?.toSet()
+        val authored = clips.mapIndexedNotNull { index, clip ->
+            (index to clip).takeIf { clip.transitionIn in visibleTransitions && (activeClips == null || index in activeClips) }
+        }
+        val expectedByTime = expectedDrawFrames?.associateBy { it.outputTimeUs }
         // Source indices name ordered selections, not physical uniqueness or visual quality.
         // Unknown secondary identity retains the legacy same-source threshold.
         fun differentSourceRoles(frame: FrameEvidence): Boolean =
             frame.secondarySourceIndex != null && frame.secondarySourceIndex != frame.sourceIndex
-        val hasCameraIntent = graph.clips.any { it.motion != MontageGraph.Motion.HOLD ||
-            it.transform != MontageGraph.ClipTransform.hold() }
+        fun visibleCamera(scale: Float, x: Float, y: Float, rotation: Float): Boolean =
+            abs(scale - 1f) >= .025f || abs(x) + abs(y) >= .018f || abs(rotation) >= 1f
+        val expectedCameraFrames = expectedDrawFrames?.count {
+            visibleCamera(it.transform.scale, it.transform.translateX, it.transform.translateY, it.transform.rotationDegrees)
+        }
+        val hasCameraIntent = expectedCameraFrames?.let { it > 0 } ?: graph.clips.any {
+            it.motion != MontageGraph.Motion.HOLD || it.transform != MontageGraph.ClipTransform.hold() }
+        val legacyCameraFrames = (plannedFrames * .15f).toInt().coerceAtLeast(1)
+        val requiredCameraFrames = expectedCameraFrames?.let { minOf(legacyCameraFrames, it) } ?: legacyCameraFrames
         val configuredTemporalSeparationUs = overlays.asSequence()
             .filter { it.overlayKind in temporalLayerKinds }
             .mapNotNull { it.secondarySourceOffsetMs }
@@ -256,7 +276,11 @@ object VeykadRenderInspector {
             ?: MINIMUM_VISIBLE_TEMPORAL_SEPARATION_US
         val renderedFrames = frames.filter { it.transition in visibleTransitions &&
             (it.blur > .0001f || it.blackout > .0001f || it.occlusion > .0001f ||
-                it.foregroundReentry > .0001f || it.dualDecoder) }
+                it.foregroundReentry > .0001f || it.dualDecoder) &&
+            (expectedByTime == null || expectedByTime[it.outputTimeUs]?.let { expected ->
+                expected.clipIndex == it.clipIndex && expected.transitionIn == it.transition &&
+                    TransitionTimeline.blendFor(expected) != null
+            } == true) }
         val renderedEvents = renderedFrames.map { it.clipIndex }.distinct()
         val missing = authored.mapNotNull { (clipIndex, clip) ->
             clip.id.takeIf { clipIndex !in renderedEvents }
@@ -264,7 +288,7 @@ object VeykadRenderInspector {
         val byType = visibleTransitions.associateWith { type -> renderedFrames.count { it.transition == type } }
         val speedFrames = frames.count { abs(it.speed - 1f) >= .08f }
         val cameraFrames = frames.count {
-            abs(it.scale - 1f) >= .025f || abs(it.translateX) + abs(it.translateY) >= .018f
+            visibleCamera(it.scale, it.translateX, it.translateY, it.rotationDegrees)
         }
         val blackoutFrames = frames.count { it.blackout >= .05f }
         val foregroundReentrySourcePts = frames.asSequence()
@@ -289,32 +313,41 @@ object VeykadRenderInspector {
             if (liveOverlapFrames.any { !it.dualDecoder }) {
                 add("transition_without_two_live_decoders")
             }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.BLACKOUT } && blackoutFrames == 0) {
-                add("authored_blackout_not_rendered")
-            }
             val authoredSpeedRamp = graph.clips.any { clip ->
                 val speeds = clip.speedRamp.keyframes.map { it.speed }
                 (speeds.maxOrNull() ?: 1f) - (speeds.minOrNull() ?: 1f) >= .08f
             }
             if (authoredSpeedRamp && speedFrames < (plannedFrames * .02f).toInt().coerceAtLeast(1)) add("authored_speed_ramp_not_visible")
-            if (hasCameraIntent && cameraFrames < (plannedFrames * .15f).toInt().coerceAtLeast(1))
+            if (hasCameraIntent && cameraFrames < requiredCameraFrames)
                 add("virtual_camera_not_visible")
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.WHIP } && (frames.maxOfOrNull { it.blur } ?: 0f) < .015f) {
-                add("whip_blur_below_visible_threshold")
-            }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.OCCLUSION } && (frames.maxOfOrNull { it.occlusion } ?: 0f) < .35f) {
-                add("occlusion_below_visible_threshold")
-            }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY } &&
-                (frames.maxOfOrNull { it.foregroundReentry } ?: 0f) < .65f) {
-                add("foreground_reentry_below_visible_threshold")
-            }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY } &&
-                foregroundReentrySourcePts < MINIMUM_LIVE_FOREGROUND_SOURCE_PTS) {
-                add("foreground_reentry_source_frozen")
-            }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.BLACKOUT } && (frames.maxOfOrNull { it.blackout } ?: 0f) < .55f) {
-                add("blackout_below_visible_threshold")
+            // Each retained event needs its own evidence. A removed peak or removed live
+            // source sample cannot be required, and another clip's peak cannot satisfy it.
+            authored.forEach { (clipIndex, clip) ->
+                val actual = if (expectedBlends == null) frames else renderedFrames.filter { it.clipIndex == clipIndex }
+                val expected = expectedBlends?.filter { it.first.clipIndex == clipIndex }
+                fun required(legacy: Float, value: (GpuTransitionModel.FrameBlend) -> Float): Float =
+                    expected?.maxOfOrNull { value(it.second) }?.let { minOf(legacy, it) } ?: legacy
+                when (clip.transitionIn) {
+                    MontageGraph.Transition.WHIP -> if ((actual.maxOfOrNull { it.blur } ?: 0f) <
+                        required(.015f) { it.directionalBlur }) add("whip_blur_below_visible_threshold")
+                    MontageGraph.Transition.OCCLUSION -> if ((actual.maxOfOrNull { it.occlusion } ?: 0f) <
+                        required(.35f) { it.occlusionMask }) add("occlusion_below_visible_threshold")
+                    MontageGraph.Transition.FOREGROUND_REENTRY -> {
+                        if ((actual.maxOfOrNull { it.foregroundReentry } ?: 0f) <
+                            required(.65f) { it.foregroundReentry }) add("foreground_reentry_below_visible_threshold")
+                        val requiredPts = expected?.filter { it.second.foregroundReentry > .001f }
+                            ?.map { it.first.sourceTimeUs }?.distinct()?.size
+                            ?.coerceAtMost(MINIMUM_LIVE_FOREGROUND_SOURCE_PTS) ?: MINIMUM_LIVE_FOREGROUND_SOURCE_PTS
+                        if (actual.filter { it.transition == MontageGraph.Transition.FOREGROUND_REENTRY && it.foregroundReentry > .001f }.map { it.sourceTimeUs }.distinct().size < requiredPts)
+                            add("foreground_reentry_source_frozen")
+                    }
+                    MontageGraph.Transition.BLACKOUT -> {
+                        val peak = actual.maxOfOrNull { it.blackout } ?: 0f
+                        if (peak < required(.05f) { it.blackout }) add("authored_blackout_not_rendered")
+                        if (peak < required(.55f) { it.blackout }) add("blackout_below_visible_threshold")
+                    }
+                    else -> Unit
+                }
             }
             if (overlays.any {
                     it.overlayKind in setOf(
@@ -372,7 +405,7 @@ object VeykadRenderInspector {
                 subjectStageFrames.none { it.maskConfidence >= .80f }) {
                 add("subject_stage_missing_live_mask")
             }
-        }
+        }.distinct()
         return Summary(
             plannedFrames = plannedFrames,
             shaderFrames = frames.size,
