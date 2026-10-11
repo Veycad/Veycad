@@ -41,7 +41,8 @@ printf '%s\n' "${jni[@]}" > "$out/provenance/jni-compile-argv.txt"
 "$tool/llvm-readelf" -Ws "$out/android/x86_64/libsoftware_aac_probe.so" > "$out/provenance/android-symbols.txt"
 mkdir "$out/source/host-build"; cd "$out/source/host-build"
 # Host conversion is deliberately separate from the Android decoder.
-host=("${common[@]}" --enable-ffmpeg --enable-ffprobe --enable-avcodec --enable-avformat --enable-avfilter --enable-swresample --enable-decoder=aac,pcm_f32le --enable-encoder=aac,pcm_f32le --enable-demuxer=mov,f32le --enable-muxer=mp4,f32le --enable-protocol=file --enable-filter=anull,aformat,aresample)
+# Raw PCM configure component names include pcm_; their CLI format is f32le.
+host=("${common[@]}" --enable-ffmpeg --enable-ffprobe --enable-avcodec --enable-avformat --enable-avfilter --enable-swresample --enable-decoder=aac,pcm_f32le --enable-encoder=aac,pcm_f32le --enable-demuxer=mov,pcm_f32le --enable-muxer=mp4,pcm_f32le --enable-protocol=file --enable-filter=anull,aformat,aresample)
 printf '%s\n' "${host[@]}" > "$out/provenance/host-configure-argv.txt"
 cc --version > "$out/provenance/host-compiler.txt"
 ../ffmpeg/configure "${host[@]}"
