@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "corpus_kind": "INCOMPLETE_TEMPLATE_NOT_GOLD",
+  "created_at": null,
+  "holdout_first_access_at": null,
+  "corpus_review": {"approved": false, "artifact": null},
+  "candidate": {
+    "backend_commit": "48f628a84833905ee4a0658ee6d4a5c915ce1997",
+    "backend_patch": {"path": null, "sha256": null},
+    "model": {"path": null, "sha256": null},
+    "apk": {"path": null, "sha256": null},
+    "calibration": null,
+    "calibration_review": null
+  },
+  "recordings": [
+    {
+      "id": null,
+      "speaker_id": null,
+      "split": "pilot",
+      "condition": "clean",
+      "audio": {
+        "path": null, "sha256": null,
+        "sample_rate": 16000, "channels": 1, "sample_width": 2, "input_frames": null
+      },
+      "rights": {"kind": null, "artifact": {"path": null, "sha256": null}},
+      "annotations": [
+        {"annotator_id": null, "independent": false, "artifact": {"path": null, "sha256": null}},
+        {"annotator_id": null, "independent": false, "artifact": {"path": null, "sha256": null}}
+      ],
+      "adjudication": {"adjudicator_id": null, "artifact": {"path": null, "sha256": null}}
+    }
+  ]
+}
