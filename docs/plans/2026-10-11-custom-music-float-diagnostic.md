@@ -70,3 +70,30 @@ complete packet/frame/raw/presentation ledgers are verified, actual float is
 retained, and the overshoot control remains >1 and fails the existing evaluator.
 Missing coverage, ambiguous crop, fallback integer or incomplete drains remain
 explicit gaps. A diagnostic success does not establish a release/device gate.
+
+## Reviewed preparation checkpoint
+
+Remote run38154571916 at ef0788b4ea5cb32b5e36d135f3d85bb5ca0d2ab1 succeeded.
+Independent review cleared the actual artifact11707458538 before Android
+execution: 63 files, 62 bound payloads, all hashes verified; 124480120 total
+uncompressed bytes, largest file89825280 within the bounded extraction limits.
+Immutable run/ZIP/material/JNI/source identities are in software_aac_pins.json.
+
+Actual ELF is API26/x86_64, NDK r27c/12479018, with 16KiB LOAD alignment and
+system libm/libz/libdl/libc dependencies. Source/tag/config/licenses and JNI
+source match the reviewed build. The host frame ledger exposes stream rate
+only; Android must still check the rate on each actual frame.
+
+The native MP4 has 251 AUs and 257024 raw/presentation mono16000Hz frames,
+zero crop, and unchanged original native false. The compressed overshoot
+control has 95 AUs, 97280 raw frames and 97024 presentation frames after the
+MP4 endpoint's 256-frame tail crop, mono48000Hz. Independent float-byte checks
+confirm 377 presentation samples above full scale, peak1.8011534214. The
+2.021333s presentation endpoint comes from MP4 metadata, not a forced 2s crop.
+No Android candidate results existed when these expected identities were fixed.
+
+Initial failed preparations remain recorded: run38153931950 lacked sdkmanager
+on PATH; run38154206014 used the CLI raw format name instead of configure
+pcm_f32le component names. Separate reviewed fixes preserved those artifacts.
+Baseline38154208057 at bb8d844d passed643 JVM/255 Python with no failures or
+skips, but is not the later pinned-execution checkpoint's final baseline.
