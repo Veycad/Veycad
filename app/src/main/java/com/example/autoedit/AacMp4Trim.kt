@@ -12,15 +12,26 @@ internal object AacMp4Trim {
         check(sampleFrames > 0 && delayFrames > 0)
         RandomAccessFile(file, "rw").use { io ->
             fun uint(at: Long): Long { check(at >= 0 && at + 4 <= io.length()); io.seek(at); return io.readInt().toLong() and 0xffffffffL }
-            fun children(start: Long, end: Long): List<Atom> {
+            fun children(start: Long, end: Long, allowExtendedMdat: Boolean = false): List<Atom> {
                 val result = ArrayList<Atom>()
                 var at = start
                 while (at < end) {
                     check(result.size < 128 && end - at >= 8) { "Unsupported AAC atom structure" }
-                    val size = uint(at)
-                    check(size >= 8 && size <= end - at) { "Truncated/extended AAC atom" }
+                    var size = uint(at)
                     io.seek(at + 4); val type = ByteArray(4).also(io::readFully).toString(Charsets.US_ASCII)
-                    result += Atom(type, at + 8, at + size); at += size
+                    var header = 8L
+                    if (size == 1L) {
+                        // MediaMuxer emits this header even for small mdat payloads. No other
+                        // extended atom is part of our owned generated-container contract.
+                        check(allowExtendedMdat && type == "mdat" && end - at >= 16) { "Unsupported/truncated extended AAC atom" }
+                        val high = uint(at + 8); val low = uint(at + 12)
+                        check(high <= 0x7fffffffL) { "Unsigned AAC atom size exceeds file address range" }
+                        size = (high shl 32) or low
+                        header = 16
+                    }
+                    // Subtract before comparing: at+size must never overflow for malformed input.
+                    check(size >= header && size <= end - at) { "Truncated AAC atom" }
+                    result += Atom(type, at + header, at + size); at += size
                 }
                 check(at == end)
                 return result
@@ -29,7 +40,7 @@ internal object AacMp4Trim {
             fun versionZero(atom: Atom, bytes: Long) { check(atom.end - atom.data >= bytes && uint(atom.data) ushr 24 == 0L) { "Unsupported ${atom.type} version/size" } }
             val writes = linkedMapOf<Long, Long>()
             fun put(at: Long, value: Long) { check(value in 0..0xffffffffL) { "AAC movie-time overflow" }; check(writes.put(at, value) == null) }
-            val top = children(0, io.length())
+            val top = children(0, io.length(), allowExtendedMdat = true)
             check(top.all { it.type in setOf("ftyp", "free", "mdat", "moov") }) { "Fragmented/unsupported AAC file" }
             top.one("ftyp"); top.one("mdat")
             val moov = top.one("moov")

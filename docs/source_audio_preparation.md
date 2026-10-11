@@ -62,6 +62,8 @@ fields in owned, non-fragmented version-0 containers: promotes the movie timesca
 common multiple with 48 kHz, rescales mvhd/tkhd/elst fields, and sets audio edit duration from actual
 input samples. Coded mdhd/stts, media bytes and chunk offsets remain intact so the extractor can
 derive both delay and trailing padding. Unsupported structures/overflow fail before field writes.
+The generated top-level `mdat` supports MediaMuxer's 16-byte extended-size header; its unsigned
+size must fit the file address range and remaining bytes. Other extended atom types are rejected.
 Final mux preserves the extractor's already-negative audio PTS; it must not subtract delay again.
 `KEY_DURATION` can describe coded media duration including priming/padding; presentation duration
 comes from the edit, and acceptance separately checks actual decoded sample count and A/V end.
@@ -78,6 +80,9 @@ AAC hash, actual planar-float format, unclamped peaks/plateaus, sample count and
 in both prepared M4A and final MP4 at 30/60 fps. Missing/malformed evidence fails CI. PCM16 output
 from Android is recorded as PCM16; host float proof does not establish Android float support or
 human listening acceptance.
+Each of the five consumed files has a device-recorded path/SHA256 sidecar written after its native
+assertions. The host verifies the complete expected set and whole-file hashes before any decode,
+including marker containers' non-audio bytes, and rejects missing, extra or ambiguous entries.
 
 The container policy follows the inspected AOSP
 [MPEG4Writer negative-start edit handling](https://android.googlesource.com/platform/frameworks/av/+/android-15.0.0_r1/media/libstagefright/MPEG4Writer.cpp)

@@ -9,7 +9,7 @@ import org.junit.Test
 class AacMp4TrimTest {
     private fun box(type: String, body: ByteArray): ByteArray = bytes { writeInt(body.size + 8); writeBytes(type); write(body) }
     private fun bytes(body: DataOutputStream.() -> Unit): ByteArray = ByteArrayOutputStream().also { DataOutputStream(it).use(body) }.toByteArray()
-    private fun fixture(mediaTime: Int = 2048, movieScale: Int = 10000, video: Boolean = false): ByteArray {
+    private fun fixture(mediaTime: Int = 2048, movieScale: Int = 10000, video: Boolean = false, extendedMdat: Boolean = false): ByteArray {
         val mvhd = box("mvhd", bytes { writeInt(0); writeLong(0); writeInt(movieScale); writeInt(640) })
         val tkhd = box("tkhd", bytes { writeInt(0); writeLong(0); writeInt(1); writeInt(0); writeInt(640) })
         val mdhd = box("mdhd", bytes { writeInt(0); writeLong(0); writeInt(48000); writeInt(4096) })
@@ -19,14 +19,16 @@ class AacMp4TrimTest {
             box("tkhd", bytes { writeInt(0); writeLong(0); writeInt(2); writeInt(0); writeInt(11200) }) +
             box("edts", box("elst", bytes { writeInt(0); writeInt(2); writeInt(1200); writeInt(-1); writeInt(65536); writeInt(10000); writeInt(0); writeInt(65536) })) +
             box("mdia", box("mdhd", bytes { writeInt(0); writeLong(0); writeInt(90000); writeInt(90000) }) +
-                box("hdlr", bytes { writeLong(0); writeBytes("vide") }) + box("minf", box("stbl", box("stco", bytes { writeInt(0); writeInt(1); writeInt(777) })))))
-        return box("ftyp", ByteArray(8)) + box("moov", mvhd + box("trak", tkhd + box("edts", elst) + box("mdia", mdhd + hdlr)) + videoTrack) + box("mdat", byteArrayOf(1,2,3,4))
+                box("hdlr", bytes { writeLong(0); writeBytes("vide") }) + box("minf", box("stbl", box("stco", bytes { writeInt(0); writeInt(1); writeInt(if (extendedMdat) 32 else 24) })))))
+        val media = if (extendedMdat) bytes { writeInt(1); writeBytes("mdat"); writeLong(20); writeInt(0x01020304) }
+            else box("mdat", byteArrayOf(1,2,3,4))
+        return box("ftyp", ByteArray(8)) + media + box("moov", mvhd + box("trak", tkhd + box("edts", elst) + box("mdia", mdhd + hdlr)) + videoTrack)
     }
     @Test fun both_tracks_keep_video_edit_origin_sample_tables_and_all_unrelated_bytes() {
         val file=File.createTempFile("aac-trim", ".mp4")
         try {
-            for ((samples,ticks) in listOf(800L to 4000,1600L to 8000)) {
-                val before=fixture(video=true); file.writeBytes(before)
+            for (extended in listOf(false,true)) for ((samples,ticks) in listOf(800L to 4000,1600L to 8000)) {
+                val before=fixture(video=true,extendedMdat=extended); file.writeBytes(before)
                 AacMp4Trim.apply(file,samples,2048)
                 val after=file.readBytes()
                 val text=String(before,Charsets.ISO_8859_1)
@@ -38,8 +40,37 @@ class AacMp4TrimTest {
                 field(positions("tkhd")[0]+20,ticks); field(positions("tkhd")[1]+20,268800)
                 field(positions("elst")[0]+8,ticks)
                 field(positions("elst")[1]+8,28800); field(positions("elst")[1]+20,240000)
+                val chunkOffset=java.nio.ByteBuffer.wrap(after).getInt(positions("stco").single()+8)
+                assertEquals(if (extended) 32 else 24,chunkOffset)
+                assertArrayEquals(byteArrayOf(1,2,3,4),after.copyOfRange(chunkOffset,chunkOffset+4))
                 assertEquals(before.size,after.size)
                 before.indices.filter { it !in intended }.forEach { assertEquals("unrelated byte $it",before[it],after[it]) }
+            }
+        } finally { file.delete() }
+    }
+    @Test fun generated_extended_mdat_header_is_preserved_and_invalid_unsigned_sizes_never_write() {
+        val file=File.createTempFile("aac-trim", ".mp4")
+        try {
+            val valid=fixture(extendedMdat=true)
+            file.writeBytes(valid)
+            AacMp4Trim.apply(file,1600,2048)
+            val after=file.readBytes()
+            // Independently authored ftyp is 16 bytes, followed by a 16-byte mdat header and payload.
+            assertEquals(1,java.nio.ByteBuffer.wrap(after).getInt(16))
+            assertEquals(20L,java.nio.ByteBuffer.wrap(after).getLong(24))
+            assertArrayEquals(valid.copyOfRange(16,36),after.copyOfRange(16,36))
+            val invalid=listOf(
+                valid.copyOf(28), // incomplete 64-bit size
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putLong(24,15) }, // less than header
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putLong(24,valid.size.toLong()) }, // exceeds remaining file
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putLong(24,Long.MAX_VALUE) }, // at+size would overflow
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putLong(24,Long.MIN_VALUE) }, // unsigned 2^63
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putLong(24,-1L) }, // unsigned maximum
+                valid.copyOf().also { "free".toByteArray(Charsets.US_ASCII).copyInto(it,20) }) // only mdat supported
+            for (input in invalid) {
+                file.writeBytes(input)
+                assertThrows(IllegalStateException::class.java) { AacMp4Trim.apply(file,1600,2048) }
+                assertArrayEquals(input,file.readBytes())
             }
         } finally { file.delete() }
     }
@@ -70,7 +101,7 @@ class AacMp4TrimTest {
             assertEquals(2048, field("elst", 12))
             assertEquals(48000, field("mdhd", 12))
             assertEquals(4096, field("mdhd", 16))
-            assertArrayEquals(before.takeLast(12).toByteArray(), after.takeLast(12).toByteArray())
+            assertArrayEquals(before.copyOfRange(16,28), after.copyOfRange(16,28))
         } finally { file.delete() }
     }
     @Test fun inconsistent_trim_or_malformed_atoms_are_rejected_before_mutation() {

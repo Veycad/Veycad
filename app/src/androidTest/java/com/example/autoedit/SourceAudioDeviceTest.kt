@@ -21,6 +21,12 @@ import org.junit.runner.RunWith
 class SourceAudioDeviceTest {
     private fun directory(name: String) = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
         "source-audio-native-evidence/$name-${System.nanoTime()}").apply { mkdirs() }
+    private fun recordInspectedArtifact(file: File) {
+        val root=InstrumentationRegistry.getInstrumentation().targetContext.filesDir
+        val path=file.relativeTo(root).invariantSeparatorsPath
+        val hash=MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        File(file.parentFile,"${file.name}.device-sha256.json").writeText("""{"path":"$path","sha256":"$hash"}""")
+    }
     private fun clip(id: String, start: Int, end: Int, rawStart: Long = 0, rawEnd: Long = 1_000_000) =
         SourceAudioClip(id, FrameSpan(start, end), SourceTimeMap(listOf(SourceTimeMap.Point(0, rawStart), SourceTimeMap.Point(end-start, rawEnd))))
     private fun pcm(composer: SourceAudioComposer): ShortArray {
@@ -228,6 +234,7 @@ class SourceAudioDeviceTest {
                 }
                 assertEquals("sample-exact decoded count ${encoded.name}",48_000,decodedFrames)
                 assertTrue("fps=$fps decoded audio end=$audioEndUs",abs(audioEndUs-1_000_000)<=1_000_000/fps)
+                recordInspectedArtifact(encoded)
                 }
             }
         }
@@ -360,17 +367,17 @@ class SourceAudioDeviceTest {
         SourceAudioNativeFixtures.pcmWave(File(dir,"mixed-for-listening.wav"),mixedPcm.toByteArray(),48_000,2)
         assertTrue(pcmPeak <= .892)
         AacEncoderMuxer.prepareSourceAudio(composer,mix,dir,music).use { prepared ->
-            prepared.aacFile.copyTo(File(dir,"mixed-for-listening.m4a"))
+            val retained=File(dir,"mixed-for-listening.m4a")
+            prepared.aacFile.copyTo(retained)
             prepared.speechPcmFile.copyTo(File(dir,"premusic-16k.pcm"))
-            val decoded = MediaCodecAudioDecoder.decode(prepared.aacFile,preserveFloatHeadroom=true)
+            val decoded = MediaCodecAudioDecoder.decode(retained,preserveFloatHeadroom=true)
             // C2's AAC decoder can return PCM16 despite the float request. Never relabel that
             // saturated signal as float proof. The mandatory remote host oracle decodes this
             // exact retained AAC with a real float AAC decoder and gates peak/flat-run quality.
             assertTrue(decoded.pcmEncoding in listOf(AudioFormat.ENCODING_PCM_16BIT,AudioFormat.ENCODING_PCM_FLOAT))
             assertEquals(48_000,decoded.frameCount)
-            val retained=File(dir,"mixed-for-listening.m4a")
-            val hash=MessageDigest.getInstance("SHA-256").digest(retained.readBytes()).joinToString("") { "%02x".format(it) }
-            File(dir,"float-oracle.json").writeText("""{"aac":"mixed-for-listening.m4a","sha256":"$hash","sampleFrames":48000,"sampleRate":48000,"channels":2,"androidPcmEncoding":${decoded.pcmEncoding},"pcmPeak":$pcmPeak}""")
+            recordInspectedArtifact(retained)
+            File(dir,"float-oracle.json").writeText("""{"aac":"mixed-for-listening.m4a","sampleFrames":48000,"sampleRate":48000,"channels":2,"androidPcmEncoding":${decoded.pcmEncoding},"pcmPeak":$pcmPeak}""")
             File(dir,"peak-evidence.txt").writeText("pcmPeak=$pcmPeak actualAndroidEncoding=${decoded.pcmEncoding}; unclamped AAC quality requires host oracle; human listening NOT ASSESSED")
         }
     }
