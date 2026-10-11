@@ -10,17 +10,29 @@ on:
         description: Decode the pinned custom-music MP4 and run frozen visual renderer controls
         type: boolean
         default: false
+      custom_music_audio_probe:
+        description: Trace native PCM formats from the pinned fresh CI20 MP4 without rendering video
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.custom_music_targeted && 'targeted' || 'ui' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.custom_music_audio_probe && 'audio-probe' || inputs.custom_music_targeted && 'targeted' || 'ui' }}
   cancel-in-progress: true
 
 jobs:
+  diagnostic-input-guard:
+    if: github.event_name == 'workflow_dispatch' && inputs.custom_music_targeted && inputs.custom_music_audio_probe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require one diagnostic mode
+        run: |
+          echo 'Select only one custom-music diagnostic mode.' >&2
+          exit 1
   ui:
-    if: github.event_name != 'workflow_dispatch' || !inputs.custom_music_targeted
+    if: github.event_name != 'workflow_dispatch' || (!inputs.custom_music_targeted && !inputs.custom_music_audio_probe)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -62,7 +74,7 @@ jobs:
             build/reports/ui-tests/
 
   custom-music-targeted:
-    if: github.event_name == 'workflow_dispatch' && inputs.custom_music_targeted
+    if: github.event_name == 'workflow_dispatch' && inputs.custom_music_targeted && !inputs.custom_music_audio_probe
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -112,3 +124,55 @@ jobs:
         with:
           name: custom-music-targeted-reports
           path: build/reports/custom-music-targeted/
+
+  custom-music-audio-probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.custom_music_audio_probe && !inputs.custom_music_targeted
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Download and verify fresh CI20 native evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build/reports/custom-music-audio-probe
+          gh api repos/Veycad/Veycad/actions/artifacts/11672718841/zip > build/reports/custom-music-audio-probe/source-artifact.zip
+          gh api repos/Veycad/Veycad/actions/artifacts/11672718841 > build/reports/custom-music-audio-probe/source-artifact.json
+          gh api repos/Veycad/Veycad/actions/runs/38059647484 > build/reports/custom-music-audio-probe/source-run.json
+          gh api repos/Veycad/Veycad/commits/33b68e3f0643ce95acb46bdf8f3e075448388492 > build/reports/custom-music-audio-probe/source-commit.json
+          python3 tools/custom_music_tests/prepare_audio_probe_input.py build/reports/custom-music-audio-probe/source-artifact.zip build/reports/custom-music-audio-probe/input --run-metadata build/reports/custom-music-audio-probe/source-run.json --commit-metadata build/reports/custom-music-audio-probe/source-commit.json --artifact-metadata build/reports/custom-music-audio-probe/source-artifact.json
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          chmod +x gradlew
+      - name: Decode saved audio and retain native PCM format history
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          avd-name: CustomMusicAudioProbe_API36
+          emulator-port: 5556
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash tools/run_custom_music_audio_probe.sh
+      - name: Save audio probe input, report and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-music-audio-probe-reports
+          path: build/reports/custom-music-audio-probe/

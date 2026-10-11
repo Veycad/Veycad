@@ -212,3 +212,28 @@ phase; для музыки со сдвигом global phase должна выч�
 window по global phase, MP3/WAV preroll и encoder delay/padding на объединённом SHA.
 Старые зелёные gates 20d64c5a относятся к базе a039, а не к будущей интеграции.
 PCM_FLOAT history, качество реальных треков, телефон и человеческая приёмка открыты.
+
+### Отдельная проверка формата аудио
+
+Manual `custom_music_audio_probe=true` в `Android UI` использует новый native MP4
+из UI `38059647484` / artifact `11672718841`, а не retained CI143 output.
+Run/head, merge parents, ZIP/artifact metadata и все восемь manifest SHA
+проверяются прежним host verifier; на Android передаются только MP4 и малый
+`audio-input.json` с неизменённым исходным `native_snapshot`.
+Одновременно включать этот флаг и `custom_music_targeted` нельзя.
+
+Один optional test сначала вызывает неизменённый production audio decoder,
+затем отдельно запрашивает PCM_FLOAT через `MediaCodec.createDecoderByType`.
+Он сохраняет input/configured formats, все format changes, формат каждого
+output buffer, PTS, crop bounds, raw/converted SHA, encoder delay/padding
+и соответствие sample count/format/hash production decode. Codec inventory
+показывает только заявленную поддержку, не доказывает фактический float output.
+Новый video render, base control и production QA override здесь не запускаются.
+
+Полный PCM16 trace допустим как диагностика; `float_witness_complete` требует
+явного PCM_FLOAT у всех сохранённых payload buffers, постоянного формата,
+EOS, полной длительности в прежнем tolerance и сохранения raw float bits.
+Исходный native gate остаётся false независимо от fresh audio QA. Report/XML,
+логи и SHA manifest сохраняются также при ошибке; неуспешная повторная выгрузка
+не стирает уже сохранённые свидетельства. Зелёный diagnostic job не означает
+приёмку режима или подтверждение PCM_FLOAT.
