@@ -109,6 +109,49 @@ class HybridLegacyBackingMigrationTest {
         assertSlippedPartialEnvelope(-200000, 10, 450000)
     }
 
+    @Test fun shiftedLegacyOverlapRetainsInSourceEnvelopeThroughPruningAndReopen() {
+        val base = editProject()
+        val older = legacyCommit(base, base.current.copy(clips = base.current.clips.map { if (it.id == "right")
+            it.copy(originalFrameOffset = 20, sourceMap = SourceTimeMap(listOf(
+                SourceTimeMap.Point(0, 300000), SourceTimeMap.Point(10, 400000),
+                SourceTimeMap.Point(30, 600000)))) else it }))
+        val visible = SourceTimeMap(listOf(SourceTimeMap.Point(0, 0), SourceTimeMap.Point(20, 500000),
+            SourceTimeMap.Point(30, 600000)))
+        val newer = legacyCommit(older, older.current.copy(clips = older.current.clips.map { if (it.id == "right")
+            it.copy(originalFrameOffset = 0, sourceMap = visible) else it }))
+        val legacy = legacyCommit(newer, newer.current.copy(textState = newer.current.textState.copy(captionsEdited = true)))
+        // The overlap proves +200000, but subtracting that from the newer phase-0 request is invalid.
+        // The complete selected envelope itself is exactly 0..800000 and must remain representable.
+        var migrated = HybridEditCommands.setAuthoredText(legacy, false)
+        assertTrue(migrated.current.textState.captionsEdited)
+        assertEquals(visible.points, migrated.current.clips[1].sourceMap.points)
+        repeat(51) { migrated = HybridEditCommands.setAuthoredText(migrated, !migrated.current.style.showAuthoredText) }
+        val root = temporary.newFolder()
+        val store = HybridProjectStore(root)
+        val sources = File(store.directory(migrated.id), "sources").apply { mkdirs() }
+        migrated.assets.forEach { File(sources, it.fileName).writeText("synthetic source") }
+        store.create(migrated)
+        val loaded = HybridProjectStore(root).load(migrated.id)
+        assertEquals(50, loaded.undo.size)
+        assertFalse(loaded.undo.any { it.id <= legacy.current.id })
+        assertTrue(loaded.current.textState.captionsEdited)
+        assertEquals(visible.points, loaded.current.clips[1].sourceMap.points)
+        val backing = loaded.current.sourceBackings.getValue("right")
+        assertEquals(0, backing.phaseStart)
+        assertEquals(50, backing.map.points.last().localFrame)
+        assertFalse(backing.automatic)
+        val expected = (0..50).map { phase ->
+            if (phase <= 20) phase * 25000L else 500000L + (phase - 20) * 10000L
+        }
+        assertEquals(expected, (0..50).map { backing.sample(it.toLong()) })
+        val restored = HybridEditCommands.moveCut(loaded, "last", 80)
+        val right = restored.current.clips[1]
+        assertEquals(0, right.originalFrameOffset)
+        assertEquals(50, right.span.length)
+        assertEquals(expected, (0..50).map { right.sourceMap.sample(it) })
+        assertThrows(HybridEditRejected::class.java) { HybridEditCommands.moveCut(restored, "last", 81) }
+    }
+
     private fun assertSlippedPartialEnvelope(slip: Long, hiddenPhase: Int, expectedRequest: Long) {
         var legacy = partialLegacyWindows()
         // Two legacy slips plus an unrelated edit require retaining the accumulated translation.
