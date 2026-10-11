@@ -10,9 +10,16 @@ data class GpuEffectGraph(val nodes: List<Node> = emptyList()) {
         val startUs: Long,
         val endUs: Long,
         val amount: Float,
-        val secondary: Float = 0f
+        val secondary: Float = 0f,
+        val originId: String = id,
+        val phaseStart: Float = 0f,
+        val phaseEnd: Float = 1f,
+        val sampleWindow: EffectSampleWindow? = null
     ) {
-        init { require(id.isNotBlank() && startUs >= 0L && endUs > startUs && amount in 0f..1f && secondary in -1f..1f) }
+        init {
+            require(id.isNotBlank() && startUs >= 0L && endUs > startUs && amount in 0f..1f && secondary in -1f..1f)
+            require(originId.isNotBlank() && phaseStart in 0f..1f && phaseEnd in 0f..1f && phaseEnd > phaseStart)
+        }
     }
 
     data class Sample(val glow: Float = 0f, val glitch: Float = 0f, val lensBlur: Float = 0f, val direction: Float = 0f, val defocus: Float = 0f)
@@ -22,10 +29,13 @@ data class GpuEffectGraph(val nodes: List<Node> = emptyList()) {
     fun sample(timeUs: Long): Sample {
         var glow = 0f; var glitch = 0f; var lens = 0f; var direction = 0f
         var defocus = 0f
-        nodes.filter { timeUs in it.startUs until it.endUs }.forEach { node ->
-            val progress = (timeUs - node.startUs).toFloat() / (node.endUs - node.startUs)
+        nodes.filter { it.sampleWindow?.contains(timeUs) ?: (timeUs in it.startUs until it.endUs) }.forEach { node ->
+            val progress = node.sampleWindow?.let { window ->
+                (window.authoredTimeUs(timeUs) - window.authoredStartUs).toFloat() / (window.authoredEndUs - window.authoredStartUs)
+            } ?: (node.phaseStart + (node.phaseEnd - node.phaseStart) *
+                ((timeUs - node.startUs).toFloat() / (node.endUs - node.startUs)))
             // Sigma's first measured glitch frame already contains pronounced fragments.
-            val envelope = if (node.id == "reference-slice-glitch") 1f else
+            val envelope = if (node.originId == "reference-slice-glitch") 1f else
                 (1f - kotlin.math.abs(progress * 2f - 1f)).coerceIn(0f, 1f)
             when (node.kind) {
                 Kind.GLOW -> glow = maxOf(glow, node.amount * envelope)

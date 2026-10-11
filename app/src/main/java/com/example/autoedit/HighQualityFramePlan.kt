@@ -33,7 +33,14 @@ object HighQualityFramePlan {
         /** Source PTS of another director-selected timeline role for temporal layer composition. */
         val secondarySourceTimeUs: Long? = null,
         /** Source-file index carried from the owning clip to the decoder scheduler. */
-        val sourceIndex: Int = 0
+        val sourceIndex: Int = 0,
+        /** Original montage clock survives rebasing an output window for proxy encoding. */
+        val globalOutputTimeUs: Long = outputTimeUs,
+        val secondarySourceIndex: Int? = null,
+        val secondaryAttachments: FrameAttachments? = null,
+        /** Authored motion/effect clock, independent of the canonical source-map PTS. */
+        val originalOutputTimeUs: Long = outputTimeUs,
+        val transitionEffectsAllowed: Boolean = true
     )
 
     data class Plan(val frames: List<Frame>, val durationUs: Long, val fps: Int) {
@@ -44,34 +51,52 @@ object HighQualityFramePlan {
         // Low-frame-rate schedules are used only for local candidate proxies; final exports use
         // DEFAULT_FPS or higher. Keeping the same scheduler makes proxy decisions representative.
         require(fps in 6..60)
+        val editable = graph.editableTiming
+        val renderEffects = GpuEffectGraph(graph.renderNodes())
+        val renderOverlays = graph.renderOverlays()
+        require(editable == null || editable.fps == fps) { "FPS differs from the saved editable grid" }
         val frameStepUs = 1_000_000.0 / fps
-        val outputDurationUs = graph.outputDurationMs * 1_000L
-        val boundaries = graph.clips.runningFold(0L) { cursor, clip -> cursor + clip.outputDurationMs * 1_000L }
-        val frames = ArrayList<Frame>((outputDurationUs / frameStepUs).toInt() + 1)
+        val outputDurationUs = editable?.let { frameTimeUs(it.frameCount, fps) } ?: (graph.outputDurationMs * 1_000L)
+        val boundaries = editable?.clips?.map { frameTimeUs(it.startFrame, fps) }
+            ?: graph.clips.runningFold(0L) { cursor, clip -> cursor + clip.outputDurationMs * 1_000L }
+        val frames = ArrayList<Frame>(editable?.frameCount?.coerceAtMost(65_536L)?.toInt()
+            ?: ((outputDurationUs / frameStepUs).toInt() + 1))
         val speedTotals = mutableMapOf<String, Float>()
         var index = 0
         while (true) {
-            val outputUs = (index * frameStepUs).roundToLong()
-            if (outputUs >= outputDurationUs) break
-            val clipIndex = ((0 until graph.clips.size).lastOrNull { outputUs >= boundaries[it] } ?: 0)
+            val outputUs = if (editable != null) frameTimeUs(index.toLong(), fps) else (index * frameStepUs).roundToLong()
+            if (editable != null && index.toLong() >= editable.frameCount || outputUs >= outputDurationUs) break
+            val clipIndex = ((0 until graph.clips.size).lastOrNull {
+                if (editable != null) index.toLong() >= editable.clips[it].startFrame else outputUs >= boundaries[it]
+            } ?: 0)
                 .coerceIn(0, graph.clips.lastIndex)
             val clip = graph.clips[clipIndex]
+            val transition = graph.renderTransition(clip)
+            val transitionAllowed = clip.id !in graph.manualOverrides?.disabledTransitionClipIds.orEmpty()
             val clipStartUs = boundaries[clipIndex]
-            val progress = ((outputUs - clipStartUs).toDouble() /
-                (clip.outputDurationMs * 1_000L).coerceAtLeast(1L)).toFloat().coerceIn(0f, 1f)
+            val timing = editable?.clips?.get(clipIndex)
+            val originalFrame = timing?.let { Math.addExact(it.visible.start, index.toLong() - it.startFrame) }
+            val originalOutputUs = timing?.phase?.timeUs(originalFrame!!, fps) ?: outputUs
+            val progress = if (timing != null) timing.phase?.progress(originalFrame!!, fps)
+                ?: (originalFrame!!.toDouble() / timing.originFrameCount).toFloat().coerceIn(0f, 1f)
+                else ((outputUs - clipStartUs).toDouble() /
+                    (clip.outputDurationMs * 1_000L).coerceAtLeast(1L)).toFloat().coerceIn(0f, 1f)
             val sourceStartUs = clip.sourceStartMs * 1_000L
             val sourceDurationUs = (clip.sourceEndMs - clip.sourceStartMs) * 1_000L
-            val animatedSourceUs = sourceStartUs +
-                (sourceDurationUs * sourceFractionAt(graph, clip, clipStartUs, progress, speedTotals)).roundToLong()
+            val animatedSourceUs = timing?.timeMap?.sourceTimeUs(originalFrame!!) ?: (sourceStartUs +
+                (sourceDurationUs * sourceFractionAt(graph, clip, clipStartUs, progress, speedTotals)).roundToLong())
             // Foreground re-entry is an animated cutout. The texture and its PTS-aligned matte
             // advance through the selected source window while the screen-space entrance motion
             // remains independent. Freezing this PTS made the person look paused.
             val sourceUs = animatedSourceUs
             val transitionDurationUs = (clip.transitionDurationMs
                 ?: TransitionTimeline.durationMs(clip.transitionIn)) * 1_000L
-            val transitionElapsedUs = outputUs - clipStartUs
-            val transitionProgress = if (transitionDurationUs > 0L && transitionElapsedUs <= transitionDurationUs) {
-                (transitionElapsedUs.toFloat() / transitionDurationUs).coerceIn(0f, 1f)
+            val transitionElapsedUs = timing?.let { if (it.phase != null) originalOutputUs - it.phase.startUs
+                else frameTimeUs(originalFrame!!, fps) } ?: (outputUs - clipStartUs)
+            val phaseDurationUs = timing?.transitionPhaseDurationUs ?: transitionDurationUs
+            val transitionProgress = if (transitionAllowed && phaseDurationUs > 0L && transitionElapsedUs >= 0L &&
+                transitionElapsedUs <= phaseDurationUs && (timing == null || outputUs - clipStartUs < transitionDurationUs)) {
+                (transitionElapsedUs.toFloat() / phaseDurationUs).coerceIn(0f, 1f)
             } else {
                 // A non-null negative sentinel tells TransitionTimeline that this frame came
                 // from the exact scheduler and is outside the window. Null remains legacy-test
@@ -79,46 +104,79 @@ object HighQualityFramePlan {
                 -1f
             }
             val legacyTransform = clip.transform.sample(progress)
-            fun scalar(parameter: String, fallback: Float): Float = graph.parameterTracks
+            val tracks = timing?.localTracks ?: graph.parameterTracks
+            val trackTimeUs = if (timing != null && timing.phase == null) frameTimeUs(originalFrame!!, fps) else originalOutputUs
+            fun sampleTrack(parameter: String): List<Float>? = tracks
                 .firstOrNull { it.target == ParameterTargets.clip(clip.id, parameter) }
-                ?.sample(outputUs)?.firstOrNull() ?: fallback
-            val transform = legacyTransform.copy(
+                ?.let { track ->
+                    // Edited extensions hold endpoint keys even when the legacy HOLD sampler
+                    // would select the penultimate value beyond the last timestamp.
+                    val sampleUs = if (timing != null) trackTimeUs.coerceIn(
+                        track.keyframes.first().timeUs, track.keyframes.last().timeUs) else trackTimeUs
+                    track.sample(sampleUs)
+                }
+            fun scalar(parameter: String, fallback: Float): Float = sampleTrack(parameter)?.firstOrNull() ?: fallback
+            val authoredTransform = legacyTransform.copy(
                 scale = scalar("transform.scale", legacyTransform.scale),
                 translateX = scalar("transform.translateX", legacyTransform.translateX),
                 translateY = scalar("transform.translateY", legacyTransform.translateY),
                 rotationDegrees = scalar("transform.rotationDegrees", legacyTransform.rotationDegrees)
             )
-            val grade = graph.parameterTracks
-                .firstOrNull { it.target == ParameterTargets.clip(clip.id, "grade.rgbaBias") }
-                ?.sample(outputUs)
-            val currentAttachments = graph.frameAttachments.interpolated(sourceUs)
+            val transform = if (graph.manualOverrides != null && transition != MontageGraph.Transition.WHIP && clip.motion in setOf(MontageGraph.Motion.WHIP_LEFT,
+                MontageGraph.Motion.WHIP_RIGHT)) authoredTransform.copy(translateX = 0f, translateY = 0f, rotationDegrees = 0f)
+                else authoredTransform
+            val grade = sampleTrack("grade.rgbaBias")
+            val currentAttachments = if (graph.sourceAttachments.isNotEmpty()) graph.sourceAttachments
+                .firstOrNull { it.sourceIndex == clip.sourceIndex }?.timeline?.interpolated(sourceUs)
+                else graph.frameAttachments.interpolated(sourceUs)
             val frameAttachments = currentAttachments
             frames += Frame(
-                outputUs, sourceUs, clipIndex, progress, transform, clip.transitionIn,
+                outputUs, sourceUs, clipIndex, progress, transform, transition,
                 grade?.getOrNull(3) ?: clip.exposureBias,
                 grade?.getOrNull(0) ?: clip.redBias,
                 grade?.getOrNull(1) ?: clip.greenBias,
                 grade?.getOrNull(2) ?: clip.blueBias,
                 clip.flowStrength,
                 frameAttachments,
-                graph.effectGraph.sample(outputUs),
-                LayerCompositorModel.sample(graph.overlays, outputUs / 1_000L),
+                renderEffects.sample(outputUs),
+                LayerCompositorModel.sampleAtUs(renderOverlays, outputUs),
                 transitionProgress,
-                sourceIndex = clip.sourceIndex
+                sourceIndex = clip.sourceIndex, originalOutputTimeUs = originalOutputUs,
+                transitionEffectsAllowed = transitionAllowed
             )
             index++
         }
         // Subject-stage cutouts stay live just like the opening: never replace their advancing
         // decoder PTS with a retained still. Temporal two-source overlays are mapped afterwards.
+        fun secondaryFrame(layer: LayerCompositorModel.Sample): Frame? {
+            val secondaryStartMs = layer.secondaryTimelineStartMs ?: return null
+            val targetUs = secondaryStartMs * 1_000L + (layer.progress * layer.durationMs * 1_000L).roundToLong()
+            val originalSampleUs = if (editable != null) {
+                val clock = ProjectClock(fps)
+                val closest = clock.nearestFrame(targetUs)
+                val previous = (closest - 1).coerceAtLeast(0)
+                if (kotlin.math.abs(clock.timeUs(previous) - targetUs) <= kotlin.math.abs(clock.timeUs(closest) - targetUs))
+                    clock.timeUs(previous) else clock.timeUs(closest)
+            } else targetUs
+            val secondary = frames.asSequence().filter { candidate ->
+                val phase = editable?.clips?.get(candidate.clipIndex)?.phase
+                phase == null || originalSampleUs in phase.startUs until (phase.startUs + phase.durationUs)
+            }.minByOrNull { kotlin.math.abs(it.originalOutputTimeUs - targetUs) } ?: return null
+            return secondary.takeIf { editable == null || kotlin.math.abs(it.originalOutputTimeUs - targetUs) <= frameStepUs / 2 + 1 }
+        }
         val roleMappedFrames = frames.map { frame ->
             if (ReferenceMontageProfile.appliesTo(graph)) return@map frame
-            val secondaryStartMs = frame.layer.secondaryTimelineStartMs ?: return@map frame
-            val secondaryOutputUs = secondaryStartMs * 1_000L +
-                (frame.layer.progress * frame.layer.durationMs * 1_000L).roundToLong()
-            val secondary = frames.minByOrNull { candidate ->
-                kotlin.math.abs(candidate.outputTimeUs - secondaryOutputUs)
-            } ?: return@map frame
-            frame.copy(secondarySourceTimeUs = secondary.sourceTimeUs)
+            if (frame.layer.secondaryTimelineStartMs == null) return@map frame
+            // Removing one temporal layer must reveal any surviving lower layer, not erase it.
+            val layer = if (editable != null) LayerCompositorModel.sampleAtUs(renderOverlays.filter { overlay ->
+                if (overlay.secondaryTimelineStartMs == null) true else {
+                    val sample = LayerCompositorModel.sampleAtUs(listOf(overlay), frame.outputTimeUs)
+                    sample.secondaryTimelineStartMs == null || secondaryFrame(sample) != null
+                }
+            }, frame.outputTimeUs) else frame.layer
+            val secondary = secondaryFrame(layer)
+            frame.copy(layer = layer, secondarySourceTimeUs = secondary?.sourceTimeUs,
+                secondarySourceIndex = secondary?.sourceIndex, secondaryAttachments = secondary?.attachments)
         }
         return Plan(roleMappedFrames, outputDurationUs, fps)
     }
