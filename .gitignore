@@ -33,6 +33,7 @@ outputs/
 # User-owned and Golden video fixtures stay local and never enter Git/APK.
 app/src/testFixtures/golden-mp4/*.mp4
 *.mp4
+!app/src/main/res/raw/style_preview_*.mp4
 
 # Platform files
 .DS_Store

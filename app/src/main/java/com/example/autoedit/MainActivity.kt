@@ -721,7 +721,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSettingsValues() {
-        findViewById<TextView>(R.id.settingsStyleValue).text = "${montageStyle.title}  ›"
+        findViewById<TextView>(R.id.settingsStyleValue).text = "${MontageStylePresentation.forStyle(montageStyle).title}  ›"
         val quality = settingsPreferences().getString(PREF_QUALITY, QUALITY_720) ?: QUALITY_720
         findViewById<TextView>(R.id.settingsQualityValue).text = "$quality  ›"
         autoSaveSwitch.isChecked = settingsPreferences().getBoolean(PREF_AUTO_SAVE, false)

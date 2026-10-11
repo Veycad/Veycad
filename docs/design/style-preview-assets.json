@@ -1,0 +1,53 @@
+[
+  {
+    "style_id": "heartbeat",
+    "resource": "style_preview_heartbeat",
+    "start_seconds": 12.7,
+    "duration_seconds": 3,
+    "audio": false,
+    "recipe": "HEARTBEAT",
+    "renderer_sha256": "b561cd782002c0fd0a00c319f42062b78d36ce8177edcafde37bbd3130c8626f",
+    "export_acceptance": false,
+    "export_acceptance_issues": [
+      "audio-unclamped-headroom-unavailable",
+      "transition-artifacts",
+      "face-loss"
+    ],
+    "export_sha256": "51e0c26c053068cb86d0b206f44548a9d83eba5dff6d91439abd68bb60e6c026",
+    "sha256": "cece6ca43dc02912a0986bd11c98e7f162f14e5255142b737c40eccee0cc0ed5",
+    "bytes": 119011
+  },
+  {
+    "style_id": "fear_strobe",
+    "resource": "style_preview_fear",
+    "start_seconds": 9.5,
+    "duration_seconds": 3,
+    "audio": false,
+    "recipe": "FEAR_STROBE",
+    "renderer_sha256": "b561cd782002c0fd0a00c319f42062b78d36ce8177edcafde37bbd3130c8626f",
+    "export_acceptance": false,
+    "export_acceptance_issues": [
+      "audio-unclamped-headroom-unavailable"
+    ],
+    "export_sha256": "aa10c0702268afe5b02602a4f4cdb8ca0008c2b7096465622d3a9125c0837a90",
+    "sha256": "8e664fa74093080076c135eb288c87ae5f52aee67cc2c8db4b1716531c738e7a",
+    "bytes": 144147
+  },
+  {
+    "style_id": "duality_loop",
+    "resource": "style_preview_duality",
+    "start_seconds": 3.0,
+    "duration_seconds": 3,
+    "audio": false,
+    "recipe": "DUALITY_LOOP",
+    "renderer_sha256": "b561cd782002c0fd0a00c319f42062b78d36ce8177edcafde37bbd3130c8626f",
+    "export_acceptance": false,
+    "export_acceptance_issues": [
+      "audio-unclamped-headroom-unavailable",
+      "face-evidence-unmeasured"
+    ],
+    "export_sha256": "ef3d487ac489acbd7dd333f027e1c7bc1b44eca782ec8a6a3f1f716e922123d0",
+    "sha256": "1a17e42805088076452f563887663f8cf00138b68a70458dcc1805d7d14bca6f",
+    "bytes": 144874
+  }
+]

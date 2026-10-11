@@ -179,7 +179,8 @@
             <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/selectStyleButton"
                 android:layout_width="match_parent"
-                android:layout_height="88dp"
+                android:layout_height="wrap_content"
+                android:minHeight="88dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/style_button_background"
                 android:backgroundTint="@null"
@@ -189,7 +190,7 @@
                 android:gravity="start|center_vertical"
                 android:paddingStart="20dp"
                 android:paddingEnd="18dp"
-                android:text="♥   Heartbeat\nПульс · повтор фразы · чёрный финал"
+                android:text="♥   Пульс под музыку\nHeartbeat · Ритмичный · Эхо · Повторы"
                 android:textAllCaps="false"
                 android:textColor="@color/style_button_text"
                 android:textSize="15sp"
