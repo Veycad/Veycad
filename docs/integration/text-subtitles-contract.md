@@ -196,3 +196,8 @@ CAS/undo/redo и export snapshots. Реализация и будущие про
 продолжать принимать такие v4 проекты и snapshots/history; нужна настоящая
 a531-v4 fixture. Version bump относится к новым plate/kind/cue evidence полям;
 его окончательный номер выбирает владелец codec после preceding storage version.
+
+Сверка существующих immutable v4 fixtures и условия сохранения без потерь:
+[A2x acceptance matrix](text-core-a2x-acceptance.md). Core v4 fixtures не содержат
+MONO/SCALE и не заменяют genuine a531 capture; отдельно требуется исправление
+caption projection LEGACY → SUBTITLE. Матрица не является приёмкой общего codec.
