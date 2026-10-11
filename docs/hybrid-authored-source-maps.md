@@ -74,6 +74,10 @@ Legacy revisions have an empty table. A real command retains the full envelope
 proven by contiguous selected ancestry under the preceding comparison rules.
 It reuses a containing curve only when that curve represents all proven windows;
 otherwise it materializes exact samples with current/newest-window precedence.
+Materialized samples use the oldest proven window's raw coordinate system and
+retain its accumulated slip separately. This keeps hidden requests that a legal
+slip temporarily moves outside the source; only an attempted visible extension
+to those requests is rejected. Reversing the slip can make them available again.
 Reset, rewrite and gap barriers still bound this envelope. Missing proof retains
 the visible window only or rejects an extension; no unseen samples are invented
 and old revision blobs are never rewritten. Automatic continuation survives only

@@ -73,7 +73,7 @@ class HybridLegacyBackingMigrationTest {
         assertThrows(HybridEditRejected::class.java) { HybridEditCommands.moveCut(restored, "last", 81) }
     }
 
-    @Test fun partialLegacyWindowsKeepCurrentAndNearestSamplesAcrossTheWholeProvenEnvelope() {
+    private fun partialLegacyWindows(): HybridProject {
         fun select(project: HybridProject, vararg samples: Pair<Int, Long>): HybridProject {
             val phase = samples.first().first
             val length = samples.last().first - phase
@@ -87,8 +87,11 @@ class HybridLegacyBackingMigrationTest {
         legacy = select(legacy, 10 to 600000L, 20 to 1200000L, 30 to 1500000L, 40 to 2000000L)
         legacy = select(legacy, 20 to 1200000L, 30 to 1500000L, 40 to 2000000L, 50 to 2600000L)
         legacy = select(legacy, 0 to 100000L, 10 to 650000L, 20 to 1200000L, 25 to 1350000L)
-        legacy = select(legacy, 22 to 1260000L, 25 to 1350000L, 30 to 1500000L)
-        val migrated = HybridEditCommands.setAuthoredText(legacy, false)
+        return select(legacy, 22 to 1260000L, 25 to 1350000L, 30 to 1500000L)
+    }
+
+    @Test fun partialLegacyWindowsKeepCurrentAndNearestSamplesAcrossTheWholeProvenEnvelope() {
+        val migrated = HybridEditCommands.setAuthoredText(partialLegacyWindows(), false)
         val restored = HybridEditCommands.moveCut(HybridEditCommands.moveCut(migrated, "right", 8), "last", 58)
         val clip = restored.current.clips[1]
         assertEquals(0, clip.originalFrameOffset)
@@ -96,6 +99,59 @@ class HybridLegacyBackingMigrationTest {
         assertEquals(listOf(100000L, 650000L, 1260000L, 1500000L, 2000000L, 2600000L),
             listOf(0, 10, 22, 30, 40, 50).map { clip.sourceMap.sample(it) })
         assertFalse(restored.current.sourceBackings.getValue("right").automatic)
+    }
+
+    @Test fun partialLegacyEnvelopeKeepsPositiveSlipOutsideHiddenUpperBoundThroughPruningAndReopen() {
+        assertSlippedPartialEnvelope(1000000, 35, 2750000)
+    }
+
+    @Test fun partialLegacyEnvelopeKeepsNegativeSlipOutsideHiddenLowerBoundThroughPruningAndReopen() {
+        assertSlippedPartialEnvelope(-200000, 10, 450000)
+    }
+
+    private fun assertSlippedPartialEnvelope(slip: Long, hiddenPhase: Int, expectedRequest: Long) {
+        var legacy = partialLegacyWindows()
+        // Two legacy slips plus an unrelated edit require retaining the accumulated translation.
+        repeat(2) {
+            legacy = legacyCommit(legacy, legacy.current.copy(clips = legacy.current.clips.map { if (it.id == "right")
+                it.copy(sourceMap = SourceTimeMap(it.sourceMap.points.map { point ->
+                    point.copy(sourceTimeUs = point.sourceTimeUs + slip / 2)
+                })) else it }))
+        }
+        legacy = legacyCommit(legacy, legacy.current.copy(textState = legacy.current.textState.copy(captionsEdited = true)))
+        var migrated = HybridEditCommands.setAuthoredText(legacy, false)
+        assertTrue(migrated.current.textState.captionsEdited)
+        repeat(51) { migrated = HybridEditCommands.setAuthoredText(migrated, !migrated.current.style.showAuthoredText) }
+        val root = temporary.newFolder()
+        val store = HybridProjectStore(root)
+        val sources = File(store.directory(migrated.id), "sources").apply { mkdirs() }
+        migrated.assets.forEach { File(sources, it.fileName).writeText("synthetic source") }
+        store.create(migrated)
+        val loaded = HybridProjectStore(root).load(migrated.id)
+        assertEquals(50, loaded.undo.size)
+        assertFalse(loaded.undo.any { it.id <= legacy.current.id })
+        val backing = loaded.current.sourceBackings.getValue("right")
+        assertEquals(slip, backing.slipUs)
+        assertEquals(0, backing.phaseStart)
+        assertFalse(backing.automatic)
+        assertEquals(listOf(100000L, 650000L, 1260000L, 1500000L, 1750000L, 2600000L),
+            listOf(0, 10, 22, 30, 35, 50).map { backing.map.sample(it) })
+        assertEquals(1260000 + slip, loaded.current.clips[1].sourceMap.sample(0))
+        val extended = if (slip > 0) HybridEditCommands.moveCut(loaded, "last", 44)
+            else HybridEditCommands.moveCut(loaded, "right", 18)
+        val right = extended.current.clips[1]
+        assertTrue(hiddenPhase - right.originalFrameOffset in 0 until right.span.length)
+        assertEquals(expectedRequest, right.sourceMap.sample(hiddenPhase - right.originalFrameOffset))
+        assertThrows(HybridEditRejected::class.java) {
+            if (slip > 0) HybridEditCommands.moveCut(loaded, "last", 58)
+            else HybridEditCommands.moveCut(loaded, "right", 8)
+        }
+        // Previously unavailable hidden requests must still exist when the slip is undone.
+        val unslipped = HybridEditCommands.slipClip(loaded, "right", -slip)
+        val restored = HybridEditCommands.moveCut(HybridEditCommands.moveCut(unslipped, "right", 8), "last", 58)
+        assertEquals(0, restored.current.clips[1].originalFrameOffset)
+        assertEquals(100000L, restored.current.clips[1].sourceMap.sample(0))
+        assertEquals(2600000L, restored.current.clips[1].sourceMap.sample(50))
     }
 
     @Test(timeout = 5000) fun oversizedProvenEnvelopeReservesComparisonsBeforeMaterializingSamples() {

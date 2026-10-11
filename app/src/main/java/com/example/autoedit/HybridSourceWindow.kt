@@ -76,10 +76,21 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
             "Для сохранения скрытых кадров требуется карта больше допустимого размера проекта"
         }
         comparisonBudget.reserve(length + 1)
+        // Normalize every selected window to the oldest proven window's raw coordinates.
+        // Keep its accumulated slip separate: translated hidden requests may be outside the
+        // source even though the visible window is legal. Do not sample/validate those as raw.
+        val slipUs = backing.last().slipUs
         val map = SourceTimeMap(List(length.toInt() + 1) { frame ->
-            SourceTimeMap.Point(frame, sample(first + frame - clip.originalFrameOffset))
+            val phase = first + frame
+            val selected = windows.first { window ->
+                val local = phase - window.clip.originalFrameOffset
+                local in 0..window.clip.span.length.toLong()
+            }
+            val local = (phase - selected.clip.originalFrameOffset).toInt()
+            val relativeSlip = Math.subtractExact(selected.slipUs, slipUs)
+            SourceTimeMap.Point(frame, Math.addExact(selected.clip.sourceMap.sample(local), relativeSlip))
         })
-        return HybridSourceBacking(clip.assetId, map, first.toInt(), 0, selectedRevisionId, false)
+        return HybridSourceBacking(clip.assetId, map, first.toInt(), slipUs, selectedRevisionId, false)
     }
 
     private fun sameSourceDescriptor(selected: HybridClip, saved: HybridClip): Boolean {
