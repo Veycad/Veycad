@@ -6,10 +6,12 @@ This is an additive source-level handoff from base
 music collector or establish native MP4 quality. Geometry PR35 is independent.
 
 **Checkpoint status:** meaningful legacy RED is recorded (22 errors confined to
-the old selector's unavailable manual API). Actual legacy GREEN and the five main
-JVM test classes are **pending**. The shared resource queue currently prohibits
-new local compilation. This document describes the prepared integration contract
-and required reproduction, not verified compatibility or completed acceptance.
+the old selector's unavailable manual API). All five required main JVM classes
+passed remotely at `35b2e62210d9b90d3effa9d16d992865b4d56fac` (33 tests,
+run38150774816). Actual legacy GREEN remains **pending**. The shared resource queue
+prohibits new local compilation; the isolated `Render QA legacy compatibility`
+workflow now defines the remote RED/GREEN gate. This is not verified legacy
+compatibility or completed acceptance.
 
 ## Files and callable contract
 
@@ -94,6 +96,14 @@ python tools/verify_render_qa_legacy.py --mode green
 Outside this task's locally ignored `.superpowers` directory, use
 `--evidence artifacts/render-qa-legacy` (ignored by the repository) for each mode
 and set `JAVA_HOME` directly to the installed JDK25 if the task env file is absent.
+
+Remote reproduction is defined in `.github/workflows/render-qa-legacy.yml`: it
+checks out the exact PR head with full history/LFS, uses JDK25/SDK36/Python3.12,
+warms the real Kotlin dependency cache with `:app:compileDebugKotlin --no-daemon
+--max-workers=1`, then runs the same RED and GREEN commands sequentially.
+It uploads the ignored evidence manifests/logs and exact checkout/input hashes
+even on failure. The standalone tool uses `JAVA_HOME` and `GRADLE_USER_HOME`
+(or `~/.gradle`) on Windows and Ubuntu. Main baseline/UI workflows are unchanged.
 
 `tools/verify_render_qa_legacy.py` writes full byte-preserved `git show` snapshots
 of 14 actual pure production dependencies to ignored task evidence. It pins

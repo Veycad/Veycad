@@ -73,7 +73,7 @@ def main():
     dependencies += [stdlib, jar("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"),
                      jar("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.8.0"),
                      jar("org.jetbrains", "annotations", "13.0")]
-    java = Path(os.environ["JAVA_HOME"]) / "bin/java.exe"
+    java = Path(os.environ["JAVA_HOME"]) / "bin" / ("java.exe" if os.name == "nt" else "java")
     version = subprocess.check_output([str(java), "-version"], stderr=subprocess.STDOUT).decode()
     if 'version "25' not in version:
         raise RuntimeError(f"JDK25 required: {version}")
