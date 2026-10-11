@@ -35,7 +35,7 @@ video-only output, call `muxPreparedAudio(prepared, videoFile, outputFile, video
 checkCancelled)`. The exclusive raw video endpoint must come from independent renderer/frame
 evidence. It must not be computed as first PTS plus declared duration. The mux copies actual
 compressed video samples, PTS, sync/partial flags and rotation, interleaves prepared audio, and
-writes explicit final track duration markers. It rejects encrypted tracks and samples above
+writes the explicit video endpoint and exact audio presentation edit. It rejects encrypted tracks and samples above
 16 MiB. On API 26/27 the fixed 16 MiB buffer avoids using the API 28 sample-size getter. Output is
 staged beside its destination and atomically replaced after successful muxer close and the final
 cancellation check. Unsupported atomic replacement fails while preserving the previous output.
@@ -47,6 +47,45 @@ conversion may transiently hold two signed16 arrays of at most one second, the m
 pending chunk plus its output conversion, and mux one 16 MiB compressed-sample buffer. Source
 and music together may open two decoders. Runtime measurements are required to accept these
 bounds on real codecs.
+
+Source AAC timing is measured for each selected encoder component with the exact 48 kHz,
+stereo, 192 kbps configuration. Two sequential one-second synthetic probes use the existing
+encoder and decoder owners: the first measures stable early/middle/late marker delay; the second
+requires negative extractor packet PTS, matching trim metadata, unchanged marker positions and
+exactly 48,000 decoded frames. A codec/container mismatch fails before real composition. No
+universal AAC delay is assumed. The new path currently requires API 35+; API 26–34 support is
+an unresolved release gate, while legacy MUSIC remains on its existing API.
+
+All AAC packets are drained and preserved. Measured priming is written as negative PTS, causing
+the supported MediaMuxer to write an edit list. `AacMp4Trim` corrects only fixed-size movie-unit
+fields in owned, non-fragmented version-0 containers: promotes the movie timescale to its exact
+common multiple with 48 kHz, rescales mvhd/tkhd/elst fields, and sets audio edit duration from actual
+input samples. Coded mdhd/stts, media bytes and chunk offsets remain intact so the extractor can
+derive both delay and trailing padding. Unsupported structures/overflow fail before field writes.
+Final mux preserves the extractor's already-negative audio PTS; it must not subtract delay again.
+`KEY_DURATION` can describe coded media duration including priming/padding; presentation duration
+comes from the edit, and acceptance separately checks actual decoded sample count and A/V end.
+
+Calibration owns at most one encoder or decoder at a time and one 2048-short PCM scratch buffer;
+it closes before source/music decoding starts. Probe stream metrics and elapsed microseconds are
+logged separately under `SourceAacTiming`, not included in caller provider metrics or total RSS.
+Temporary probes are removed on success/failure/cancellation. This costs two short encode/decode
+passes per preparation; there is no persistent or cross-project calibration cache.
+
+The UI runner retains generated WAV/M4A/MP4 evidence byte-for-byte using a binary stream and
+archives its SHA256. CI's separate FFmpeg native float AAC oracle checks the exact device-recorded
+AAC hash, actual planar-float format, unclamped peaks/plateaus, sample count and boundary markers
+in both prepared M4A and final MP4 at 30/60 fps. Missing/malformed evidence fails CI. PCM16 output
+from Android is recorded as PCM16; host float proof does not establish Android float support or
+human listening acceptance.
+
+The container policy follows the inspected AOSP
+[MPEG4Writer negative-start edit handling](https://android.googlesource.com/platform/frameworks/av/+/android-15.0.0_r1/media/libstagefright/MPEG4Writer.cpp)
+and [MPEG4Extractor edit/trim handling](https://android.googlesource.com/platform/frameworks/av/+/android-16.0.0_r1/media/module/extractors/mp4/MPEG4Extractor.cpp).
+The codec evidence comes from [C2SoftAacEnc](https://android.googlesource.com/platform/frameworks/av/+/android-16.0.0_r1/media/codec2/components/aac/C2SoftAacEnc.cpp),
+[C2SoftAacDec](https://android.googlesource.com/platform/frameworks/av/+/android-15.0.0_r1/media/codec2/components/aac/C2SoftAacDec.cpp)
+and the [FFmpeg floating-point AAC decoder](https://ffmpeg.org/doxygen/8.0/aacdec__float_8c_source.html).
+Source inspection establishes the policy to test; it does not substitute for exact-head runtime proof.
 
 The shared compiler/snapshot adapter, text rendering and existing STT adapter are separate gates.
 Muted source still produces pre-gain speech PCM intentionally; T4/T8 must enforce audible-source

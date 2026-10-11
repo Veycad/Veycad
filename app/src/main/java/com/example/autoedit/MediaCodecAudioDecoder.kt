@@ -14,7 +14,9 @@ import java.nio.ByteOrder
 internal object MediaCodecAudioDecoder {
     private const val STALL_TIMEOUT_NS = 20_000_000_000L
 
-    /** Per-operation accounting, excluding codec-internal/native allocations. Not thread safe. */
+    /** Per-operation accounting of primed decoder and looping-provider pending chunks.
+     * Transfer between these owners releases then acquires, never double counts. Returned chunks
+     * belong to the compositor's separate accounting. Excludes codec internals. Not thread safe. */
     class StreamMetrics {
         var openDecoders = 0; private set
         var peakOpenDecoders = 0; private set
@@ -35,7 +37,7 @@ internal object MediaCodecAudioDecoder {
         val raw = sourceProvider(mapOf("app-music" to file), metrics, checkCancelled)
         return PcmStreamProvider { id, outputUs ->
             require(id == "app-music" && outputUs == 0L)
-            LoopingMusicPcmStream(raw, startUs)
+            LoopingMusicPcmStream(raw, startUs, metrics)
         }
     }
 

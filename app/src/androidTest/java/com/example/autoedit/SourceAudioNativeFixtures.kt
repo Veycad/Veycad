@@ -96,7 +96,8 @@ internal object SourceAudioNativeFixtures {
     }
 
     /** Remux fixture tracks without decoding; first audio input determines first-track selection. */
-    fun remux(file: File, inputs: List<File>, shiftVideoUs: Long = 0, rotation: Int = 0): File {
+    fun remux(file: File, inputs: List<File>, shiftVideoUs: Long = 0, rotation: Int = 0,
+        audioOriginsUs: Map<Int, Long> = emptyMap(), videoEndUs: Long = 1_000_000): File {
         val extractors = mutableListOf<MediaExtractor>()
         val muxer = MediaMuxer(file.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         var started = false
@@ -114,13 +115,13 @@ internal object SourceAudioNativeFixtures {
                 while (extractor.sampleTime >= 0) {
                     buffer.clear()
                     val size = extractor.readSampleData(buffer, 0)
-                    val info = MediaCodec.BufferInfo().apply { set(0, size, extractor.sampleTime + if (video) shiftVideoUs else 0,
+                    val info = MediaCodec.BufferInfo().apply { set(0, size, extractor.sampleTime + if (video) shiftVideoUs else (audioOriginsUs[index] ?: 0),
                         if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0) }
                     muxer.writeSampleData(outputs[index], buffer, info)
                     extractor.advance()
                 }
                 if (video) muxer.writeSampleData(outputs[index], ByteBuffer.allocate(0), MediaCodec.BufferInfo().apply {
-                    set(0, 0, shiftVideoUs + 1_000_000, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    set(0, 0, shiftVideoUs + videoEndUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                 })
             }
             muxer.stop(); started = false

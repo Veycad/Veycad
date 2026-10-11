@@ -2,7 +2,8 @@ package com.veycad.app
 
 /** Selected app-music tail loops at its actual decoded EOF. Retains one bounded chunk,
  * preserves measured gaps, and assigns output sample-clock PTS starting at zero. */
-internal class LoopingMusicPcmStream(private val provider: PcmStreamProvider, private val startUs: Long) : PcmStream {
+internal class LoopingMusicPcmStream(private val provider: PcmStreamProvider, private val startUs: Long,
+    private val metrics: MediaCodecAudioDecoder.StreamMetrics? = null) : PcmStream {
     init { require(startUs >= 0) }
     private var stream: PcmStream? = requireNotNull(provider.open("app-music", startUs)) { "Music has no audio track" }
     override val format = requireNotNull(stream).format
@@ -36,6 +37,7 @@ internal class LoopingMusicPcmStream(private val provider: PcmStreamProvider, pr
             check(position >= cycleFrames - 1) { "Unordered music chunks" }
             gap = (position - cycleFrames).coerceAtLeast(0)
             pending = chunk
+            metrics?.retained()
         }
         val chunk = requireNotNull(pending)
         val count = if (gap > 0) minOf(gap, 1024L).toInt() else chunk.frames - skip
@@ -45,6 +47,7 @@ internal class LoopingMusicPcmStream(private val provider: PcmStreamProvider, pr
                 samples[frame * format.channels + channel] = (chunk.sample(frame + skip, channel) * 32768).toInt().toShort()
             } }
             pending = null
+            metrics?.released()
         }
         val pts = AudioExportPlan.presentationTimeUs(outputFrames, format.sampleRate)
         outputFrames = Math.addExact(outputFrames, count.toLong()); cycleFrames += count
@@ -53,7 +56,8 @@ internal class LoopingMusicPcmStream(private val provider: PcmStreamProvider, pr
 
     override fun close() {
         if (closed) return
-        closed = true; pending = null
+        closed = true
+        if (pending != null) { pending = null; metrics?.released() }
         val owned = stream; stream = null; owned?.close()
     }
 }

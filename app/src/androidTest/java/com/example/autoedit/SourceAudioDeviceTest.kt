@@ -57,10 +57,22 @@ class SourceAudioDeviceTest {
 
     @Test fun actual_nonzero_audio_pts_gap_and_first_track_remain_independent_of_video_origin() {
         val dir = directory("origins-gap")
-        val first = SourceAudioNativeFixtures.aac(File(dir,"first.m4a"),200_000,100_000,440.0)
+        val first = SourceAudioNativeFixtures.aac(File(dir,"first.m4a"),0,100_000,440.0)
         val second = SourceAudioNativeFixtures.aac(File(dir,"second.m4a"),0,0,900.0)
         val video = SyntheticVideo.create(File(dir,"video.mp4"),1000)
-        val multi = SourceAudioNativeFixtures.remux(File(dir,"multi.mp4"),listOf(video,first,second),120_000,90)
+        // Second audio is a real zero anchor. Apply origins only when writing this final
+        // multitrack container; a positive origin in a single-track file is normalized away.
+        val multi = SourceAudioNativeFixtures.remux(File(dir,"multi.mp4"),listOf(video,first,second),120_000,90,
+            audioOriginsUs=mapOf(1 to 200_000L))
+        val raw = android.media.MediaExtractor()
+        try {
+            raw.setDataSource(multi.path)
+            val origins = (0 until raw.trackCount).map { track ->
+                raw.selectTrack(track); val pts=raw.sampleTime; raw.unselectTrack(track); pts
+            }
+            File(dir,"actual-extractor-origins.txt").writeText(origins.toString())
+            assertEquals(listOf(120_000L,200_000L,0L),origins)
+        } finally { raw.release() }
         val metrics = MediaCodecAudioDecoder.StreamMetrics()
         val chunks = mutableListOf<Pair<Long,Int>>()
         var crossings = 0; var previous = 0.0
@@ -80,6 +92,48 @@ class SourceAudioDeviceTest {
         assertTrue((0 until 8_000).all { result[it*2] == 0.toShort() })
         assertTrue((35_600 until 38_000).all { result[it*2] == 0.toShort() })
         assertEquals(0,metrics.openDecoders)
+        val loopMetrics=MediaCodecAudioDecoder.StreamMetrics()
+        val loop=MediaCodecAudioDecoder.loopingMusicProvider(multi,metrics=loopMetrics).open("app-music",0)!!
+        val cancellation=CancellationException("during real initial audio gap")
+        try {
+            loop.use {
+                repeat(2) {
+                    val gap=loop.read()!!
+                    assertEquals(0.0,gap.sample(0,0),0.0)
+                    assertEquals(1,loopMetrics.retainedChunks)
+                    assertEquals(1,loopMetrics.peakRetainedChunks)
+                }
+                throw cancellation
+            }
+        } catch (failure: CancellationException) { assertSame(cancellation,failure) }
+        assertEquals(0,loopMetrics.openDecoders); assertEquals(0,loopMetrics.retainedChunks)
+    }
+
+    @Test fun wholly_after_audio_eof_window_is_valid_sticky_silence_and_subsequent_export_succeeds() {
+        val dir=directory("after-eof")
+        val audio=SourceAudioNativeFixtures.aac(File(dir,"short.m4a"))
+        val video=SyntheticVideo.create(File(dir,"long-video.mp4"),4000)
+        val input=SourceAudioNativeFixtures.remux(File(dir,"short-audio-long-video.mp4"),listOf(video,audio),videoEndUs=4_000_000)
+        val metrics=MediaCodecAudioDecoder.StreamMetrics()
+        val provider=source(mapOf("a" to input),metrics)
+        // Requested window 2s..3s: even its 500ms preroll is wholly after 1s audio EOF.
+        val opened=provider.open("a",2_000_000)
+        assertNotNull("valid exhausted track must not become absent",opened)
+        opened!!.use { stream ->
+            // An extractor can return the last preceding packet on seek-past-end. Consume only
+            // that bounded predecessor; no chunk may reach the requested window.
+            while (true) { val chunk=stream.read() ?: break; assertTrue(chunk.startPtsUs+chunk.frames*1_000_000L/48000 < 1_500_000) }
+            repeat(3) { assertNull(stream.read()) }
+        }
+        assertEquals(0,metrics.openDecoders); assertEquals(0,metrics.retainedChunks)
+        val silent=SourceAudioComposer(ProjectClock(30),listOf(clip("a",0,30,2_000_000,3_000_000)),provider)
+        val result=pcm(silent)
+        assertEquals(96_000,result.size); assertTrue(result.all { it==0.toShort() })
+        assertEquals(0,metrics.openDecoders)
+        AacEncoderMuxer.prepareSourceAudio(silent,AudioMixSettings(AudioMixMode.SOURCE),dir).use { assertEquals(48_000,it.sampleFrames) }
+        val retry=SourceAudioComposer(ProjectClock(30),listOf(clip("a",0,30)),provider)
+        AacEncoderMuxer.prepareSourceAudio(retry,AudioMixSettings(AudioMixMode.SOURCE),dir).use { assertEquals(48_000,it.sampleFrames) }
+        assertEquals(0,metrics.openDecoders); assertEquals(0,metrics.retainedChunks)
     }
 
     @Test fun canonical_hold_and_ramp_use_independently_authored_native_waveform_markers() {
@@ -117,10 +171,9 @@ class SourceAudioDeviceTest {
             assertEquals(90,videoFormat.getInteger(MediaFormat.KEY_ROTATION))
             assertEquals(1_120_000,videoFormat.getLong(MediaFormat.KEY_DURATION))
             val audioDuration = trackFormat(output,"audio/").getLong(MediaFormat.KEY_DURATION)
-            assertTrue("actual audio duration=$audioDuration",abs(audioDuration-1_000_000) <= 33_334)
             val decoded = MediaCodecAudioDecoder.decode(output,preserveFloatHeadroom=true)
-            assertEquals(AudioFormat.ENCODING_PCM_FLOAT,decoded.pcmEncoding)
-            assertTrue(abs(decoded.frameCount-48_000) <= 1600)
+            assertTrue(decoded.pcmEncoding in listOf(AudioFormat.ENCODING_PCM_16BIT,AudioFormat.ENCODING_PCM_FLOAT))
+            assertEquals(48_000,decoded.frameCount)
             File(dir,"actual-duration.txt").writeText("aac=$audioDuration decodedFrames=${decoded.frameCount} pcmEncoding=${decoded.pcmEncoding}")
             // Borrowed file is still owned/live after mux; an owner STT adapter is a later gate.
             assertTrue(prepared.speechPcmFile.isFile)
@@ -131,31 +184,51 @@ class SourceAudioDeviceTest {
     @Test fun actual_aac_markers_match_authored_video_frames_and_duration_at_30_and_60() {
         val dir = directory("av-frames")
         val wave = SourceAudioNativeFixtures.wav(File(dir,"marker.wav")) { frame ->
-            (30_000 * kotlin.math.exp(-((frame-24_000)/25.0)*((frame-24_000)/25.0))).toInt().toShort()
+            val distance=listOf(1600,24000,46400).minOf { abs(frame-it) }
+            (30_000 * kotlin.math.exp(-(distance/25.0)*(distance/25.0))).toInt().toShort()
         }
         for (fps in listOf(30,60)) {
             val composer = SourceAudioComposer(ProjectClock(fps),listOf(clip("a",0,fps)),source(mapOf("a" to wave)))
             AacEncoderMuxer.prepareSourceAudio(composer,AudioMixSettings(AudioMixMode.SOURCE),dir).use { prepared ->
                 val video = SyntheticVideo.create(File(dir,"video-$fps.mp4"),1000,fps=fps)
                 val output = File(dir,"av-$fps.mp4")
+                val retained=File(dir,"prepared-$fps.m4a"); prepared.aacFile.copyTo(retained)
                 AacEncoderMuxer.muxPreparedAudio(prepared,video,output,1_000_000)
                 val videoPts = videoPackets(output).map { it.substringBefore(':').toLong() }
                 assertEquals(fps,videoPts.size)
                 assertEquals(500_000,videoPts[fps/2])
-                var peak = 0.0; var peakUs = 0L; var audioEndUs = 0L
-                source(mapOf("out" to output)).open("out",0)!!.use { stream ->
+                for (encoded in listOf(retained,output)) {
+                val extractor=MediaExtractor()
+                try {
+                    extractor.setDataSource(encoded.path)
+                    extractor.selectTrack((0 until extractor.trackCount).first { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)!!.startsWith("audio/") })
+                    val packetPts=mutableListOf<Long>()
+                    while (extractor.sampleTrackIndex>=0) { packetPts+=extractor.sampleTime; extractor.advance() }
+                    File(dir,"${encoded.name}-encoded-pts.txt").writeText(packetPts.joinToString("\n"))
+                    assertTrue("priming packets preserved ${encoded.name}",packetPts.first()<0)
+                } finally { extractor.release() }
+                val peaks=DoubleArray(3); val peakUs=LongArray(3) { -1 }; var audioEndUs = 0L; var decodedFrames=0L
+                source(mapOf("out" to encoded)).open("out",0)!!.use { stream ->
                     while (true) {
                         val chunk = stream.read() ?: break
                         repeat(chunk.frames) { frame ->
                             val value = abs(chunk.sample(frame,0))
-                            if (value > peak) { peak=value; peakUs=chunk.startPtsUs+frame*1_000_000L/48_000 }
+                            val pts=chunk.startPtsUs+frame*1_000_000L/48_000
+                            val region=when(pts) { in 0..150_000 -> 0; in 350_000..650_000 -> 1; in 850_000..1_050_000 -> 2; else -> -1 }
+                            if (region>=0 && value>peaks[region]) { peaks[region]=value; peakUs[region]=pts }
                         }
                         audioEndUs=chunk.startPtsUs+chunk.frames*1_000_000L/48_000
+                        decodedFrames+=chunk.frames
                     }
                 }
-                File(dir,"av-$fps-evidence.txt").writeText("videoMarker=${videoPts[fps/2]}, audioPeak=$peakUs, audioEnd=$audioEndUs, peak=$peak")
-                assertTrue("fps=$fps audio marker=$peakUs",abs(peakUs-500_000)<=1_000_000/fps)
+                File(dir,"${encoded.name}-evidence.txt").writeText("format=${trackFormat(encoded,"audio/")} videoMarkers=${listOf(videoPts[fps/30],videoPts[fps/2],videoPts[fps-fps/30])}, audioPeaks=${peakUs.toList()}, audioEnd=$audioEndUs, frames=$decodedFrames peaks=${peaks.toList()}")
+                for ((index, expected) in listOf(33_333L,500_000L,966_667L).withIndex()) {
+                    assertTrue("${encoded.name} marker $index missing",peaks[index]>.3)
+                    assertTrue("fps=$fps ${encoded.name} marker=$index pts=${peakUs[index]}",abs(peakUs[index]-expected)<=22)
+                }
+                assertEquals("sample-exact decoded count ${encoded.name}",48_000,decodedFrames)
                 assertTrue("fps=$fps decoded audio end=$audioEndUs",abs(audioEndUs-1_000_000)<=1_000_000/fps)
+                }
             }
         }
     }
@@ -171,6 +244,13 @@ class SourceAudioDeviceTest {
         }
         assertSame(cancelled,first); assertEquals(0,metrics.openDecoders)
         val composer = SourceAudioComposer(ProjectClock(30),listOf(clip("a",0,150,0,5_000_000)),source(mapOf("a" to wav)))
+        val probeCancellation=assertThrows(CancellationException::class.java) {
+            AacEncoderMuxer.prepareSourceAudio(composer,AudioMixSettings(AudioMixMode.SOURCE),dir,checkCancelled={
+                if(dir.listFiles()!!.any { it.name.startsWith("aac-probe-") && it.length()>2048 }) throw cancelled
+            })
+        }
+        assertSame(cancelled,probeCancellation)
+        assertTrue(dir.listFiles()!!.none { it.name.startsWith("aac-probe-") })
         assertThrows(CancellationException::class.java) {
             AacEncoderMuxer.prepareSourceAudio(composer,AudioMixSettings(AudioMixMode.SOURCE),dir,checkCancelled={
                 if (dir.listFiles()!!.any { it.name.startsWith("source-audio-") && it.length() > 2048 }) throw cancelled
@@ -187,6 +267,28 @@ class SourceAudioDeviceTest {
             assertTrue(dir.listFiles()!!.none { it.name.startsWith("source-mux-") })
             AacEncoderMuxer.muxPreparedAudio(prepared,video,output,1_000_000)
             assertEquals(30,videoPackets(output).size)
+        }
+    }
+
+    @Test fun actual_nonintegral_movie_tick_lengths_trim_to_exact_pcm_samples_at_30_and_60() {
+        val dir=directory("partial-frame-trim")
+        val wav=SourceAudioNativeFixtures.wav(File(dir,"source.wav"),2) { SourceAudioNativeFixtures.tone(it) }
+        for ((fps,frames) in listOf(30 to 49_600L,60 to 48_800L)) {
+            val endUs=if(fps==30) 1_033_333L else 1_016_666L
+            val composer=SourceAudioComposer(ProjectClock(fps),listOf(clip("a",0,fps+1,0,endUs)),source(mapOf("a" to wav)))
+            AacEncoderMuxer.prepareSourceAudio(composer,AudioMixSettings(AudioMixMode.SOURCE),dir).use { prepared ->
+                assertEquals(frames,prepared.sampleFrames)
+                val retained=File(dir,"prepared-$fps-partial.m4a"); prepared.aacFile.copyTo(retained)
+                val video=SyntheticVideo.create(File(dir,"video-$fps.mp4"),if(fps==30) 1034 else 1017,fps=fps)
+                val output=File(dir,"final-$fps-partial.mp4")
+                AacEncoderMuxer.muxPreparedAudio(prepared,video,output,endUs)
+                for(file in listOf(retained,output)) {
+                    var count=0L
+                    source(mapOf("a" to file)).open("a",0)!!.use { stream -> while(true) { count+=(stream.read() ?: break).frames } }
+                    File(dir,"${file.name}-samples.txt").writeText("expected=$frames actual=$count format=${trackFormat(file,"audio/")}")
+                    assertEquals("sample-exact ${file.name}",frames,count)
+                }
+            }
         }
     }
 
@@ -261,15 +363,15 @@ class SourceAudioDeviceTest {
             prepared.aacFile.copyTo(File(dir,"mixed-for-listening.m4a"))
             prepared.speechPcmFile.copyTo(File(dir,"premusic-16k.pcm"))
             val decoded = MediaCodecAudioDecoder.decode(prepared.aacFile,preserveFloatHeadroom=true)
-            assertEquals("Unclamped float evidence required",AudioFormat.ENCODING_PCM_FLOAT,decoded.pcmEncoding)
-            val floats = ByteBuffer.allocate(decoded.interleavedSamples.size*4).order(ByteOrder.LITTLE_ENDIAN)
-            decoded.interleavedSamples.forEach { floats.putFloat(it) }
-            File(dir,"aac-decoded-float32.pcm").writeBytes(floats.array())
-            val peak = decoded.interleavedSamples.maxOf { abs(it) }
-            val fullScaleRuns = decoded.interleavedSamples.asSequence().windowed(16).count { block -> block.all { abs(it)>=.999f } }
-            File(dir,"peak-evidence.txt").writeText("pcmPeak=$pcmPeak aacFloatPeak=$peak fullScaleRuns=$fullScaleRuns encoding=${decoded.pcmEncoding}; human listening NOT ASSESSED")
-            assertTrue("AAC peak=$peak",peak <= 1f)
-            assertEquals(0,fullScaleRuns)
+            // C2's AAC decoder can return PCM16 despite the float request. Never relabel that
+            // saturated signal as float proof. The mandatory remote host oracle decodes this
+            // exact retained AAC with a real float AAC decoder and gates peak/flat-run quality.
+            assertTrue(decoded.pcmEncoding in listOf(AudioFormat.ENCODING_PCM_16BIT,AudioFormat.ENCODING_PCM_FLOAT))
+            assertEquals(48_000,decoded.frameCount)
+            val retained=File(dir,"mixed-for-listening.m4a")
+            val hash=MessageDigest.getInstance("SHA-256").digest(retained.readBytes()).joinToString("") { "%02x".format(it) }
+            File(dir,"float-oracle.json").writeText("""{"aac":"mixed-for-listening.m4a","sha256":"$hash","sampleFrames":48000,"sampleRate":48000,"channels":2,"androidPcmEncoding":${decoded.pcmEncoding},"pcmPeak":$pcmPeak}""")
+            File(dir,"peak-evidence.txt").writeText("pcmPeak=$pcmPeak actualAndroidEncoding=${decoded.pcmEncoding}; unclamped AAC quality requires host oracle; human listening NOT ASSESSED")
         }
     }
 

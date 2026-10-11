@@ -4,6 +4,41 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LoopingMusicPcmStreamTest {
+    @Test fun pending_chunk_is_counted_through_gap_and_released_on_cancel_without_double_counting_transfer() {
+        val metrics = MediaCodecAudioDecoder.StreamMetrics()
+        val format = PcmFormat(8_000, 1)
+        var closed = 0
+        val provider = PcmStreamProvider { _, _ ->
+            // Same primed-chunk ownership transfer as the native provider.
+            metrics.retained()
+            object : PcmStream {
+                override val format = format
+                var read = false
+                override fun read(): PcmChunk? {
+                    if (read) return null
+                    read = true; metrics.released()
+                    return PcmChunk(format, 500_000, ShortArray(80) { 123 })
+                }
+                override fun close() { closed++ }
+            }
+        }
+        val cancelled = java.util.concurrent.CancellationException("gap cancellation")
+        try {
+            LoopingMusicPcmStream(provider, 0, metrics).use { stream ->
+                repeat(2) {
+                    val silence = stream.read()
+                    assertEquals(1024, silence.frames)
+                    assertEquals(0.0, silence.sample(0, 0), 0.0)
+                    assertEquals("pending chunk is still owned during silence", 1, metrics.retainedChunks)
+                    assertEquals("first chunk transfer must not double count", 1, metrics.peakRetainedChunks)
+                }
+                throw cancelled
+            }
+        } catch (failure: java.util.concurrent.CancellationException) { assertSame(cancelled, failure) }
+        assertEquals(0, metrics.retainedChunks)
+        assertEquals(1, closed)
+    }
+
     @Test fun selected_tail_loops_on_output_zero_clock_and_keeps_measured_gaps() {
         var opened = 0
         var closed = 0
