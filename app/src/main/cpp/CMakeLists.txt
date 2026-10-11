@@ -20,5 +20,8 @@ FetchContent_Declare(whisper
     URL_HASH SHA256=17c4189d2ba98fedac681dc76944476217008f2c7268784bd519bf069ca37e3a)
 FetchContent_MakeAvailable(whisper)
 add_library(veycad_whisper SHARED whisper_jni.cpp)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/whisper_jni.cpp")
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/whisper_jni.cpp" VEYCAD_WHISPER_BRIDGE_SHA)
+target_compile_definitions(veycad_whisper PRIVATE VEYCAD_WHISPER_BRIDGE_SHA="${VEYCAD_WHISPER_BRIDGE_SHA}")
 target_link_libraries(veycad_whisper PRIVATE whisper android log)
 target_link_options(veycad_whisper PRIVATE "-Wl,-z,max-page-size=16384")

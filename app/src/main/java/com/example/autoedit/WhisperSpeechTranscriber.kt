@@ -26,13 +26,18 @@ internal class WhisperSpeechTranscriber : SpeechTranscriber {
         var performed=false
         var verifiedModel:String?=null
         var handle=0L
-        return SpeechOutcomes.captureOutcome(evidence={ SpeechEvidence(recognitionPerformed=performed,modelSha256=verifiedModel) }) {
+        val observed=mutableListOf<SpeechWindowEvidence>()
+        fun evidence()=SpeechEvidence(recognitionPerformed=performed,modelSha256=verifiedModel,
+            requestedLanguage=language.takeIf { it in setOf("auto","ru","en") },inputFrames=pcm.frames.takeIf { it>=0 },
+            alignmentKind=if(observed.isEmpty()) SpeechAlignmentKind.SEGMENT_ONLY else SpeechAlignmentKind.TOKEN_HEURISTIC,
+            rawEvidence=if(observed.isEmpty()) null else SpeechRawEvidence(observed))
+        return SpeechOutcomes.captureOutcome(evidence=::evidence) {
           try {
             require(language in setOf("auto","ru","en"))
-            require(pcm.sampleRate==16000 && pcm.channels==1 && pcm.frames>=0 && pcm.file.isFile && pcm.file.length()>=pcm.frames*2)
+            require(pcm.sampleRate==16000 && pcm.channels==1 && pcm.frames in 0..Long.MAX_VALUE/1_000_000 &&
+                pcm.file.isFile && pcm.file.length()>=pcm.frames*2)
             checkCancelled()
-            if(!pcm.hasAudio) return@captureOutcome SpeechOutcome.NoSpeech(SpeechEvidence(
-                recognitionPerformed=false,reason=SpeechNoSpeechReason.NO_AUDIO_TRACK))
+            if(!pcm.hasAudio) return@captureOutcome SpeechOutcome.NoSpeech(evidence().copy(reason=SpeechNoSpeechReason.NO_AUDIO_TRACK))
             var cues=emptyList<CaptionCue>()
             val windows=SpeechWindows.forFrames(pcm.frames)
             RandomAccessFile(pcm.file,"r").use { input ->
@@ -52,17 +57,21 @@ internal class WhisperSpeechTranscriber : SpeechTranscriber {
                             onProgress(5)
                         }
                         performed=true
+                        val cancellation=NativeCancellation(checkCancelled)
                         val rows=stage(SpeechFailureCode.NATIVE) {
-                            WhisperNative.recognize(handle,samples,language,NativeCancellation(checkCancelled))
+                            val result=WhisperNative.recognize(handle,samples,language,cancellation)
+                            cancellation.rethrow()
+                            result
                         }
                         checkCancelled()
-                        val incoming=WhisperResultParser.cues(rows,offset,pcm.frames,count)
-                        cues=CaptionSegmenter.merge(cues,incoming,pcm.frames*1_000_000/16000)
+                        val window=SpeechTokenParser.window(rows,offset,pcm.frames,count,language)
+                        observed.add(window)
+                        cues=CaptionSegmenter.merge(cues,window.cues,pcm.frames*1_000_000/16000)
                     }
                     onProgress(5+(index+1)*95/windows.size)
                 }
             }
-            val evidence=SpeechEvidence(recognitionPerformed=performed,modelSha256=verifiedModel)
+            val evidence=evidence()
             if(cues.isNotEmpty()) SpeechOutcome.Success(cues,evidence)
             else SpeechOutcome.NoSpeech(evidence.copy(reason=if(performed) SpeechNoSpeechReason.RECOGNIZED_NO_SPEECH else SpeechNoSpeechReason.DIGITAL_SILENCE))
           } finally { if(handle!=0L) WhisperNative.close(handle) }

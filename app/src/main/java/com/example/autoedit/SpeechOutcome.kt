@@ -25,7 +25,12 @@ internal data class SpeechEvidence(
     val recognitionPerformed:Boolean?=null,
     val reason:SpeechNoSpeechReason?=null,
     val modelSha256:String?=null,
-    val confidenceCalibrated:Boolean=false
+    val confidenceCalibrated:Boolean=false,
+    val alignmentKind:SpeechAlignmentKind=SpeechAlignmentKind.SEGMENT_ONLY,
+    val confidenceKind:SpeechConfidenceKind=SpeechConfidenceKind.UNAVAILABLE,
+    val requestedLanguage:String?=null,
+    val inputFrames:Long?=null,
+    val rawEvidence:SpeechRawEvidence?=null
 ) {
     init {
         require(confidence==null || (confidence.isFinite() && confidence in 0.0..1.0))

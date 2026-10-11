@@ -11,6 +11,37 @@ import java.nio.ByteOrder
 
 @RunWith(AndroidJUnit4::class)
 class WhisperDeviceTest {
+    @Test fun overlappingWindowsKeepRawLanguageEvidenceAndValidatePartialFinalWindow() {
+        val context=ApplicationProvider.getApplicationContext<android.content.Context>()
+        val wav=androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets
+            .open("speech/russian.wav").use { it.readBytes() }
+        val input=ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN).apply { position(12) }
+        var speech=ByteArray(0)
+        while(input.remaining()>=8) {
+            val id=ByteArray(4).also { input.get(it) }.toString(Charsets.US_ASCII); val size=input.int
+            if(id=="data") { speech=ByteArray(size).also { input.get(it) }; break }
+            input.position(input.position()+size+(size and 1))
+        }
+        assertTrue(speech.isNotEmpty())
+        val bytes=ByteArray(34*16000*2)
+        speech.copyInto(bytes,26*16000*2,endIndex=minOf(speech.size,8*16000*2))
+        val pcm=File(context.cacheDir,"partial-window.raw").apply { writeBytes(bytes) }
+        try {
+            val outcome=WhisperSpeechTranscriber().transcribePcmOutcome(context,PcmFile(pcm,16000,1,34*16000L,true),"auto",{}, {})
+            if(outcome is SpeechOutcome.Failure) throw outcome.cause
+            val success=outcome as SpeechOutcome.Success
+            val raw=success.evidence.rawEvidence!!
+            assertEquals(listOf(0L,28*16000L),raw.windows.map { it.startFrame })
+            assertEquals(listOf(30*16000,6*16000),raw.windows.map { it.frames })
+            assertTrue(raw.windows.all { it.languageOrigin==SpeechLanguageOrigin.BACKEND_DETECTED })
+            assertEquals("auto",success.evidence.requestedLanguage)
+            assertEquals(34*16000L,success.evidence.inputFrames)
+            assertTrue(raw.windows.all { it.tokens.isNotEmpty() })
+            assertTrue(raw.words.any { it.text.lowercase().contains("субтитр") })
+            assertTrue(raw.words.all { it.startUs==null || (it.startUs>=0 && it.endUs!!>it.startUs && it.endUs<=34_000_000) })
+            assertTrue(pcm.isFile); assertArrayEquals(bytes,pcm.readBytes())
+        } finally { pcm.delete() }
+    }
     @Test fun missingAudioAndInvalidInputAreExplicitOutcomes() {
         val context=ApplicationProvider.getApplicationContext<android.content.Context>()
         val source=SyntheticVideo.create(File(context.cacheDir,"no-audio-outcome.mp4"),1000)
@@ -32,7 +63,7 @@ class WhisperDeviceTest {
         val modelReady=java.util.concurrent.atomic.AtomicBoolean()
         assertThrows(java.util.concurrent.CancellationException::class.java) {
             WhisperSpeechTranscriber().transcribePcm(context,PcmFile(pcm,16000,1,32000,true),"ru",
-                { if(modelReady.get() && calls.incrementAndGet()>8) throw java.util.concurrent.CancellationException() },
+                { if(modelReady.get() && calls.incrementAndGet()==9) throw java.util.concurrent.CancellationException("one shot native abort") },
                 { if(it==5) modelReady.set(true) })
         }
         assertTrue(pcm.isFile)
@@ -66,6 +97,16 @@ class WhisperDeviceTest {
         val quietResult=WhisperSpeechTranscriber().transcribePcmOutcome(context,PcmFile(pcm,16000,1,quiet.size/2L,true),"ru",{}, {}) as SpeechOutcome.Success
         assertEquals(true,quietResult.evidence.recognitionPerformed)
         assertEquals(WhisperSpeechTranscriber.MODEL_SHA,quietResult.evidence.modelSha256)
+        assertEquals(SpeechAlignmentKind.TOKEN_HEURISTIC,quietResult.evidence.alignmentKind)
+        assertEquals("ru",quietResult.evidence.requestedLanguage)
+        assertNull(quietResult.evidence.wordTimings); assertNull(quietResult.evidence.confidence)
+        assertFalse(quietResult.evidence.confidenceCalibrated); assertTrue(quietResult.evidence.needsReview)
+        val observed=quietResult.evidence.rawEvidence!!.windows.single()
+        assertEquals(SpeechTokenParser.BACKEND_COMMIT,observed.backendCommit)
+        assertTrue(observed.bridgeSha256.matches(Regex("[0-9a-f]{64}")))
+        assertEquals(SpeechLanguageOrigin.REQUESTED,observed.languageOrigin)
+        assertTrue(observed.tokens.isNotEmpty()); assertTrue(observed.words.any { it.text.lowercase().contains("субтитр") })
+        assertTrue(observed.words.all { !it.confidenceCalibrated })
         assertTrue(quietResult.cues.joinToString(" ") { it.text }.lowercase().contains("субтитр"))
         pcm.delete()
     }
@@ -90,7 +131,10 @@ class WhisperDeviceTest {
         val video=SyntheticVideo.create(File(context.cacheDir,"jfk-video.mp4"),12000)
         val speech=File(context.cacheDir,"jfk-speech.mp4")
         TextAudioMuxer.mux(video,PcmFile(pcm,16000,1,samples.size.toLong(),true),speech,{})
-        val cues=WhisperSpeechTranscriber().transcribe(context,speech,"en",{}, {})
+        val recognized=WhisperSpeechTranscriber().transcribeOutcome(context,speech,"en",{}, {}) as SpeechOutcome.Success
+        val cues=recognized.cues
+        assertEquals("en",recognized.evidence.requestedLanguage)
+        assertTrue(recognized.evidence.rawEvidence!!.windows.single().words.any { it.text.lowercase()=="country" })
         assertTrue(cues.joinToString(" ") { it.text }.lowercase().contains("country"))
         assertTrue(cues.all { it.startUs<it.endUs && it.endUs<=12_000_000 })
         assertTrue(cues.zipWithNext().all { (a,b) -> a.endUs<=b.startUs })

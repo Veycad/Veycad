@@ -1,7 +1,13 @@
 package com.veycad.app
 
 internal class NativeCancellation(private val check: () -> Unit) {
-    @Suppress("unused") fun isCancelled(): Boolean = runCatching { check() }.isFailure
+    private val failure=java.util.concurrent.atomic.AtomicReference<Throwable?>()
+    @Suppress("unused") fun isCancelled(): Boolean {
+        if(failure.get()!=null) return true
+        try { check() } catch(caught:Throwable) { failure.compareAndSet(null,caught) }
+        return failure.get()!=null
+    }
+    fun rethrow() { failure.get()?.let { throw it } }
 }
 
 internal object WhisperNative {

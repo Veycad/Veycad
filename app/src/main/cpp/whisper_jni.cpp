@@ -4,9 +4,24 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <sstream>
+#include <iomanip>
+#include <limits>
 
 namespace {
 struct Cancellation { JavaVM *vm; jobject object; jmethodID method; };
+std::string hex_bytes(const char *text) {
+    static const char digits[]="0123456789abcdef";
+    std::string result;
+    if(text) for(const unsigned char *p=reinterpret_cast<const unsigned char *>(text);*p;++p) {
+        result.push_back(digits[*p>>4]); result.push_back(digits[*p&15]);
+    }
+    return result;
+}
+std::string probability(float value) {
+    std::ostringstream out; out<<std::setprecision(std::numeric_limits<float>::max_digits10)<<value;
+    return out.str();
+}
 bool cancelled(void *opaque) {
     auto *c = static_cast<Cancellation *>(opaque);
     JNIEnv *env = nullptr;
@@ -20,7 +35,7 @@ bool cancelled(void *opaque) {
 }
 extern "C" JNIEXPORT jlong JNICALL Java_com_veycad_app_WhisperNative_open(JNIEnv *env,jobject,jstring path) {
     const char *p=env->GetStringUTFChars(path,nullptr);
-    auto params=whisper_context_default_params(); params.use_gpu=false;
+    auto params=whisper_context_default_params(); params.use_gpu=false; params.dtw_token_timestamps=false;
     auto *context=whisper_init_from_file_with_params(p,params);
     env->ReleaseStringUTFChars(path,p);
     return reinterpret_cast<jlong>(context);
@@ -42,7 +57,7 @@ extern "C" JNIEXPORT jobjectArray JNICALL Java_com_veycad_app_WhisperNative_reco
     params.n_threads=std::max(1,std::min(4,static_cast<int>(std::thread::hardware_concurrency())));
     params.language=selected=="auto" ? nullptr : selected.c_str();
     params.detect_language=false; params.translate=false; params.no_context=true;
-    params.print_progress=false; params.print_realtime=false; params.print_timestamps=false;
+    params.print_progress=false; params.print_realtime=false; params.print_timestamps=false; params.print_special=false;
     params.suppress_blank=true; params.suppress_nst=true; params.temperature_inc=0;
     params.token_timestamps=true; params.max_len=42; params.split_on_word=true;
     params.abort_callback=cancelled; params.abort_callback_user_data=&cancellation;
@@ -54,12 +69,25 @@ extern "C" JNIEXPORT jobjectArray JNICALL Java_com_veycad_app_WhisperNative_reco
         env->ThrowNew(env->FindClass("java/lang/IllegalStateException"),"Whisper transcription failed");
         return nullptr;
     }
-    if(!aborted) for(int i=0;i<whisper_full_n_segments(ctx);++i) {
-        if(whisper_full_get_segment_no_speech_prob(ctx,i)>.6f) continue;
-        const int64_t start=whisper_full_get_segment_t0(ctx,i)*10000;
-        const int64_t end=whisper_full_get_segment_t1(ctx,i)*10000;
-        const char *text=whisper_full_get_segment_text(ctx,i);
-        if(end>start && text && *text) rows.push_back(std::to_string(start)+"\t"+std::to_string(end)+"\t"+text);
+    if(!aborted) {
+        int lang_id=whisper_full_lang_id(ctx);
+        const char *actual_language=lang_id>=0 && lang_id<=whisper_lang_max_id() ? whisper_lang_str(lang_id) : nullptr;
+        if(!actual_language) lang_id=-1;
+        const int eot=whisper_token_eot(ctx);
+        rows.push_back(std::string("H\t1\t48f628a84833905ee4a0658ee6d4a5c915ce1997\t")+
+            VEYCAD_WHISPER_BRIDGE_SHA+"\t"+std::to_string(length)+"\t"+std::to_string(lang_id)+"\t"+
+            hex_bytes(actual_language)+"\t"+std::to_string(eot)+"\t"+std::to_string(whisper_n_vocab(ctx)));
+        for(int i=0;i<whisper_full_n_segments(ctx);++i) {
+            rows.push_back("S\t"+std::to_string(i)+"\t"+std::to_string(whisper_full_get_segment_t0(ctx,i))+"\t"+
+                std::to_string(whisper_full_get_segment_t1(ctx,i))+"\t"+
+                probability(whisper_full_get_segment_no_speech_prob(ctx,i))+"\t"+hex_bytes(whisper_full_get_segment_text(ctx,i)));
+            for(int j=0;j<whisper_full_n_tokens(ctx,i);++j) {
+                const auto token=whisper_full_get_token_data(ctx,i,j);
+                rows.push_back("T\t"+std::to_string(i)+"\t"+std::to_string(j)+"\t"+std::to_string(token.id)+"\t"+
+                    (token.id>=eot ? "SPECIAL" : "TEXT")+"\t"+std::to_string(token.t0)+"\t"+std::to_string(token.t1)+"\t"+
+                    probability(token.p)+"\t"+hex_bytes(whisper_full_get_token_text(ctx,i,j)));
+            }
+        }
     }
     auto array=env->NewObjectArray(rows.size(),env->FindClass("java/lang/String"),nullptr);
     for(size_t i=0;i<rows.size();++i) { jstring row=env->NewStringUTF(rows[i].c_str()); env->SetObjectArrayElement(array,i,row); env->DeleteLocalRef(row); }
