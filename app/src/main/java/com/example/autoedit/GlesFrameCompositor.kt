@@ -15,7 +15,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 
-/** Shared artistic GLES renderer; the target owns EGL and presentation. Task6b adds project framing. */
+/** Shared artistic GLES renderer; the target owns EGL and presentation. */
 internal class GlesFrameCompositor(
     private val target: RenderTarget,
     private val renderPlan: RenderPassPlanner.Plan,
@@ -33,7 +33,8 @@ internal class GlesFrameCompositor(
     private val onDraw: (DrawEvidence) -> Unit = {},
     private val onPassExecuted: (RenderPassPlanner.PassKind) -> Unit = {},
     private val programDriver: GlProgramOwnership.Driver = GlesProgram,
-    private val sourceAttachments: List<SourceAttachments> = emptyList()
+    private val sourceAttachments: List<SourceAttachments> = emptyList(),
+    manualFraming: ManualFramingTable? = null
 ) : AutoCloseable {
     private val width = target.size.width
     private val height = target.size.height
@@ -62,10 +63,13 @@ internal class GlesFrameCompositor(
     private var released = false
     private val passExecutions = linkedMapOf<RenderPassPlanner.PassKind, Int>()
     private var heartbeatTextureLogged = false
-    private val fearPivotByClip = mutableMapOf<Int, Pair<Float, Float>>()
+    private data class PivotKey(val clipIndex: Int, val sourceIndex: Int, val crop: SourceFraming.Crop)
+    private val fearPivotByClip = mutableMapOf<PivotKey, Pair<Float, Float>>()
+    private var manualFraming = manualFraming
 
     init {
         try {
+            manualFraming?.requireTarget(target.size)
             makeCurrent()
             incomingInput = DecoderInput(0)
             outgoingInput = DecoderInput(1)
@@ -112,6 +116,22 @@ internal class GlesFrameCompositor(
     fun updateOutgoingTexture() = outgoingInput.update()
     fun executedPasses(): Map<RenderPassPlanner.PassKind, Int> { checkWorker(); return passExecutions.toMap() }
 
+    /** Pan/zoom the retained decoded images. No input submission, allocation or revision change. */
+    fun updateManualFraming(framing: ManualFramingTable) {
+        checkWorker()
+        check(!released) { "GLES compositor is closed" }
+        val current = requireNotNull(manualFraming) { "Cached update requires an initial MANUAL selection table" }
+        framing.requireTarget(target.size)
+        require(target.size == OutputSize(width, height)) { "Composition resize requires the display controller" }
+        current.requireCompatible(framing)
+        // Validate before replacing anything; both roles observe one immutable table on this worker.
+        manualFraming = framing
+        fearPivotByClip.clear()
+    }
+
+    private fun sourceCrop(sourceIndex: Int): SourceFraming.Crop =
+        manualFraming?.crop(sourceIndex) ?: sourceCrops[sourceIndex]
+
     fun drawScheduled(frame: HighQualityFramePlan.Frame, sourceRotation: Int) {
         drawInternal(frame, null, sourceRotation, sourceRotation)
     }
@@ -144,6 +164,21 @@ internal class GlesFrameCompositor(
         outgoingRotation: Int
     ) {
         makeCurrent()
+        manualFraming?.let {
+            it.requireTarget(target.size)
+            require(target.size == OutputSize(width, height)) { "Composition resize requires the display controller" }
+        }
+        val incomingCrop = sourceCrop(incomingFrame.sourceIndex)
+        // Validate the requested role even when a diagnostic override binds incoming to both units.
+        outgoingFrame?.let { sourceCrop(it.sourceIndex) }
+        val secondaryFrame = outgoingFrame?.let {
+            MediaCodecSpeedRampRenderer.boundSecondaryInput(incomingFrame, it,
+                debugTextureProbe, debugProbeIncomingOnBothUnits)
+        } ?: incomingFrame
+        val outgoingCrop = sourceCrop(secondaryFrame.sourceIndex)
+        val secondarySamplerInput = MediaCodecSpeedRampRenderer.boundSecondaryInput(
+            incomingInput, outgoingInput, debugTextureProbe, debugProbeIncomingOnBothUnits
+        )
         if (sceneTarget == null) bindOutput() else {
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, sceneTarget!!.framebuffer)
             GLES20.glViewport(0, 0, sceneTarget!!.width, sceneTarget!!.height)
@@ -151,7 +186,6 @@ internal class GlesFrameCompositor(
         GLES20.glClearColor(0f, 0f, 0f, 1f); GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         GLES20.glUseProgram(program)
         val transform = FloatArray(16); Matrix.setIdentityM(transform, 0)
-        val incomingCrop = sourceCrops[incomingFrame.sourceIndex]
         val actualPts = incomingInput.timestampUs()
         val attachments = if (sourceAttachments.isNotEmpty() ||
             incomingFrame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY || sigmaProfile
@@ -160,12 +194,12 @@ internal class GlesFrameCompositor(
                 attachmentTimeline, sourceAttachments)
         } else incomingFrame.attachments
         val fearPivot = if (fearProfile && incomingFrame.transform.scale > 1.0001f) {
-            fearPivotByClip.getOrPut(incomingFrame.clipIndex) {
+            fearPivotByClip.getOrPut(PivotKey(incomingFrame.clipIndex, incomingFrame.sourceIndex, incomingCrop)) {
                 val face = attachments?.faceRegion
                 if (face != null && face.confidence >= .75f) {
                     Pair(
-                        (.5f + (face.centerX - .5f) / incomingCrop.x).coerceIn(.2f, .8f),
-                        (.5f + (face.centerY - .5f) / incomingCrop.y).coerceIn(.2f, .8f)
+                        (.5f + (face.centerX - incomingCrop.centerX) / incomingCrop.x).coerceIn(.2f, .8f),
+                        (.5f + (face.centerY - incomingCrop.centerY) / incomingCrop.y).coerceIn(.2f, .8f)
                     )
                 } else Pair(.5f, .5f)
             }
@@ -191,11 +225,32 @@ internal class GlesFrameCompositor(
         )
         Matrix.scaleM(transform, 0, outputAspect, 1f, 1f)
         Matrix.scaleM(transform, 0, incomingFrame.transform.scale, incomingFrame.transform.scale, 1f)
-        val outgoingCrop = sourceCrops[outgoingFrame?.sourceIndex ?: incomingFrame.sourceIndex]
+        val inverseSourceTransform = if (manualFraming != null && sceneTarget != null) FloatArray(16).also {
+            require(transform.all(Float::isFinite) && Matrix.invertM(it, 0, transform, 0) && it.all(Float::isFinite)) {
+                "Incoming source transform must have a finite inverse for semantic sampling"
+            }
+            // An affine transform reaches its extrema at the viewport corners. Finite matrix
+            // coefficients alone do not rule out overflow while evaluating those coordinates.
+            for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) {
+                val localX = it[0] * x + it[4] * y + it[12]
+                val localY = it[1] * x + it[5] * y + it[13]
+                require(localX.isFinite() && localY.isFinite() &&
+                    (incomingCrop.centerX + localX * .5f * incomingCrop.x).isFinite() &&
+                    (incomingCrop.centerY - localY * .5f * incomingCrop.y).isFinite()) {
+                    "Incoming semantic coordinates must be finite"
+                }
+            }
+        } else null
         GLES20.glUniform2f(GLES20.glGetUniformLocation(program, "uIncomingCrop"), incomingCrop.x, incomingCrop.y)
         GLES20.glUniform2f(GLES20.glGetUniformLocation(program, "uOutgoingCrop"), outgoingCrop.x, outgoingCrop.y)
+        // Convert the top-down window origin to the existing bottom-up raw video UV once.
+        // Native SurfaceTexture matrices still own decoder orientation, including metadata rotation.
+        GLES20.glUniform2f(GLES20.glGetUniformLocation(program, "uIncomingWindowOffset"),
+            incomingCrop.centerX - .5f, .5f - incomingCrop.centerY)
+        GLES20.glUniform2f(GLES20.glGetUniformLocation(program, "uOutgoingWindowOffset"),
+            outgoingCrop.centerX - .5f, .5f - outgoingCrop.centerY)
         val incomingTexMatrix = incomingInput.transformMatrix()
-        val outgoingTexMatrix = outgoingInput.transformMatrix()
+        val outgoingTexMatrix = secondarySamplerInput.transformMatrix()
         if (incomingFrame.layer.heartbeatEcho && !heartbeatTextureLogged) {
             heartbeatTextureLogged = true
             android.util.Log.d("HeartbeatTexture", "incoming=${incomingInput.texture}:${incomingInput.timestampUs()} " +
@@ -214,9 +269,6 @@ internal class GlesFrameCompositor(
         }
         // This call is adjacent to glDrawArrays on purpose: the Inspector reports technology
         // that reached the shader, not merely effects present in a MontageGraph.
-        val secondarySamplerInput = MediaCodecSpeedRampRenderer.boundSecondaryInput(
-            incomingInput, outgoingInput, debugTextureProbe, debugProbeIncomingOnBothUnits
-        )
         onDraw(DrawEvidence(
             incomingFrame.copy(attachments = attachments),
             blend,
@@ -392,7 +444,7 @@ internal class GlesFrameCompositor(
             incomingFrame.layer.opacity > .001f && (attachments?.mask?.confidence ?: 0f) >= .8f) {
             recordPass(RenderPassPlanner.PassKind.FOREGROUND_COMPOSITE)
         }
-        sceneTarget?.let { renderPostPipeline(it, incomingFrame, blend, attachments) }
+        sceneTarget?.let { renderPostPipeline(it, incomingFrame, blend, attachments, incomingCrop, inverseSourceTransform) }
             ?: recordPass(RenderPassPlanner.PassKind.ENCODER_SURFACE)
         target.present(incomingFrame.outputTimeUs)
     }
@@ -620,8 +672,19 @@ internal class GlesFrameCompositor(
         scene: OffscreenTarget,
         frame: HighQualityFramePlan.Frame,
         blend: GpuTransitionModel.FrameBlend?,
-        attachments: FrameAttachments?
+        attachments: FrameAttachments?,
+        crop: SourceFraming.Crop,
+        inverseSourceTransform: FloatArray?
     ) {
+        GLES20.glUseProgram(postProgram)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uManualSemanticMapping"),
+            if (inverseSourceTransform == null) 0f else 1f)
+        if (inverseSourceTransform != null) {
+            GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(postProgram, "uInverseSourceTransform"),
+                1, false, inverseSourceTransform, 0)
+            GLES20.glUniform4f(GLES20.glGetUniformLocation(postProgram, "uSourceWindow"),
+                crop.centerX, crop.centerY, crop.x, crop.y)
+        }
         val motionTarget = this.motionTarget
         val depthTarget = this.depthTarget
         val glowTargetA = this.glowTargetA

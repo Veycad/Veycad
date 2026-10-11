@@ -1,10 +1,10 @@
 package com.veycad.app
 
-/** Center-crop in display-oriented source coordinates; never stretches the source image. */
+/** Source window in display-oriented, top-down coordinates; never rotates decoded UVs. */
 internal object SourceFraming {
-    data class Crop(val x: Float, val y: Float) {
-        fun sourceX(outputX: Float) = .5f + (outputX - .5f) * x
-        fun sourceY(outputY: Float) = .5f + (outputY - .5f) * y
+    data class Crop(val x: Float, val y: Float, val centerX: Float = .5f, val centerY: Float = .5f) {
+        fun sourceX(outputX: Float) = centerX + (outputX - .5f) * x
+        fun sourceY(outputY: Float) = centerY + (outputY - .5f) * y
     }
 
     fun cropPlane(values: FloatArray, width: Int, height: Int, crop: Crop): FloatArray {
