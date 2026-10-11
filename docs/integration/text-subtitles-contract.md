@@ -1,11 +1,13 @@
 # Контракт текста и распознавания, PR 12
 
-Статус: проверенная реализация в `codex/text-subtitles`, коммит
-`a2e36bd60f756cf374673562d8323d71698fd474`. Локальный clean gate: 655 JVM и 255 Python;
-device-проверки: 8 export/STT и 4 UI, все прошли (подробности в
+Статус: проверенный checkpoint текста в `codex/text-subtitles`, коммит
+`cb64b2871bcd65ba103020fa9fb16c4d1222558b`. Remote clean gate: 662 JVM и 255 Python;
+device-проверки: 81 Android, включая 16 text/layout/export/Whisper сценариев,
+все прошли без ошибок и пропусков (подробности в
 [протоколе](../testing/text-subtitles.md)). Изменения общего HybridProject сюда
-не копируются. Основа интеграции ядра — checkpoint `74b58038` из PR 15;
-проектируемые расширения ядра требуют отдельного проверенного коммита.
+не копируются. Историческая основа интеграции — checkpoint `74b58038` из PR 15;
+текущее состояние общего ядра и его аудиоадаптера проверяется их владельцами
+отдельно. Результат их проверки не следует из зелёного PR 12.
 
 ## Модель и часы
 
@@ -13,6 +15,7 @@ device-проверки: 8 export/STT и 4 UI, все прошли (подроб
 
 - `TextEditProject.kt`: `TextLayer(id,text,startUs,endUs,style)`,
   `CaptionCue(id,text,startUs,endUs)`, `TextStyle(position,font,sizeRatio,color,darkPlate,animation)`.
+  Совместимые поля расширений описаны ниже; старые конструкторы сохранены.
 - `TextEditProject(sourcePath,durationUs,width,height,layers,captions,captionStyle,captionsEdited,language,sourceOriginUs=0)`.
 - `TextLayerLayout.draw(canvas,project,timeUs)` — одна раскладка для preview и burn-in.
 - `CaptionSegmenter.merge(existing,incoming,durationUs)` — согласование перекрывающихся окон STT.
@@ -79,11 +82,23 @@ Malformed native rows дают `RESULT_INVALID`, а не отсутствие р
 проверяется у реально используемого кэша модели перед каждым открытием.
 
 JNI включает token timestamps для сегментации, но публичный результат содержит
-фразы. Доказанные границы каждого слова сейчас **не предоставляются**. Для такого
-расширения нужны экспорт token/word intervals из backend, правила склейки,
-эталонный RU-корпус с ручными границами и измеренная ошибка тайминга. Токенная
+фразы. Research outcome дополнительно сохраняет immutable raw сегменты/токены,
+язык каждого окна, backend commit и фактический SHA-256 исходника JNI bridge.
+Hex bytes объединяются до UTF-8 decoding; производные слова используют ссылки
+на contributing tokens и маркируются TOKEN_HEURISTIC. UNKNOWN/нулевые token
+intervals оставляют слово untimed. На перекрытии выбирается один наблюдённый
+вариант без усреднения, raw windows сохраняются целиком. Причина однократной
+отмены сохраняется sticky callback. Эти расширения используют тот же native call.
+
+Доказанные акустические границы каждого слова сейчас **не предоставляются**.
+Для них нужны reviewed acoustic backend, эталонный RU-корпус с ручными границами
+и измеренная ошибка тайминга. Токенная
 вероятность Whisper не является откалиброванной уверенностью фразы. Успешные
 короткие EN/RU-фикстуры и MP4-проверки не заменяют этот корпус или приёмку качества.
+
+Результаты исследования закреплённого backend и research outcome/
+alignment API с RU holdout-протоколом: [word alignment](word-alignment-proposal.md).
+Acoustic-word backend и calibrated confidence не реализованы; gate открыт.
 
 Галерея/гибридный режим сначала строит речевой PCM после trim, склеек и временных
 карт всех источников. При распознавании исходной речи эта шина готовится до
@@ -108,3 +123,55 @@ assetId/sourceIndex и композиция нескольких источни�
 результата сохраняются. Эти single-video черновики — существующий finishing
 workflow; адаптер общего проекта сохраняет текст в HybridRevision и использует
 единое долговечное хранилище assets из проверенного storage-коммита.
+
+## Совместимые поля интеграционного расширения
+
+Модель и store: коммит `784d1b3`. Раскладка/UI: проверенный `cb64b287`,
+exact-head clean/device CI успешны; результаты фиксируются в PR и протоколе.
+
+- `TextFont`: прежние SANS/BOLD/SERIF и новый MONO.
+- `TextAnimation`: прежние NONE/FADE/SLIDE и новый SCALE 0.94–1.0;
+  окно `min(200000 us, max(1 us, duration/2))` внутри интервала слоя.
+- `TextStyle.plate:TextPlate?=null`: NONE/DARK/ACCENT. При null используется
+  старый `darkPlate`, включая `copy(darkPlate=...)`. Акцент ARGB `0xff5427a4`.
+- `TextLayer.kind:TextLayerKind=LEGACY`: новые TITLE/PLATE/SUBTITLE явны.
+  TITLE <=180 Unicode code points и 3 строки; остальные 2 строки.
+  Старые Properties v1 без kind остаются LEGACY, без потери длинного текста.
+- `CaptionCue.confidence:Double?=null`, `manuallyReviewed:Boolean=false`,
+  `confidenceCalibrated:Boolean=false`; confidence finite в 0..1,
+  calibrated требует значения. `needsReview` истинен до ручной отметки при
+  unknown, <.75 или uncalibrated. Отметка не заменяет raw confidence.
+- `SpeechEvidence.confidenceCalibrated=false` и `needsReview` с теми же
+  условиями unknown/low/uncalibrated; текущий backend PHRASE/null/false.
+- Общая `TextSafeArea` x=.08.. .92, y=.10.. .85 включает plate/motion,
+  упорядочивает TOP/CENTER/BOTTOM и исключает пересечения. Layout уменьшает
+  шрифт до .018 ширины; невместимая плотность даёт контрастное предупреждение
+  в preview и exception до публикации MP4 в `draw(...,strict=true)`.
+
+Владелец PR 15 должен сохранять kind, plate, MONO/SCALE и cue evidence в одной
+HybridRevision/codec, с теми же defaults для старых проектов. Manual review
+не является calibration. Text-команды по-прежнему используют общий CAS и
+undo/redo, исходную PTS/VFR шкалу, один STT и borrowed PCM.
+
+## Следующий проверяемый checkpoint
+
+Raw-token implementation: `07ec407122cfbeff063ebe2db6ee4b39f4ea6708`.
+После merge актуальной main `a32a6a849abb3c781c21790c409b484f0fb65488`
+в `5f836b6` удалены временные дубликаты текстовых типов из HybridTextState:
+общий state использует TextEditProject types. Renderer сохраняет sourceAttachments,
+текст и авторские титры семплируются по globalOutputTimeUs; encoder/progress
+остаются на локальных часах. Targeted speech/frame/core/legacy-codec серия:
+46 tests / 8 suites, failures/errors 0. Native build и полная Android-серия
+этого нового checkpoint требуют exact-head CI; прежние результаты не переносятся.
+
+На импортированной main общий HybridProjectCodec ещё не сохраняет plate/kind
+и cue confidence/manual review: ACCENT может превратиться в DARK, TITLE —
+в LEGACY, отметка проверки — в unknown. Поэтому rich-text Hybrid roundtrip
+и gallery/native source-audio handoff **не приняты**. Их согласование остаётся
+у владельцев общего ядра/аудиоадаптера. TextEditStore отдельного MP4 сохраняет
+все расширенные поля; его workflow проверен отдельно.
+
+Исходные integration spec/plan из main сохранены под отдельными именами
+`2026-10-10-text-subtitles-integration-design.md` / `...-integration.md`;
+owner spec/plan PR 12 остаются на прежних путях. Исторические Vosk/второй store
+в integration spec заменены её верхним согласованием: действующий STT один.

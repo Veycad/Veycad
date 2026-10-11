@@ -24,7 +24,8 @@ UI не заявляется. Отдельный device-RED воспроизвё
 - Все изменения остаются в `codex/text-subtitles`, PR 12; слияние вручную.
 - Обработка локальная, без INTERNET, аккаунта, ключа и разрешения микрофона.
 - Заголовок по умолчанию 0–3 с; интервалы `[startUs,endUs)` ограничены видео.
-- Три шрифта с кириллицей, три положения, три цвета, прозрачная или тёмная подложка, none/fade/slide.
+- Четыре шрифта с кириллицей, три положения, три цвета, прозрачная/тёмная/акцентная подложка, none/fade/slide/scale.
+- Новые TITLE <=180 Unicode code points/3 строки; plate/motion в x=.08.. .92/y=.10.. .85, без пересечений.
 - Субтитры максимум в две строки; RU/EN/авто; исправление текста и времени.
 - Исходное видео сохраняет длительность, ориентацию, порядок кадров и слышимый звук.
 - Готовый музыкальный эдит распознаётся по своей дорожке; удалённая речь не восстанавливается.
@@ -108,3 +109,88 @@ UI не заявляется. Отдельный device-RED воспроизвё
 SHA-256 APK и открытая приёмка A25 приведены в [протоколе](../../testing/text-subtitles.md).
 Результат удалённых CI последнего коммита фиксируется в PR; локальные результаты
 не подменяют CI или одобрение слияния.
+
+## Совместимые интеграционные расширения
+
+10 октября координатор по делегированному полномочию владельца передал сверку
+принятого интеграционного сценария. Базовый MP4 checkpoint `109b0c7a` сохраняется;
+следующие изменения принадлежат этому же PR 12. Общая схема ревизий остаётся у
+PR 15, второй STT и project store не создаются.
+
+### Task 6: Модель, Unicode и review evidence
+
+- [x] RED: MONO/accent/scale roundtrip, старые BOLD/SLIDE/v1 без новых полей;
+  TITLE 180/181 Unicode code points (кириллица, emoji, combining), отличия
+  TITLE/PLATE/SUBTITLE и неизвестная/низкая confidence.
+- [x] Добавить совместимые enum/optional поля: MONO, ACCENT, SCALE, вид слоя,
+  cue confidence/manual review. Новые заголовки ограничить 180 code points;
+  старые длинные слои загружать как LEGACY без обрезания. Субтитры две строки,
+  новые заголовки три. Evidence не присваивает измерения или калибровку.
+- [x] GREEN JVM; scoped commit модели и сохранения `784d1b3`.
+
+### Task 7: Общая safe-area раскладка и редактор
+
+- [x] RED отсутствующих pure-geometry/motion API → GREEN. Device-тесты
+  фактических границ 720p/1080p и квадратного видео добавлены; runtime RED
+  этих Canvas-тестов не заявляется. Они проверяют одновременные слои и появление.
+- [x] Геометрия x=.08.. .92/y=.10.. .85 включает подложку и анимацию.
+  Упорядоченные слои размещать без пересечений; чрезмерную плотность явно
+  показывать в preview и отклонять в экспорте, сохраняя черновик/MP4.
+- [x] Подключить MONO/accent/slight scale и review evidence к существующему
+  экрану, сохранив прежние BOLD/SLIDE и ручные исправления.
+- [x] Проверить реальный layout/UI/export, свежий reviewer, новый clean gate;
+  scoped commit, exact checked contract, push в PR 12.
+  Код `cb64b287` проверен удалёнными baseline/UI: 662 JVM, 255 Python,
+  81 Android (79 экранных + 2 permissions), включая 16 feature-сценариев.
+  XML и SHA-256 скачанных CI-артефактов проверены; ошибок и пропусков нет.
+
+### Task 8: Честный word-alignment контракт и оценка
+
+- [x] Проверить закреплённый Whisper/JNI: token timestamps, DTW и probability
+  semantics. Не делить фразы на равные интервалы и не объявлять token p
+  откалиброванной уверенностью слова.
+- [x] Подготовить конкретный outcome/alignment proposal и протокол RU corpus:
+  лицензия/согласие, ручная разметка start/end, holdout, WER, coverage,
+  отдельные median/p95 ошибок обеих границ <=200/500 ms.
+- [x] Оставить word-quality gate открытым без настоящего alignment и измерений;
+  сохранить draft. Последние CI фиксируются отдельно для exact head.
+
+### Task 9: Raw token evidence и воспроизводимый валидатор
+
+Продолжение по принятому координатором proposal: один существующий
+SpeechTranscriber/JNI, без дополнительного recognizer или project store.
+
+- [x] JVM RED отсутствующих API → GREEN: UTF-8 через границы BPE, UNKNOWN/zero
+  timing, malformed wire, immutable raw evidence, повторы на перекрытиях,
+  исходная причина однократной отмены. Семь новых тестов и связанные speech
+  тесты прошли; промежуточные логи сохранены локально.
+- [x] Добавить ASCII/hex JNI protocol с backend commit и SHA исходника bridge,
+  raw сегментами/токенами, языком каждого окна и requested language. Производные
+  слова маркировать TOKEN_HEURISTIC; confidence остаётся некалиброванной.
+- [x] Провести независимое ревью, scoped commit `07ec407`; P3 phantom token
+  воспроизведён regression RED 7/1 failure → GREEN 17/5 suites.
+  ARM64 NDK syntax-only прошёл; это не native build.
+- [ ] Проверить JNI на реальной модели, коротком и последнем неполном окне;
+  выполнить exact-head CI без ослабления границ времени.
+- [x] TDD валидатора: hashes/WAV/provenance, 8 pilot + 2 holdout speakers,
+  две независимые разметки, WER/coverage и median/p95 обеих границ.
+  Отдельные alignment/confidence gates, неизменяемые evidence/report files.
+- [x] Сверить окончательный diff и независимое ревью валидатора; targeted
+  30/30 и полная Python-серия 285/285 без failures/errors/skips. Подтверждённые
+  P2 calibration gate/duplicate audio/hardlink overwrite воспроизведены до
+  исправлений. Preregistration связывает source/protocol/Unicode до holdout.
+  Инструменты и протокол сохраняются отдельным scoped commit.
+- [ ] Обновить checked contract, PR и результаты CI последнего коммита.
+  Отсутствующие RU gold/holdout, acoustic alignment, A25 и человеческая
+  приёмка остаются явно открытыми; структурные тесты не заменяют измерения.
+
+### Согласование с обновлённой main
+
+`5f836b6` объединяет main `a32a6a84` без переписывания истории. Сохранены
+sourceAttachments и global project clock в renderer; временные дубликаты
+текстовых типов убраны. Actual compile RED выявил redeclaration; после исправления
+46 speech/frame/core/legacy-codec tests в 8 suites прошли за 2m23s.
+Независимое review разрешения конфликтов не нашло P1/P2. Incoming integration
+spec/plan сохранены отдельными `-integration` файлами, ссылки исправлены.
+Rich-text Hybrid codec сохраняет пока только старые поля: его расширение и
+gallery/source-audio handoff остаются отдельной открытой интеграцией владельцев.
