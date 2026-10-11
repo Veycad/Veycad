@@ -166,17 +166,18 @@ class ManualSourceRecoveryTest {
         val persisted = recovered.copy(shared = HybridProjectStore(storeRoot).load(recovered.id))
         assertSelection(persisted, 0, 60)
 
-        val before = persisted.shared
+        // Keep proof rejection on the public-edit adapter: raw reloaded trimmed ancestors need A2b metadata.
+        val before = recovered.shared
         val bytes = files(store, persisted.id)
         val currentBytes = File(store.directory(persisted.id), "CURRENT").readBytes()
         for (command in listOf(TimelineCommand.Trim("A1", ClipEdge.START, -1), TimelineCommand.Trim("A1", ClipEdge.END, 61))) {
-            val rejected = MontageTimelineEditor.prepare(persisted, command)
+            val rejected = MontageTimelineEditor.prepare(recovered, command)
             assertTrue(rejected.toString(), rejected is TimelinePreparation.Rejected)
             assertTrue((rejected as TimelinePreparation.Rejected).reason, rejected.reason.contains("скрытых кадров"))
-            assertSame(before, persisted.shared)
+            assertSame(before, recovered.shared)
             assertEquals(bytes, files(store, persisted.id))
             assertArrayEquals(currentBytes, File(store.directory(persisted.id), "CURRENT").readBytes())
-            assertEquals(before, store.load(persisted.id))
+            assertEquals(persisted.shared, store.load(persisted.id))
         }
     }
 
