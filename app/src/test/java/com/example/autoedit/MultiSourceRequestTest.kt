@@ -182,6 +182,111 @@ class MultiSourceRequestTest {
         }
     }
 
+    // Dropping sources in the combined helper would refresh the legacy matte instead of
+    // the held source's decoded witness, despite preserving its decoder provenance.
+    @Test fun heldSourceProvenanceRefreshesItsOwnDecodedAttachmentWithManualRefreshEnabled() {
+        val graph = boundaryGraph()
+        val stale = attachmentWitness(100_000, .1f)
+        val heldWitness = attachmentWitness(250_000, .7f)
+        val incomingWitness = attachmentWitness(250_000, .9f)
+        val legacyWitness = attachmentWitness(250_000, .2f)
+        val plan = HighQualityFramePlan.build(graph).frames.map { frame ->
+            if (frame.clipIndex == 1) frame.copy(attachments = stale,
+                layer = LayerCompositorModel.Sample(kind = MontageGraph.OverlayKind.SUBJECT_STAGE, opacity = 1f))
+            else frame
+        }
+        val incoming = plan.single { it.outputTimeUs == 800_000L }
+        val outgoing = plan.last { it.clipIndex == 1 }
+        val provenance = VeykadRenderInspector.DecodedFrameProvenance(7, 1,
+            outgoing.sourceTimeUs, 250_000, MontageGraph.Transition.HARD_CUT)
+        // Order differs from source IDs; choosing the incoming or first timeline is wrong.
+        val sources = listOf(SourceAttachments(0, FrameAttachmentTimeline(listOf(incomingWitness))),
+            SourceAttachments(7, FrameAttachmentTimeline(listOf(heldWitness))))
+        val actual = RenderedVisualSampler.withDecodedFrameProvenance(incoming, plan,
+            FrameAttachmentTimeline(listOf(legacyWitness)), 125_000, provenance,
+            sources, refreshAllTransitions = true)
+        assertEquals(7, actual.sourceIndex)
+        assertEquals(1, actual.clipIndex)
+        assertEquals(250_000L, actual.sourceTimeUs)
+        assertEquals(800_000L, actual.outputTimeUs)
+        assertEquals(outgoing.globalOutputTimeUs, actual.globalOutputTimeUs)
+        assertEquals(outgoing.transform, actual.transform)
+        assertNotEquals(incoming.transform, actual.transform)
+        assertEquals(outgoing.effects, actual.effects)
+        assertEquals(outgoing.layer, actual.layer)
+        assertEquals(MontageGraph.Transition.HARD_CUT, actual.transitionIn)
+        assertEquals(-1f, actual.transitionProgress!!, 0f)
+        assertSame(heldWitness, actual.attachments)
+        assertEquals(250_000L, actual.attachments!!.sourceTimeUs)
+        assertEquals(.7f, actual.attachments.mask!!.confidence, 0f)
+    }
+
+    // The absent-provenance branch must forward sources too; it cannot silently fall
+    // back to the primary timeline when clip/source identity remains the planned one.
+    @Test fun missingProvenanceRefreshesPlannedSourceAttachmentAtTheActualDecodedTime() {
+        val graph = boundaryGraph()
+        val plan = HighQualityFramePlan.build(graph).frames
+        val stale = attachmentWitness(0, .1f)
+        val decodedWitness = attachmentWitness(125_000, .8f)
+        val otherSourceWitness = attachmentWitness(125_000, .3f)
+        val scheduled = plan.single { it.outputTimeUs == 400_000L }.copy(
+            transitionIn = MontageGraph.Transition.FOREGROUND_REENTRY, attachments = stale)
+        val sources = listOf(SourceAttachments(19, FrameAttachmentTimeline(listOf(otherSourceWitness))),
+            SourceAttachments(7, FrameAttachmentTimeline(listOf(decodedWitness))))
+        val actual = RenderedVisualSampler.withDecodedFrameProvenance(scheduled, plan,
+            FrameAttachmentTimeline(listOf(otherSourceWitness)), 125_000, null,
+            sources, refreshAllTransitions = true)
+        assertEquals(7, actual.sourceIndex)
+        assertEquals(1, actual.clipIndex)
+        assertEquals(125_000L, actual.sourceTimeUs)
+        assertEquals(scheduled.outputTimeUs, actual.outputTimeUs)
+        assertEquals(scheduled.globalOutputTimeUs, actual.globalOutputTimeUs)
+        assertEquals(scheduled.transform, actual.transform)
+        assertEquals(scheduled.effects, actual.effects)
+        assertEquals(scheduled.layer, actual.layer)
+        assertEquals(scheduled.transitionIn, actual.transitionIn)
+        assertEquals(scheduled.transitionProgress, actual.transitionProgress)
+        assertSame(decodedWitness, actual.attachments)
+        assertEquals(125_000L, actual.attachments!!.sourceTimeUs)
+        assertEquals(.8f, actual.attachments.mask!!.confidence, 0f)
+    }
+
+    // Nonempty sources themselves enable foreground refresh. An empty-source legacy
+    // case is necessary to catch loss of refreshAllTransitions independently of sources.
+    @Test fun manualRefreshUpdatesLaterClipWithAndWithoutProvenanceWhenSourceTimelinesAreAbsent() {
+        val graph = boundaryGraph()
+        val plan = HighQualityFramePlan.build(graph).frames
+        val stale = attachmentWitness(0, .1f)
+        val decodedWitness = attachmentWitness(125_000, .6f)
+        val scheduled = plan.single { it.outputTimeUs == 400_000L }.copy(
+            transitionIn = MontageGraph.Transition.FOREGROUND_REENTRY, attachments = stale)
+        val timeline = FrameAttachmentTimeline(listOf(decodedWitness))
+        val provenance = VeykadRenderInspector.DecodedFrameProvenance(7, 1,
+            scheduled.sourceTimeUs, 125_000, scheduled.transitionIn)
+        val legacy = RenderedVisualSampler.withDecodedFrameProvenance(scheduled, plan,
+            timeline, 125_000, null)
+        for (witness in listOf(null, provenance)) {
+            val manual = RenderedVisualSampler.withDecodedFrameProvenance(scheduled, plan,
+                timeline, 125_000, witness, emptyList(), refreshAllTransitions = true)
+            assertEquals(7, manual.sourceIndex)
+            assertEquals(1, manual.clipIndex)
+            assertEquals(125_000L, manual.sourceTimeUs)
+            assertEquals(scheduled.outputTimeUs, manual.outputTimeUs)
+            assertEquals(scheduled.globalOutputTimeUs, manual.globalOutputTimeUs)
+            assertEquals(scheduled.transform, manual.transform)
+            assertEquals(scheduled.transitionIn, manual.transitionIn)
+            assertSame(decodedWitness, manual.attachments)
+            assertEquals(125_000L, manual.attachments!!.sourceTimeUs)
+            assertEquals(.6f, manual.attachments.mask!!.confidence, 0f)
+            // Default compatibility must remain unchanged for a later legacy foreground clip.
+            assertSame(stale, legacy.attachments)
+            assertEquals(manual.copy(attachments = stale), legacy)
+        }
+    }
+
+    private fun attachmentWitness(timeUs: Long, confidence: Float) = FrameAttachments(timeUs,
+        mask = FrameAttachments.Plane(1, 1, listOf(1f), confidence))
+
     private fun boundaryGraph() = MontageGraph(2000, 1200, clips = listOf(19, 7, 0).mapIndexed { index, source ->
         MontageGraph.Clip("boundary-$index", 0, 400, 400, MontageGraph.ShotRole.ACTION,
             if (index == 0) MontageGraph.Transition.HARD_CUT else MontageGraph.Transition.WHIP,
