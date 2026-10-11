@@ -85,7 +85,7 @@ class EditableMontageCompilerTest {
             assertEquals(HighQualityFramePlan.build(graph, fps), HighQualityFramePlan.build(compiled, fps))
             val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
             val encoded = codec.encode(project.shared)
-            assertEquals(4, java.nio.ByteBuffer.wrap(encoded).getInt(4))
+            assertEquals(5, java.nio.ByteBuffer.wrap(encoded).getInt(4))
             assertEquals(3, MontageGraph.CURRENT_VERSION)
             val decoded = codec.decode(encoded)
             assertEquals(3, decoded.current.graph.version)
