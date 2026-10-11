@@ -2,35 +2,7 @@ package com.veycad.app
 
 import java.util.Collections
 
-enum class TextPosition { TOP, CENTER, BOTTOM }
-enum class TextFont { SANS, BOLD, SERIF }
-enum class TextAnimation { NONE, FADE, SLIDE }
-
-data class TextStyle(
-    val position: TextPosition = TextPosition.TOP,
-    val font: TextFont = TextFont.BOLD,
-    val sizeRatio: Float = 0.055f,
-    val color: Int = 0xffffffff.toInt(),
-    val darkPlate: Boolean = true,
-    val animation: TextAnimation = TextAnimation.NONE
-) {
-    init { require(sizeRatio in 0.025f..0.12f) }
-}
-
-data class TextLayer(
-    val id: String,
-    val text: String,
-    val startUs: Long,
-    val endUs: Long,
-    val style: TextStyle = TextStyle()
-) {
-    init { require(id.isNotBlank() && startUs >= 0 && endUs > startUs); require(text.length <= 2000) }
-}
-
-data class CaptionCue(val id: String, val text: String, val startUs: Long, val endUs: Long) {
-    init { require(id.isNotBlank() && startUs >= 0 && endUs > startUs); require(text.length <= 2000) }
-}
-
+// Shared TextLayer/CaptionCue/TextStyle are supplied by the text owner in TextEditProject.kt.
 /** Text values use absolute project microseconds, with end-exclusive intervals. */
 class HybridTextState(
     layers: List<TextLayer> = emptyList(),
