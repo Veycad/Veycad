@@ -41,9 +41,9 @@ object MediaCodecSpeedRampRenderer {
         val durationUs: Long get() = endUs - startUs
     }
 
-    data class Request(
-        val masterFile: File,
-        val secondaryFile: File? = null,
+    class Request(
+        masterFile: File? = null,
+        secondaryFile: File? = null,
         val graph: MontageGraph,
         val outputFile: File,
         val width: Int,
@@ -66,8 +66,24 @@ object MediaCodecSpeedRampRenderer {
         val onPassesExecuted: ((Map<RenderPassPlanner.PassKind, Int>) -> Unit)? = null,
         val checkCancelled: () -> Unit = {},
         val textProject: TextEditProject? = null,
-        val onFrameProgress: ((Int) -> Unit)? = null
-    )
+        val onFrameProgress: ((Int) -> Unit)? = null,
+        sourceFiles: List<File>? = null
+    ) {
+        val sourceFiles: List<File> = java.util.Collections.unmodifiableList(ArrayList(
+            sourceFiles ?: listOfNotNull(requireNotNull(masterFile), secondaryFile)))
+        val masterFile: File get() = this.sourceFiles.first()
+        val secondaryFile: File? get() = this.sourceFiles.getOrNull(1)
+
+        init {
+            require(sourceFiles == null || (masterFile == null && secondaryFile == null)) {
+                "Supply the ordered source list or legacy files, not both"
+            }
+            require(this.sourceFiles.size in 1..GalleryImportPolicy.MAX_FILES)
+            require(graph.clips.all { it.sourceIndex in this.sourceFiles.indices }) {
+                "Montage references a video source that was not supplied"
+            }
+        }
+    }
 
     sealed interface Outcome {
         data class Saved(val file: File, val frameCount: Int) : Outcome
@@ -86,8 +102,7 @@ object MediaCodecSpeedRampRenderer {
     /** Synchronous by design; callers must use [renderAsync] or a background executor. */
     fun render(request: Request): Int {
         require(Build.VERSION.SDK_INT >= 26) { "MediaCodec GPU renderer requires Android 8+" }
-        require(request.masterFile.isFile)
-        val sourceFiles = listOfNotNull(request.masterFile, request.secondaryFile)
+        val sourceFiles = request.sourceFiles
         require(sourceFiles.all(File::isFile))
         require(request.graph.clips.all { it.sourceIndex in sourceFiles.indices }) {
             "Montage references a video source that was not supplied"
@@ -114,16 +129,18 @@ object MediaCodecSpeedRampRenderer {
                 FearStrobeProfile.appliesTo(request.graph),
                 request.graph.metadata.generator == DualityLoopProfile.ID,
                 ReferenceMontageProfile.appliesTo(request.graph),
-                sourceFiles.map { VideoDisplayOrientation.cropForFile(it, request.width, request.height) },
+                VideoDisplayOrientation.cropsForFiles(sourceFiles, request.width, request.height,
+                    request.checkCancelled),
                 sourceAttachments=request.graph.sourceAttachments,
                 textProject=request.textProject, onFrameProgress=request.onFrameProgress).also { glOwner = it }
             val muxer = MediaMuxer(videoOnlyFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxerOwner = it }
             val muxerState = MuxerState()
             encoder.start()
-            decoders = DecoderSession(sourceFiles, gl.incomingDecodeSurface, gl.outgoingDecodeSurface, request.textProject != null)
+            decoders = DecoderSession(sourceFiles, gl.incomingDecodeSurface, gl.outgoingDecodeSurface,
+                request.checkCancelled, request.textProject != null)
             request.context?.let { context ->
                 LocalDiagnostics.record(context, "video_decoder_pool", mapOf(
-                    "decoder_instances" to "2",
+                    "decoder_limit" to "2",
                     "source_files" to sourceFiles.size.toString(),
                     "clip_count" to request.graph.clips.size.toString(),
                     "session_reuse" to (sourceFiles.size == 1).toString()
@@ -387,54 +404,34 @@ object MediaCodecSpeedRampRenderer {
         }
     }
 
-    /** The renderer owns exactly two decoder/surface bindings for the whole export. Each new clip
-     * flushes and seeks an existing codec; transition and temporal paths borrow the second one. */
+    /** Two role-owned surface bindings. Sources are opened lazily and evicted before replacement. */
     private class DecoderSession(
         private val files: List<File>,
         private val incomingSurface: Surface,
         private val outgoingSurface: Surface,
+        checkCancelled: () -> Unit,
         private val normalizeTimestamps: Boolean = false
     ) {
-        private val sourceDurationsUs = files.map(::requestSourceDurationUs)
-        private var incomingIndex = 0
-        private var outgoingIndex = 0
-        var incoming = DecoderCursor(files[0], incomingSurface, normalizeTimestamps)
-            private set
-        var outgoing = try {
-            DecoderCursor(files[0], outgoingSurface, normalizeTimestamps)
-        } catch (error: Throwable) {
-            incoming.release()
-            throw error
+        private val sourceDurationsUs = files.map { file -> checkCancelled(); requestSourceDurationUs(file) }
+        private val slots = SourceDecoderSlots { index, role ->
+            require(index in files.indices)
+            DecoderCursor(files[index], if (role == DecoderRole.INCOMING) incomingSurface else outgoingSurface, normalizeTimestamps)
         }
-            private set
 
         fun sourceDurationUs(sourceIndex: Int): Long = sourceDurationsUs[sourceIndex]
 
-        fun selectIncoming(sourceIndex: Int): DecoderCursor {
-            if (sourceIndex != incomingIndex) {
-                incoming.release()
-                incoming = DecoderCursor(files[sourceIndex], incomingSurface, normalizeTimestamps)
-                incomingIndex = sourceIndex
-            }
-            return incoming
-        }
+        fun selectIncoming(sourceIndex: Int): DecoderCursor =
+            slots.acquire(sourceIndex, DecoderRole.INCOMING).decoder as DecoderCursor
 
-        fun selectOutgoing(sourceIndex: Int): DecoderCursor {
-            if (sourceIndex != outgoingIndex) {
-                outgoing.release()
-                outgoing = DecoderCursor(files[sourceIndex], outgoingSurface, normalizeTimestamps)
-                outgoingIndex = sourceIndex
-            }
-            return outgoing
-        }
+        fun selectOutgoing(sourceIndex: Int): DecoderCursor =
+            slots.acquire(sourceIndex, DecoderRole.OUTGOING).decoder as DecoderCursor
 
         fun release() {
-            runCatching { outgoing.release() }
-            runCatching { incoming.release() }
+            slots.releaseAll()
         }
     }
 
-    private class DecoderCursor(file: File, private val outputSurface: Surface, normalizeTimestamps: Boolean = false) {
+    private class DecoderCursor(file: File, private val outputSurface: Surface, normalizeTimestamps: Boolean = false) : AutoCloseable {
         private val extractor = MediaExtractor()
         private lateinit var decoder: MediaCodec
         private var released = false
@@ -524,6 +521,8 @@ object MediaCodecSpeedRampRenderer {
             }
             return hasDecodedTexture
         }
+
+        override fun close() = release()
 
         fun release() {
             if (released) return
@@ -791,7 +790,10 @@ object MediaCodecSpeedRampRenderer {
                 outgoingFrame != null,
                 outgoingFrame?.sourceTimeUs,
                 incomingInput.timestampUs(),
-                outgoingFrame?.let { secondarySamplerInput.timestampUs() }
+                outgoingFrame?.let { secondarySamplerInput.timestampUs() },
+                outgoingFrame?.let {
+                    if (debugTextureProbe && debugProbeIncomingOnBothUnits) incomingFrame.sourceIndex else it.sourceIndex
+                }
             )
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)

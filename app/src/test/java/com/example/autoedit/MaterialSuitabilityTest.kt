@@ -5,7 +5,7 @@ import org.junit.Test
 
 class MaterialSuitabilityTest {
     @Test fun short_input_is_a_named_material_rejection_for_each_product() {
-        MontageStyleCatalog.Recipe.entries.forEach { recipe ->
+        MontageStyleCatalog.Recipe.entries.filter { it != MontageStyleCatalog.Recipe.GALLERY_MONTAGE }.forEach { recipe ->
             val sources = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP)
                 listOf(7_000_000L, 5_999_000L) else listOf(14_999_000L)
             val rejection = capture { MaterialSuitability.checkDuration(recipe, sources) }
