@@ -207,7 +207,11 @@ jobs:
           gh api repos/Veycad/Veycad/commits/33b68e3f0643ce95acb46bdf8f3e075448388492 > "$root/source-commit.json"
           python3 tools/custom_music_tests/prepare_audio_probe_input.py "$root/source-artifact.zip" "$root/input" --run-metadata "$root/source-run.json" --commit-metadata "$root/source-commit.json" --artifact-metadata "$root/source-artifact.json"
       - name: Install pinned diagnostic NDK
-        run: sdkmanager 'ndk;27.2.12479018'
+        run: |
+          sdkmanager_path="${ANDROID_SDK_ROOT:?}/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager_path"
+          "$sdkmanager_path" --sdk_root="$ANDROID_SDK_ROOT" 'ndk;27.2.12479018'
+          test -f "$ANDROID_SDK_ROOT/ndk/27.2.12479018/source.properties"
       - name: Build candidate and independently fix compressed AAC controls
         run: bash tools/run_custom_music_software_materials.sh
       - name: Save preparation evidence and failures
