@@ -7,6 +7,7 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
     private val comparisonBudget: ComparisonBudget) {
     private val durable = project.current.sourceBackings[clip.id]
     private val selectedRevisionId = project.current.id
+    private val requestEndUs = project.assets.first { it.id == clip.assetId }.timeBounds.requestEndUs
     private data class Backing(val clip: HybridClip, val slipUs: Long, val automatic: Boolean)
 
     /** One reservation pool for both range windows and the ensuing edit, not per map. */
@@ -76,21 +77,42 @@ internal class HybridSourceWindow(project: HybridProject, private val clip: Hybr
             "Для сохранения скрытых кадров требуется карта больше допустимого размера проекта"
         }
         comparisonBudget.reserve(length + 1)
-        // Normalize every selected window to the oldest proven window's raw coordinates.
-        // Keep its accumulated slip separate: translated hidden requests may be outside the
-        // source even though the visible window is legal. Do not sample/validate those as raw.
-        val slipUs = backing.last().slipUs
-        val map = SourceTimeMap(List(length.toInt() + 1) { frame ->
-            val phase = first + frame
+        fun requestAt(phase: Long): BigInteger {
             val selected = windows.first { window ->
                 val local = phase - window.clip.originalFrameOffset
                 local in 0..window.clip.span.length.toLong()
             }
             val local = (phase - selected.clip.originalFrameOffset).toInt()
-            val relativeSlip = Math.subtractExact(selected.slipUs, slipUs)
-            SourceTimeMap.Point(frame, Math.addExact(selected.clip.sourceMap.sample(local), relativeSlip))
+            return BigInteger.valueOf(selected.clip.sourceMap.sample(local)) + BigInteger.valueOf(selected.slipUs)
+        }
+        // A representable envelope is monotone; SourceTimeMap still rejects any contrary seam.
+        // Its extrema bound the common slip, including the strict final visible-frame bound.
+        // Reuse these samples below: one reserved sample per phase, no second dense buffer/pass.
+        val firstRequest = requestAt(first)
+        val endRequest = requestAt(last)
+        val lastFrameRequest = if (length == 1L) firstRequest else requestAt(last - 1)
+        val endUs = BigInteger.valueOf(requestEndUs)
+        val lowerSlip = maxOf(endRequest - endUs, lastFrameRequest - endUs + BigInteger.ONE,
+            BigInteger.valueOf(Long.MIN_VALUE))
+        val upperSlip = minOf(firstRequest, BigInteger.valueOf(Long.MAX_VALUE))
+        require(lowerSlip <= upperSlip) { "Сохранённая карта скрытых кадров не помещается в границы исходника" }
+        // Prefer the proven raw coordinates, but do not let that preference reject a valid union.
+        val slip = BigInteger.valueOf(backing.last().slipUs).coerceIn(lowerSlip, upperSlip)
+        val map = SourceTimeMap(List(length.toInt() + 1) { frame ->
+            val request = when (frame.toLong()) {
+                0L -> firstRequest
+                length -> endRequest
+                length - 1 -> lastFrameRequest
+                else -> requestAt(first + frame)
+            }
+            val raw = request - slip
+            require(raw.signum() >= 0 && raw <= endUs && (frame.toLong() == length || raw < endUs)) {
+                "Сохранённая карта скрытых кадров не помещается в границы исходника"
+            }
+            // requestEndUs is a positive Long, so the checked raw value converts exactly.
+            SourceTimeMap.Point(frame, raw.toLong())
         })
-        return HybridSourceBacking(clip.assetId, map, first.toInt(), slipUs, selectedRevisionId, false)
+        return HybridSourceBacking(clip.assetId, map, first.toInt(), slip.toLong(), selectedRevisionId, false)
     }
 
     private fun sameSourceDescriptor(selected: HybridClip, saved: HybridClip): Boolean {
