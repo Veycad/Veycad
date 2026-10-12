@@ -107,6 +107,56 @@ function Invoke-UiPhase {
     $uiResult.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'instrumentation.txt') -Encoding UTF8
     $uiLogcat = Invoke-UiNative -Executable $uiAdb -Arguments @('-s', $Serial, 'logcat', '-d', '-v', 'threadtime')
     $uiLogcat.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'logcat.txt') -Encoding UTF8
+    $uiMediaFailure = $null
+    if ($Name -eq 'screens') {
+        # Binary-safe on Windows PowerShell 5 as well as pwsh: no native redirection or text
+        # pipeline may touch the emulator-produced AAC/WAV/MP4 bytes, including failed tests.
+        $uiMediaPath = Join-Path $uiArchive 'source-audio-native-evidence.tar'
+        $uiMediaPartial = "$uiMediaPath.partial"
+        $uiStart = [Diagnostics.ProcessStartInfo]::new()
+        $uiStart.FileName = $uiAdb
+        $uiStart.Arguments = "-s $Serial exec-out run-as $uiPackage tar -cf - files/source-audio-native-evidence"
+        $uiStart.UseShellExecute = $false
+        $uiStart.CreateNoWindow = $true
+        $uiStart.RedirectStandardOutput = $true
+        $uiStart.RedirectStandardError = $true
+        $uiMediaError = ''
+        try {
+            $uiProcess = [Diagnostics.Process]::Start($uiStart)
+            try {
+                $uiMedia = [IO.File]::Create($uiMediaPartial)
+                try {
+                    $uiErrorRead = $uiProcess.StandardError.ReadToEndAsync()
+                    $uiProcess.StandardOutput.BaseStream.CopyTo($uiMedia)
+                    $uiProcess.WaitForExit()
+                    $uiMediaError = $uiErrorRead.GetAwaiter().GetResult()
+                    if ($uiProcess.ExitCode -ne 0) { throw "Source AAC evidence collection failed: $uiMediaError" }
+                } finally { $uiMedia.Dispose() }
+            } finally { $uiProcess.Dispose() }
+            # exec-out can merge remote stderr into stdout and report zero even for missing files.
+            $uiPython = if ($uiWindows) { 'python' } else { 'python3' }
+            $uiValidation = Invoke-UiNative -Executable $uiPython -Arguments @(
+                (Join-Path $uiProjectRoot 'tools/verify_source_aac.py'), '--validate-archive', $uiMediaPartial)
+            if ($uiValidation.ExitCode -ne 0) { throw "Invalid source AAC transfer: $($uiValidation.Output)" }
+            Move-Item -LiteralPath $uiMediaPartial -Destination $uiMediaPath
+            (Get-FileHash -LiteralPath $uiMediaPath -Algorithm SHA256).Hash | Set-Content -LiteralPath "$uiMediaPath.sha256" -Encoding ASCII
+        } catch {
+            $uiPrefixHex = ''
+            if (Test-Path -LiteralPath $uiMediaPartial) {
+                $uiPrefixStream = [IO.File]::OpenRead($uiMediaPartial)
+                try {
+                    $uiPrefix = [byte[]]::new(96)
+                    $uiPrefixCount = $uiPrefixStream.Read($uiPrefix, 0, $uiPrefix.Length)
+                    $uiPrefixHex = [BitConverter]::ToString($uiPrefix, 0, $uiPrefixCount)
+                } finally { $uiPrefixStream.Dispose() }
+            }
+            $uiMediaFailure = "$($_.Exception.Message)`nstderr=$uiMediaError`ntransferPrefixHex=$uiPrefixHex"
+            $uiMediaFailure | Set-Content -LiteralPath (Join-Path $uiArchive 'source-audio-collection-error.txt') -Encoding UTF8
+            if (Test-Path -LiteralPath $uiMediaPartial) { Remove-Item -LiteralPath $uiMediaPartial }
+            Write-Warning $uiMediaFailure
+            # Continue pulling native XML: a transfer failure must not hide test failures/counts.
+        }
+    }
     $uiPulled = Invoke-UiNative -Executable $uiAdb -Arguments @(
         '-s', $Serial, 'exec-out', 'run-as', $uiPackage, 'cat', 'files/ui-test-results.xml'
     )
@@ -159,7 +209,8 @@ function Invoke-UiPhase {
         instrumentation_exit_code = $uiResult.ExitCode; executed = $uiExecuted
         instrumentation_finished = $uiFinished; report_totals_match = $uiTotalsMatch
         xml_reports = $uiReportCount; report_directory = $uiArchive
-        passed = ($uiResult.ExitCode -eq 0 -and $uiFinished -and $uiTotalsMatch -and $Expected.Count -gt 0 -and $uiReportCount -gt 0 -and
+        source_audio_collection_error = $uiMediaFailure
+        passed = ($null -eq $uiMediaFailure -and $uiResult.ExitCode -eq 0 -and $uiFinished -and $uiTotalsMatch -and $Expected.Count -gt 0 -and $uiReportCount -gt 0 -and
             $uiExecuted -eq $Expected.Count -and $uiCases.Count -eq $Expected.Count -and $uiFailures -eq 0 -and $uiErrors -eq 0 -and
             $uiSkipped -eq 0 -and $uiDuplicateCount -eq 0 -and $uiMissing.Count -eq 0 -and $uiUnexpected.Count -eq 0)
     }

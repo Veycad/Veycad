@@ -11,10 +11,11 @@ import java.io.File
 /** A real, decodable AVC clip generated on-device, independent of user footage. */
 internal object SyntheticVideo {
     fun create(target: File, durationMs: Long = 3_000, width: Int = 160, height: Int = 240,
-        lumaBase: Int = 40): File {
+        lumaBase: Int = 40, fps: Int = 30): File {
         require(durationMs in 1_000..180_000)
         require(width > 0 && height > 0 && width % 2 == 0 && height % 2 == 0 && lumaBase in 0..155)
-        if (lumaBase == 40 && target.isFile && target.length() > 0) {
+        require(fps == 30 || fps == 60)
+        if (fps == 30 && lumaBase == 40 && target.isFile && target.length() > 0) {
             val valid = runCatching {
                 MediaMetadataRetriever().use { metadata ->
                     metadata.setDataSource(target.path)
@@ -39,7 +40,7 @@ internal object SyntheticVideo {
             codec.configure(MediaFormat.createVideoFormat("video/avc", width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, color)
                 setInteger(MediaFormat.KEY_BIT_RATE, 200_000)
-                setInteger(MediaFormat.KEY_FRAME_RATE, 30)
+                setInteger(MediaFormat.KEY_FRAME_RATE, fps)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             codec.start()
@@ -54,8 +55,8 @@ internal object SyntheticVideo {
                 if (!inputEnded) {
                     val index = codec.dequeueInputBuffer(10_000)
                     if (index >= 0) {
-                        if (frame == (durationMs * 30 / 1_000).toInt()) {
-                            codec.queueInputBuffer(index, 0, 0, frame * 1_000_000L / 30,
+                        if (frame == (durationMs * fps / 1_000).toInt()) {
+                            codec.queueInputBuffer(index, 0, 0, frame * 1_000_000L / fps,
                                 MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputEnded = true
                         } else {
@@ -63,7 +64,7 @@ internal object SyntheticVideo {
                                 if (offset < width * height) (lumaBase + frame % 100).toByte() else 128.toByte()
                             }
                             codec.getInputBuffer(index)!!.apply { clear(); put(pixels) }
-                            codec.queueInputBuffer(index, 0, pixels.size, frame * 1_000_000L / 30, 0)
+                            codec.queueInputBuffer(index, 0, pixels.size, frame * 1_000_000L / fps, 0)
                             frame++
                         }
                     }
