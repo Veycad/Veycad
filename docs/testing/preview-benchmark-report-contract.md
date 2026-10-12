@@ -3,7 +3,7 @@
 `tools/preview_benchmark_report.py` is an offline calculator. Its output describes
 only supplied raw evidence: it never grants product/visual approval, proves a
 physical clock, enables a feature gate or verifies runtime allocator wiring.
-Task 13 collector, runner, physical devices and human review remain pending.
+Task 13 runtime hooks, runner, physical devices and human review remain pending.
 
 ```powershell
 python tools/preview_benchmark_report.py input.json --output report.md
@@ -158,6 +158,32 @@ Every value is a nonnegative integer or explicit null. Missing category keys
 are tolerated as unmeasured evidence and listed, just like null. Any missing
 observation makes memory INCOMPLETE; known maxima remain partial observations.
 No complete app sample yields unknown peak, not zero. Empty memory is INCOMPLETE.
+
+## Kotlin raw collector API
+
+`PreviewMetrics` owns one typed immutable group context and measurement tokens;
+it uses injected monotonic nanoseconds (Android default `elapsedRealtimeNanos`).
+Call `begin` at the request boundary, or supply the original `requestNs` when
+collection starts later; supply draft/Surface-ready `startNs` for FIRST_FRAME.
+`end` accepts actual terminal evidence and the epoch at completion. Unsafe
+claimed completion is retained for reporter diagnosis; unresolved requests
+remain incomplete. This API grants no renderer/audio callback authorization.
+`recordPlayback`, `recordScrubbing`, and `recordMemory` accept observed records.
+Playback is indexed 30 FPS grid evidence, rather than draw-call counters.
+
+Default bounds: 8192 requests, 64 passes, 108000 total grid records (one hour
+at 30 FPS across passes), 128 scrub sessions and 36000 memory samples. Limits
+are configurable in 1..1000000 per collection; strings are limited to 4096
+UTF-16 units and must have paired surrogates. These diagnostic storage limits
+do not establish runtime memory/performance acceptance. Context source lists
+and pass frames are copied once and frozen; snapshots freeze outer lists.
+Overflow retains earlier records and permanently refuses publication, because
+v1 cannot honestly encode lost evidence. Invalid caller arguments are rejected
+before record mutation. Numeric types are integer-only; unknown clocks/categories
+are nullable. `writeReport` streams under the collector monitor into an owned
+same-directory temporary file, then atomically replaces the destination; I/O or
+unsupported atomic publication fails explicitly without a destructive fallback.
+Use an existing output directory and perform writing outside presentation work.
 
 ## Minimal synthetic exchange example
 
