@@ -47,6 +47,24 @@ class GlProgramLifecycleTest {
                 GlProgramOwnership.create(driver, vertex, "invalid fragment shader")
             }
             assertTrue(shaders.all { !GLES20.glIsShader(it) })
+            shaders.clear()
+            val programs = mutableListOf<Int>()
+            val slots = SourceDecoderSlots { index ->
+                val program = GlProgramOwnership.create(driver, vertex,
+                    if (index == 19) "invalid fragment shader" else
+                        "precision mediump float; void main(){gl_FragColor=vec4(1.0);}")
+                programs += program
+                AutoCloseable { GLES20.glUseProgram(0); GLES20.glDeleteProgram(program) }
+            }
+            slots.acquire(7, DecoderRole.INCOMING)
+            slots.acquire(3, DecoderRole.OUTGOING)
+            try {
+                assertThrows(IllegalStateException::class.java) { slots.acquire(19, DecoderRole.INCOMING) }
+                assertFalse("Replaced role releases its native program before failing open", GLES20.glIsProgram(programs[0]))
+                assertTrue("Unchanged role stays owned until cleanup", GLES20.glIsProgram(programs[1]))
+                assertTrue(shaders.all { !GLES20.glIsShader(it) })
+            } finally { slots.releaseAll() }
+            assertTrue(programs.all { !GLES20.glIsProgram(it) })
         } finally {
             EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
             if (surface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, surface)

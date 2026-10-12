@@ -13,18 +13,25 @@ import java.util.concurrent.Executors
 /** Process-owned jobs never retain an Activity. Published files and interruption markers are durable. */
 internal class EditSession internal constructor(
     context: Context,
-    private val renderEngine: RenderEngine = NativeRenderEngine
+    private val renderEngine: RenderEngine = NativeRenderEngine,
+    private val sourceInspector: SourceInspector = SourceInspector { id, file, name, checkCancelled ->
+        MediaInputInspector(checkCancelled).inspect(id, file, name)
+    }
 ) {
     internal interface Owner { val editSession: EditSession }
     internal fun interface RenderEngine {
         fun render(request: VeycadAutomaticEditor.Request): RenderSummary
     }
+    internal fun interface SourceInspector {
+        fun inspect(id: String, file: File, name: String, checkCancelled: () -> Unit): MediaSource
+    }
     internal data class RenderSummary(
         val clipCount: Int, val beatHitRate: Float,
-        val passedQualityGate: Boolean, val issues: List<String>
+        val passedQualityGate: Boolean, val issues: List<String>, val productSummary: String? = null
     )
     private object NativeRenderEngine : RenderEngine {
         override fun render(request: VeycadAutomaticEditor.Request): RenderSummary {
+            if (request.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) return GalleryMvpRenderer.render(request)
             val result = VeycadAutomaticEditor.render(request)
             return RenderSummary(result.winner.alternative.graph.clips.size,
                 result.winner.acceptance.metrics.beatHitRate, result.passedQualityGate,
@@ -101,39 +108,76 @@ internal class EditSession internal constructor(
 
     fun importVideos(uris: List<android.net.Uri>, style: MontageStyleCatalog.Style) {
         if (state.value?.busy == true) return
+        if (uris.isEmpty()) return
+        val gallery = style.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE
+        if ((gallery && (!BuildConfig.GALLERY_MVP || uris.size !in 1..20)) ||
+            (!gallery && uris.size != style.sourceCount)) {
+            mutableState.value = state.value?.copy(error = if (gallery) "Выберите от 1 до 20 видео"
+                else "Выберите ${style.sourceCount} видео")
+            return
+        }
+        synchronized(cancelLock) { cancelled = false; publishing = false }
         val previous = state.value?.entry
-        mutableState.value = State(busy = true, importing = true, entry = previous)
+        val previousDraft = state.value?.draft
+        val selectedUris = uris.toList()
+        preferences.edit().putBoolean("running", true).commit()
+        mutableState.value = State(busy = true, importing = true, entry = previous, draft = previousDraft)
         executor.execute {
             val directory = RenderWorkspace.sourceDraftDirectory(app.filesDir)
             val stamp = UUID.randomUUID().toString()
-            val targets = uris.indices.map { File(directory, "source-$it-$stamp.mp4") }
+            val targets = selectedUris.indices.map { File(directory, "source-$it-$stamp.mp4") }
             val result = runCatching {
-                val names = uris.mapIndexed { index, uri ->
+                val names = selectedUris.mapIndexed { index, uri ->
+                    check(!cancelled) { "Импорт отменён" }
                     app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
                         null, null, null)?.use { cursor ->
                         if (cursor.moveToFirst()) cursor.getString(0) else null
                     } ?: "Видео ${index + 1}"
                 }
-                uris.zip(targets).forEach { (uri, target) ->
+                selectedUris.zip(targets).forEach { (uri, target) ->
                     val temporary = File(target.path + ".partial")
                     try {
                         app.contentResolver.openInputStream(uri)?.use { input ->
-                            temporary.outputStream().use { input.copyTo(it) }
+                            temporary.outputStream().use { output ->
+                                val buffer = ByteArray(64 * 1024)
+                                while (true) {
+                                    check(!cancelled) { "Импорт отменён" }
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    output.write(buffer, 0, count)
+                                }
+                            }
                         } ?: error("Не удалось прочитать выбранный файл")
                         check(temporary.length() > 0) { "Выбранный файл пуст" }
+                        check(!cancelled) { "Импорт отменён" }
                         check(temporary.renameTo(target)) { "Не удалось импортировать видео" }
                     } finally { temporary.delete() }
                 }
+                if (gallery) {
+                    val inspected = MediaSourceSet(targets.mapIndexed { index, file ->
+                        sourceInspector.inspect("gallery-$index", file, names[index]) {
+                            check(!cancelled) { "Импорт отменён" }
+                        }
+                    })
+                    GalleryImportPolicy.validate(inspected)
+                    require(inspected.items.all { it.isBaselineInput }) { "Выберите MP4 H.264 без HDR" }
+                }
                 val music = BuiltInMusicCatalog.select(app, style.id)
+                synchronized(cancelLock) { check(!cancelled) { "Импорт отменён" }; publishing = true }
                 app.getSharedPreferences("source_draft", Context.MODE_PRIVATE).edit()
                     .putString("display_name", names[0])
                     .putString("display_name_2", names.getOrNull(1)).commit()
-                directory.listFiles()?.filter { it !in targets }?.forEach(File::delete)
+                // Old copies may belong to an open text draft. Only failed new imports are removed.
+                if (!BuildConfig.GALLERY_MVP) directory.listFiles()?.filter { it !in targets }?.forEach(File::delete)
                 Draft(targets, names, music)
             }
             if (result.isFailure) targets.forEach(File::delete)
-            main.post { mutableState.value = State(entry = previous, draft = result.getOrNull(),
-                error = result.exceptionOrNull()?.message) }
+            preferences.edit().putBoolean("running", false).commit()
+            main.post {
+                mutableState.value = State(entry = previous, draft = result.getOrNull() ?: previousDraft,
+                    error = result.exceptionOrNull()?.message)
+                synchronized(cancelLock) { publishing = false }
+            }
         }
     }
 
@@ -158,13 +202,65 @@ internal class EditSession internal constructor(
         captureTakeOrdinal: Int? = null,
         captureAutoRecommendation: Boolean = false
     ) {
+        renderResolved({ checkCancelled ->
+            require(secondary == null || secondary.canonicalPath != source.canonicalPath)
+            MediaSourceSet(listOfNotNull(source, secondary).mapIndexed { index, file ->
+                sourceInspector.inspect("legacy-$index", file, file.name, checkCancelled)
+            })
+        }, music, style, width, height, bitrate, captureSessionId, continuingCapturePreparation,
+            captureTakeOrdinal, captureAutoRecommendation)
+    }
+
+    fun render(
+        files: List<File>,
+        music: File,
+        style: MontageStyleCatalog.Style,
+        width: Int = 720,
+        height: Int = 1_280,
+        bitrate: Int = 5_000_000
+    ) {
+        val snapshot = files.toList()
+        renderResolved({ checkCancelled ->
+            MediaSourceSet(snapshot.mapIndexed { index, file ->
+                sourceInspector.inspect("gallery-$index", file, file.name, checkCancelled)
+            })
+        }, music, style, width, height, bitrate, null, false, null, false)
+    }
+
+    fun render(
+        sources: MediaSourceSet,
+        music: File,
+        style: MontageStyleCatalog.Style,
+        width: Int = 720,
+        height: Int = 1_280,
+        bitrate: Int = 5_000_000,
+        captureSessionId: String? = null,
+        continuingCapturePreparation: Boolean = false,
+        captureTakeOrdinal: Int? = null,
+        captureAutoRecommendation: Boolean = false
+    ) = renderResolved({ checkCancelled -> checkCancelled(); sources }, music, style, width, height,
+        bitrate, captureSessionId, continuingCapturePreparation, captureTakeOrdinal, captureAutoRecommendation)
+
+    private fun renderResolved(
+        resolveSources: (() -> Unit) -> MediaSourceSet,
+        music: File,
+        style: MontageStyleCatalog.Style,
+        width: Int,
+        height: Int,
+        bitrate: Int,
+        captureSessionId: String?,
+        continuingCapturePreparation: Boolean,
+        captureTakeOrdinal: Int?,
+        captureAutoRecommendation: Boolean
+    ) {
         require(captureSessionId == null || captureTakeOrdinal != null)
         if (state.value?.busy == true && !(continuingCapturePreparation && captureSessionId != null &&
             state.value?.operationDetail != null)) return
         synchronized(cancelLock) { cancelled = false; publishing = false }
         val previous = state.value?.entry
+        val previousDraft = state.value?.draft
         preferences.edit().putBoolean("running", true).commit()
-        mutableState.value = State(busy = true, entry = previous,
+        mutableState.value = State(busy = true, entry = previous, draft = previousDraft,
             progress = VeycadAutomaticEditor.Progress(VeycadAutomaticEditor.Stage.ANALYSING_VIDEO))
         executor.execute {
             val directory = File(RenderWorkspace.pendingRendersDirectory(app.filesDir), UUID.randomUUID().toString())
@@ -178,31 +274,33 @@ internal class EditSession internal constructor(
                 val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
                 wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "${app.packageName}:edit-session")
                     .apply { acquire(15 * 60 * 1000L) }
+                val checkCancelled = { check(!cancelled) { "Монтаж отменён" } }
+                val sources = resolveSources(checkCancelled)
                 val edit = renderEngine.render(VeycadAutomaticEditor.Request(
-                    context = app, sourceFile = source, secondarySourceFile = secondary,
+                    context = app, sources = sources,
                     musicFile = music, outputFile = output, style = style.directorStyle,
                     recipe = requireNotNull(style.recipe),
                     width = width,
                     height = height,
                     bitrate = bitrate,
                     jobLease = lease,
-                    checkCancelled = { check(!cancelled) { "Монтаж отменён" } },
+                    checkCancelled = checkCancelled,
                     onProgress = { progress ->
                         check(!cancelled) { "Монтаж отменён" }
-                        main.post { mutableState.value = State(busy = true, entry = previous, progress = progress) }
+                        main.post { mutableState.value = State(busy = true, entry = previous, draft = previousDraft, progress = progress) }
                     }
                 ))
                 check(!cancelled) { "Монтаж отменён" }
                 val warning = if (edit.passedQualityGate) "проверено" else
                     "готово с предупреждением QA: ${edit.issues.joinToString()}"
-                val summary = "${style.title} · ${edit.clipCount} фрагментов · " +
-                    "бит ${(edit.beatHitRate * 100).toInt()}% · $warning"
+                val summary = edit.productSummary ?: ("${style.title} · ${edit.clipCount} фрагментов · " +
+                    "бит ${(edit.beatHitRate * 100).toInt()}% · $warning")
                 synchronized(cancelLock) {
                     check(!cancelled) { "Монтаж отменён" }
                     publishing = true
                 }
                 main.post { mutableState.value = State(busy = true, publishing = true,
-                    entry = previous, operationDetail = "Сохраняю готовый эдит…") }
+                    entry = previous, draft = previousDraft, operationDetail = "Сохраняю готовый эдит…") }
                 val link = captureSessionId?.let { CompletedRenderStore.CaptureLink(it,
                     requireNotNull(captureTakeOrdinal), captureAutoRecommendation) }
                 val published = CompletedRenderStore.publish(app.filesDir, output, summary, link)
@@ -222,7 +320,7 @@ internal class EditSession internal constructor(
             preferences.edit().putBoolean("running", false).commit()
             main.post {
                 val completed = result.getOrNull()
-                mutableState.value = State(entry = completed?.first ?: previous,
+                mutableState.value = State(entry = completed?.first ?: previous, draft = previousDraft,
                     error = result.exceptionOrNull()?.message ?: completed?.second?.let {
                         "Эдит сохранён. Связь с дублем восстановится при следующем запуске приложения."
                     })
@@ -233,7 +331,7 @@ internal class EditSession internal constructor(
     /** Cleanup waits for the worker to unwind; no files in use are deleted from the UI. */
     fun cancelRender(): Boolean = synchronized(cancelLock) {
         if (state.value?.busy != true || state.value?.saving == true ||
-            state.value?.importing == true || publishing || cancelled) return@synchronized false
+            publishing || cancelled) return@synchronized false
         cancelled = true
         activeLease?.delete()
         true
@@ -241,14 +339,15 @@ internal class EditSession internal constructor(
 
     fun clearDraft() {
         if (state.value?.busy == true) return
-        RenderWorkspace.clearSourceDraft(app.filesDir)
+        if (!BuildConfig.GALLERY_MVP) RenderWorkspace.clearSourceDraft(app.filesDir)
         mutableState.value = state.value?.copy(draft = null)
     }
 
     fun save(entry: CompletedRenderStore.Entry, destination: android.net.Uri? = null) {
         if (state.value?.busy == true || entry.saved) return
+        val previousDraft = state.value?.draft
         preferences.edit().putBoolean("running", true).commit()
-        mutableState.value = State(busy = true, saving = true, entry = entry)
+        mutableState.value = State(busy = true, saving = true, entry = entry, draft = previousDraft)
         executor.execute {
             val result = runCatching {
                 val local = File(File(app.filesDir, "my-edits").apply { mkdirs() }, entry.file.name)
@@ -266,7 +365,7 @@ internal class EditSession internal constructor(
                 } finally { temporary.delete() }
             }
             preferences.edit().putBoolean("running", false).commit()
-            main.post { mutableState.value = State(entry = result.getOrNull() ?: entry,
+            main.post { mutableState.value = State(entry = result.getOrNull() ?: entry, draft = previousDraft,
                 error = result.exceptionOrNull()?.message) }
         }
     }

@@ -1,0 +1,41 @@
+name: Android MVP APK build
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-mvp-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  mvp:
+    if: github.head_ref == 'codex/gallery-text-mvp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Build isolated APK with the real bundled model
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain :app:assembleMvp
+          mkdir -p build/reports/mvp
+          cp app/build/outputs/apk/mvp/app-universal-mvp.apk build/reports/mvp/app-mvp.apk
+      - name: Save installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: veycad-mvp-${{ github.event.pull_request.head.sha }}
+          path: build/reports/mvp/app-mvp.apk
+          if-no-files-found: error

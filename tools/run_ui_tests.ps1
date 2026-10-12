@@ -107,6 +107,28 @@ function Invoke-UiPhase {
     $uiResult.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'instrumentation.txt') -Encoding UTF8
     $uiLogcat = Invoke-UiNative -Executable $uiAdb -Arguments @('-s', $Serial, 'logcat', '-d', '-v', 'threadtime')
     $uiLogcat.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'logcat.txt') -Encoding UTF8
+    if ($Name -eq 'screens') {
+        # Binary-safe on Windows PowerShell 5 as well as pwsh: no native redirection or text
+        # pipeline may touch the emulator-produced AAC/WAV/MP4 bytes, including failed tests.
+        $uiMediaPath = Join-Path $uiArchive 'source-audio-native-evidence.tar'
+        $uiStart = [Diagnostics.ProcessStartInfo]::new()
+        $uiStart.FileName = $uiAdb
+        $uiStart.Arguments = "-s $Serial exec-out run-as $uiPackage tar -cf - files/source-audio-native-evidence"
+        $uiStart.UseShellExecute = $false
+        $uiStart.CreateNoWindow = $true
+        $uiStart.RedirectStandardOutput = $true
+        $uiStart.RedirectStandardError = $true
+        $uiProcess = [Diagnostics.Process]::Start($uiStart)
+        $uiMedia = [IO.File]::Create($uiMediaPath)
+        try {
+            $uiErrorRead = $uiProcess.StandardError.ReadToEndAsync()
+            $uiProcess.StandardOutput.BaseStream.CopyTo($uiMedia)
+            $uiProcess.WaitForExit()
+            $uiMediaError = $uiErrorRead.GetAwaiter().GetResult()
+            if ($uiProcess.ExitCode -ne 0) { throw "Source AAC evidence collection failed: $uiMediaError" }
+        } finally { $uiMedia.Dispose(); $uiProcess.Dispose() }
+        (Get-FileHash -LiteralPath $uiMediaPath -Algorithm SHA256).Hash | Set-Content -LiteralPath "$uiMediaPath.sha256" -Encoding ASCII
+    }
     $uiPulled = Invoke-UiNative -Executable $uiAdb -Arguments @(
         '-s', $Serial, 'exec-out', 'run-as', $uiPackage, 'cat', 'files/ui-test-results.xml'
     )
