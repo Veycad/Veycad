@@ -1113,7 +1113,8 @@ internal class GlesFrameCompositor(
                 }
                 ownedSurface = Surface(surfaceTexture)
             } catch (error: Throwable) {
-                if (reservation != null) runCatching { reservation.close() }.exceptionOrNull()?.let(error::addSuppressed)
+                if (previewOwner != null) runCatching { checkNotNull(reservation).close() }
+                    .exceptionOrNull()?.let(error::addSuppressed)
                 else {
                     if (::surfaceTexture.isInitialized) runCatching { surfaceTexture.release() }
                     GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
