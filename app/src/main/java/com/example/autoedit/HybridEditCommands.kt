@@ -57,7 +57,11 @@ object HybridEditCommands {
         clips[index - 1] = left.copy(span = FrameSpan(left.span.start, targetFrame), sourceMap = leftMap)
         clips[index] = right.copy(span = FrameSpan(targetFrame, right.span.endExclusive), sourceMap = rightMap,
             originalFrameOffset = phase.toInt())
-        commitRevision(project, project.current.copy(clips = clips, lockedCutIds = project.current.lockedCutIds + cutId))
+        val backings = project.current.sourceBackings.toMutableMap()
+        backings[left.id] = HybridSourceWindow(project, left, budget).retainedBacking()
+        backings[right.id] = HybridSourceWindow(project, right, budget).retainedBacking()
+        commitRevision(project, project.current.copy(clips = clips, lockedCutIds = project.current.lockedCutIds + cutId),
+            restoresAutomaticSources = false, trustedBackings = backings, comparisonBudget = budget)
     }
 
     fun slipClip(project: HybridProject, clipId: String, sourceOffsetUs: Long): HybridProject = editValidation {
@@ -73,7 +77,11 @@ object HybridEditCommands {
         val clips = project.current.clips.toMutableList()
         clips[index] = clip.copy(sourceMap = map)
         val locks = if (index > 0) project.current.lockedCutIds + clipId else project.current.lockedCutIds
-        commitRevision(project, project.current.copy(clips = clips, lockedCutIds = locks))
+        val budget = HybridSourceWindow.ComparisonBudget()
+        val backing = HybridSourceWindow(project, clip, budget).retainedBacking()
+        commitRevision(project, project.current.copy(clips = clips, lockedCutIds = locks),
+            restoresAutomaticSources = false, trustedBackings = project.current.sourceBackings +
+                (clip.id to backing.copy(slipUs = Math.addExact(backing.slipUs, sourceOffsetUs))), comparisonBudget = budget)
     }
 
     fun replaceMusic(project: HybridProject, music: ProjectMusic, asset: ProjectAsset? = null): HybridProject = editValidation {
@@ -108,12 +116,22 @@ object HybridEditCommands {
         commitRevision(project, candidate, restoresAutomaticSources = false)
 
     private fun commitRevision(project: HybridProject, candidate: HybridRevision,
-        restoresAutomaticSources: Boolean): HybridProject = editValidation {
+        restoresAutomaticSources: Boolean, trustedBackings: Map<String, HybridSourceBacking>? = null,
+        comparisonBudget: HybridSourceWindow.ComparisonBudget = HybridSourceWindow.ComparisonBudget()): HybridProject = editValidation {
         require(candidate.id == project.current.id) { "Проект изменился после начала правки" }
+        require(restoresAutomaticSources || candidate.sourceBackings.isEmpty() || candidate.sourceBackings == project.current.sourceBackings) {
+            "Внешняя правка не может подменять выбранную карту скрытых кадров"
+        }
         // Compare content without interpreting an inherited event as a new reset. An
         // explicit reset can change hidden source selection even when visible content matches.
+        val previousClips = project.current.clips.associateBy { it.id }
         val payload = candidate.copy(parentId = project.current.parentId,
-            restoresAutomaticSources = project.current.restoresAutomaticSources)
+            restoresAutomaticSources = project.current.restoresAutomaticSources, sourceBackings = project.current.sourceBackings,
+            clips = candidate.clips.map { clip ->
+                val old = previousClips[clip.id]
+                if (old != null && old.sourceMap !== clip.sourceMap && old.sourceMap == clip.sourceMap)
+                    clip.copy(sourceMap = old.sourceMap) else clip
+            })
         if (payload == project.current && (!restoresAutomaticSources ||
                 project.current.id == project.original.id || project.current.restoresAutomaticSources)) return@editValidation project
         require(project.nextRevisionId < Long.MAX_VALUE) { "Исчерпан диапазон номеров ревизий" }
@@ -121,15 +139,33 @@ object HybridEditCommands {
         payload.clips.forEach { clip ->
             val asset = assets[clip.assetId]
             require(asset != null && asset.kind == ProjectAsset.Kind.VIDEO) { "Видеоисходник клипа не найден: ${clip.id}" }
-            require(clip.sourceMap.points.last().sourceTimeUs <= asset.durationUs &&
-                clip.sourceMap.sample(clip.span.length - 1) < asset.durationUs) { "Здесь заканчивается исходник клипа: ${clip.id}" }
+            asset.timeBounds.requireRequest(clip.sourceMap.points.last().sourceTimeUs, exclusiveBoundary = true)
+            asset.timeBounds.requireRequest(clip.sourceMap.sample(clip.span.length - 1))
         }
         val music = assets[payload.music.assetId]
         require(music != null && music.kind == ProjectAsset.Kind.AUDIO) { "Аудиоисходник музыки не найден" }
         require(payload.music.startUs < music.durationUs) { "Выбранный отрывок начинается после конца музыки" }
+        val budget = comparisonBudget
+        val oldClips = project.current.clips.associateBy { it.id }
+        val backings = payload.clips.associate { clip ->
+            val old = oldClips[clip.id]
+            val retained = when {
+                restoresAutomaticSources -> HybridSourceBacking.select(clip, project.nextRevisionId, automatic = true)
+                trustedBackings?.containsKey(clip.id) == true -> trustedBackings.getValue(clip.id)
+                old != null && sameSourceDescriptor(old, clip) -> {
+                    val selected = HybridSourceWindow(project, old, budget).retainedBacking()
+                    if (sameSourceSelection(old, clip) || selected.matches(clip, budget)) selected
+                    else HybridSourceBacking.select(clip, project.nextRevisionId)
+                }
+                // A changed curve/phase/physical binding is a new explicit visible selection.
+                // Coincident overlap alone cannot confer an older hidden curve's identity.
+                else -> HybridSourceBacking.select(clip, project.nextRevisionId)
+            }
+            clip.id to retained
+        }
         // HybridProject validates the entire payload, source bounds and historical ownership.
         project.copy(current = payload.copy(id = project.nextRevisionId, parentId = project.current.id,
-            restoresAutomaticSources = restoresAutomaticSources),
+            restoresAutomaticSources = restoresAutomaticSources, sourceBackings = backings),
             nextRevisionId = project.nextRevisionId + 1,
             undo = (project.undo + project.current).takeLast(50), redo = emptyList())
     }
@@ -184,6 +220,9 @@ object HybridEditCommands {
     // Prove selection only through retained, contiguous ancestry of complete original clips.
     // A changed map/phase/identity or a gap ends proof, even if visible samples later match.
     private fun originalMontageSelected(project: HybridProject): Boolean {
+        if (project.current.clips == project.original.clips && project.current.clips.all { clip ->
+                project.current.sourceBackings[clip.id]?.let { it.automatic && it.slipUs == 0L } == true
+            }) return true
         val budget = HybridSourceWindow.ComparisonBudget()
         val byId = project.undo.associateBy { it.id }
         var revision = project.current
@@ -212,6 +251,14 @@ object HybridEditCommands {
         }
         return false
     }
+
+    private fun sameSourceSelection(a: HybridClip, b: HybridClip): Boolean =
+        a.sourceMap == b.sourceMap && a.originalFrameOffset == b.originalFrameOffset && sameSourceDescriptor(a, b)
+
+    private fun sameSourceDescriptor(a: HybridClip, b: HybridClip): Boolean =
+        a.assetId == b.assetId && a.original.id == b.original.id && a.original.sourceIndex == b.original.sourceIndex &&
+            a.original.sourceStartMs == b.original.sourceStartMs && a.original.sourceEndMs == b.original.sourceEndMs &&
+            a.original.outputDurationMs == b.original.outputDurationMs && a.original.speedRamp == b.original.speedRamp
 
     private fun exactSlice(map: SourceTimeMap, from: Int, until: Int): SourceTimeMap {
         // Re-interpolating rounded endpoints changes unsaved fractional samples by 1 us.
