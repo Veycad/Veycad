@@ -12,6 +12,68 @@ import org.junit.runner.RunWith
 /** Admission/lifetime checks use the real shared manager and real GLES objects, without codecs. */
 @RunWith(AndroidJUnit4::class)
 class GlesPreviewMemoryDeviceTest {
+    @Test fun failed_offscreen_binding_cannot_publish_complete_default_framebuffer() {
+        assertOffscreenAllocationRejected(failBinding = true)
+    }
+
+    @Test fun zero_offscreen_framebuffer_name_cannot_publish_complete_default_framebuffer() {
+        assertOffscreenAllocationRejected(failBinding = false)
+    }
+
+    private fun assertOffscreenAllocationRejected(failBinding: Boolean) {
+        val budget = PreviewMemoryBudget()
+        var foreignDisposed = false
+        assertTrue(budget.reserve("core-page", 32) { foreignDisposed = true })
+        budget.pin("core-page")
+        Fixture().use { fixture ->
+            val beforeTextures = liveTextures()
+            val beforeFramebuffers = liveFramebuffers()
+            var reachedFailure = false
+            val allocator = object : GlesFrameCompositor.FramebufferAllocator {
+                override fun generate(names: IntArray) {
+                    if (failBinding) GLES20.glGenFramebuffers(1, names, 0)
+                    else {
+                        assertCompleteDefault()
+                        names[0] = 0 // Deterministic failed generation, without a pending error.
+                        reachedFailure = true
+                    }
+                }
+                override fun bind(name: Int) {
+                    assertCompleteDefault()
+                    // Real GL_INVALID_ENUM: leaves the complete default framebuffer bound.
+                    GLES20.glBindFramebuffer(GLES20.GL_TEXTURE_2D, name)
+                    reachedFailure = true
+                }
+                private fun assertCompleteDefault() {
+                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+                    assertEquals(GLES20.GL_FRAMEBUFFER_COMPLETE,
+                        GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER))
+                    assertEquals(GLES20.GL_NO_ERROR, GLES20.glGetError())
+                }
+            }
+            var unexpected: GlesFrameCompositor? = null
+            try {
+                val failure = assertThrows(IllegalStateException::class.java) {
+                    unexpected = fixture.compositor(budget, allPostPasses(), framebufferAllocator = allocator)
+                }
+                assertTrue("Must reach the native allocation boundary", reachedFailure)
+                assertFalse("Confirmed cleanup needs no retry capability", failure is PreviewAllocationFailure)
+                assertTrue(failure.message.orEmpty().contains(if (failBinding) "framebuffer binding" else "framebuffer generation"))
+                assertTrue("Preserve the original GL error in diagnostics", failure.message.orEmpty()
+                    .contains("GL error=0x${(if (failBinding) GLES20.GL_INVALID_ENUM else GLES20.GL_NO_ERROR).toString(16)}"))
+                fixture.egl.makeCurrent()
+                assertEquals(beforeTextures, liveTextures())
+                assertEquals(beforeFramebuffers, liveFramebuffers())
+                assertEquals(32L, budget.usedBytes)
+                assertFalse(foreignDisposed)
+                assertEquals(1, fixture.targetCloseCalls)
+                assertEquals(GLES20.GL_NO_ERROR, GLES20.glGetError())
+            } finally { unexpected?.close() }
+        }
+        budget.release("core-page")
+        assertTrue(foreignDisposed)
+    }
+
     @Test fun denied_constructor_reclaims_only_its_partial_allocations() {
         // Enough for input handles, but not the first program: exercise actual partial allocation.
         val budget = PreviewMemoryBudget(32_768)
@@ -265,11 +327,14 @@ class GlesPreviewMemoryDeviceTest {
         }
         fun compositor(budget: PreviewMemoryBudget?, plan: RenderPassPlanner.Plan? = null,
             title: AuthoredTitleProfile.Spec? = null,
-            driver: GlProgramOwnership.Driver = GlesProgram): GlesFrameCompositor {
+            driver: GlProgramOwnership.Driver = GlesProgram,
+            framebufferAllocator: GlesFrameCompositor.FramebufferAllocator = GlesFrameCompositor.GlesFramebufferAllocator
+        ): GlesFrameCompositor {
             val graph = GlesFrameCompositorDeviceTest.graph()
             return GlesFrameCompositor(target, plan ?: RenderPassPlanner.plan(graph,
                 RenderPassPlanner.DeviceCapabilities.conservative()), graph.frameAttachments,
-                authoredTitle = title, programDriver = driver, previewMemoryBudget = budget)
+                authoredTitle = title, programDriver = driver, framebufferAllocator = framebufferAllocator,
+                previewMemoryBudget = budget)
         }
         override fun close() { egl.close(); surface.release(); texture.release() }
     }

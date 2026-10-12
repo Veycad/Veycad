@@ -35,8 +35,20 @@ internal class GlesFrameCompositor(
     private val programDriver: GlProgramOwnership.Driver = GlesProgram,
     private val sourceAttachments: List<SourceAttachments> = emptyList(),
     manualFraming: ManualFramingTable? = null,
+    private val framebufferAllocator: FramebufferAllocator = GlesFramebufferAllocator,
     previewMemoryBudget: PreviewMemoryBudget? = null
 ) : AutoCloseable {
+    /** Native allocation boundary; ownership and rollback stay with the compound reservation. */
+    internal interface FramebufferAllocator {
+        fun generate(names: IntArray)
+        fun bind(name: Int)
+    }
+
+    internal object GlesFramebufferAllocator : FramebufferAllocator {
+        override fun generate(names: IntArray) = GLES20.glGenFramebuffers(1, names, 0)
+        override fun bind(name: Int) = GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, name)
+    }
+
     private val width = target.size.width
     private val height = target.size.height
     private val worker = Thread.currentThread()
@@ -869,11 +881,14 @@ internal class GlesFrameCompositor(
         }
         try {
             GLES20.glGenTextures(1, textures, 0)
+            checkOffscreenAllocation("texture generation", textures[0] != 0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[0])
+            checkOffscreenAllocation("texture binding")
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            checkOffscreenAllocation("texture parameters")
             GLES20.glTexImage2D(
                 GLES20.GL_TEXTURE_2D,
                 0,
@@ -885,8 +900,11 @@ internal class GlesFrameCompositor(
                 GLES20.GL_UNSIGNED_BYTE,
                 null
             )
-            GLES20.glGenFramebuffers(1, framebuffers, 0)
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffers[0])
+            checkOffscreenAllocation("texture image setup")
+            framebufferAllocator.generate(framebuffers)
+            checkOffscreenAllocation("framebuffer generation", framebuffers[0] != 0)
+            framebufferAllocator.bind(framebuffers[0])
+            checkOffscreenAllocation("framebuffer binding")
             GLES20.glFramebufferTexture2D(
                 GLES20.GL_FRAMEBUFFER,
                 GLES20.GL_COLOR_ATTACHMENT0,
@@ -894,10 +912,15 @@ internal class GlesFrameCompositor(
                 textures[0],
                 0
             )
-            check(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE) {
-                "Unable to allocate ${targetWidth}x$targetHeight render pass"
+            checkOffscreenAllocation("framebuffer attachment")
+            val status = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER)
+            checkOffscreenAllocation("framebuffer completeness query")
+            check(status == GLES20.GL_FRAMEBUFFER_COMPLETE) {
+                "Unable to allocate ${targetWidth}x$targetHeight render pass" +
+                    if (previewOwner != null) ": framebuffer status=0x${status.toString(16)}" else ""
             }
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            checkOffscreenAllocation("framebuffer unbinding")
             return OffscreenTarget(framebuffers[0], textures[0], targetWidth, targetHeight)
         } catch(error: Throwable) {
             if (reservation != null) runCatching { reservation.close() }.exceptionOrNull()?.let(error::addSuppressed)
@@ -911,6 +934,14 @@ internal class GlesFrameCompositor(
             if (previewOwner == null || runCatching { target.makeCurrent() }.isSuccess) {
                 GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
             }
+        }
+    }
+
+    private fun checkOffscreenAllocation(stage: String, validName: Boolean = true) {
+        if (previewOwner == null) return
+        val error = GLES20.glGetError()
+        check(validName && error == GLES20.GL_NO_ERROR) {
+            "Unable to allocate render pass at $stage: valid name=$validName, GL error=0x${error.toString(16)}"
         }
     }
 
