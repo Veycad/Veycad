@@ -35,8 +35,8 @@ internal object PersonMaskProjection {
         val right = (left + 1).coerceAtMost(mask.width - 1)
         val bottom = (top + 1).coerceAtMost(mask.height - 1)
         val fx = mx - left; val fy = my - top
-        val a = mask.values[top * mask.width + left] * (1f - fx) + mask.values[top * mask.width + right] * fx
-        val b = mask.values[bottom * mask.width + left] * (1f - fx) + mask.values[bottom * mask.width + right] * fx
+        val a = mask[top * mask.width + left] * (1f - fx) + mask[top * mask.width + right] * fx
+        val b = mask[bottom * mask.width + left] * (1f - fx) + mask[bottom * mask.width + right] * fx
         return a * (1f - fy) + b * fy
     }
 }

@@ -1051,13 +1051,13 @@ object MediaCodecSpeedRampRenderer {
             if (plane == null) {
                 bytes.put(0)
             } else if (blendTarget != null && blendTarget.width == width && blendTarget.height == height) {
-                plane.values.indices.forEach { index ->
-                    val value = plane.values[index] +
-                        (blendTarget.values[index] - plane.values[index]) * blendProgress
+                (0 until plane.size).forEach { index ->
+                    val value = plane[index] +
+                        (blendTarget[index] - plane[index]) * blendProgress
                     bytes.put((value.coerceIn(0f, 1f) * 255f).toInt().toByte())
                 }
             } else {
-                plane.values.forEach { bytes.put((it.coerceIn(0f, 1f) * 255f).toInt().toByte()) }
+                for (index in 0 until plane.size) bytes.put((plane[index].coerceIn(0f, 1f) * 255f).toInt().toByte())
             }
             bytes.position(0)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + unit)
