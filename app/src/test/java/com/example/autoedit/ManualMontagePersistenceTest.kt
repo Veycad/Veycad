@@ -88,6 +88,11 @@ class ManualMontagePersistenceTest {
         assertFalse(authoredEffect.enabled)
         assertEquals(0f, authoredEffect.phaseStart, 0f)
         assertEquals(1f, authoredEffect.phaseEnd, 0f)
+        // The edited graph is the raw stored value, not just a compiler projection.
+        assertNotNull(saved.current.graph.editableTiming)
+        val enabledFlashRevision = saved.undo.first { it.id != saved.original.id &&
+            it.graph.manualMontageState!!.effects.single { effect -> effect.id == "flash-B" }.enabled }
+        assertNotNull(enabledFlashRevision.graph.overlays.single { it.id == "flash-B" }.sampleWindow)
         val beforePlan = HighQualityFramePlan.build(EditableMontageCompiler.compile(edited), fps)
         val firstB = beforePlan.frames.first { it.sourceIndex == 1 }
         assertEquals(firstRetainedPts, firstB.sourceTimeUs)
