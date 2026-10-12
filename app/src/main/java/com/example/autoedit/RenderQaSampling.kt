@@ -23,6 +23,23 @@ internal class RenderQaFrameIndex(val frames: List<HighQualityFramePlan.Frame>) 
     }
 }
 
+/** Resolved against the supplied plan; adapters retain no graph or mutable predicate snapshot. */
+internal data class RenderQaEventWindow(val first: Int, val last: Int, val authoredPeak: Int?) {
+    companion object {
+        fun resolve(index: RenderQaFrameIndex, startUs: Long, endUs: Long, peakUs: Long? = null,
+            contains: (Long) -> Boolean = { it in startUs until endUs }): RenderQaEventWindow? {
+            // Exact translated membership can differ from displayed bounds by one microsecond.
+            val frames = index.frames
+            var first = index.atOrAfter((startUs - 1).coerceAtLeast(0))
+            var last = (index.atOrAfter(endUs + 1) - 1).coerceAtMost(frames.lastIndex)
+            while (first <= last && !contains(frames[first].outputTimeUs)) first++
+            while (last >= first && !contains(frames[last].outputTimeUs)) last--
+            if (first > last) return null
+            return RenderQaEventWindow(first, last, peakUs?.let { index.nearest(it).coerceIn(first, last) })
+        }
+    }
+}
+
 /** Only contiguous, actually retained transition frames form an evidence window. */
 internal data class RenderQaTransitionWindow(val first: Int, val last: Int) {
     companion object {
@@ -80,27 +97,13 @@ internal object RenderQaSampling {
                 add(low.coerceAtMost(window.last))
             }
         }
-        fun effect(startUs: Long, endUs: Long, sampleWindow: EffectSampleWindow?) {
-            // Frame-shift sampling can differ from the displayed bounds by one microsecond.
-            var first = index.atOrAfter((startUs - 1).coerceAtLeast(0))
-            var last = (index.atOrAfter(endUs + 1) - 1).coerceAtMost(frames.lastIndex)
-            fun contains(i: Int): Boolean = sampleWindow?.contains(frames[i].outputTimeUs)
-                ?: (frames[i].outputTimeUs in startUs until endUs)
-            while (first <= last && !contains(first)) first++
-            while (last >= first && !contains(last)) last--
-            if (first > last) return
+        graph.renderQaEvents(index).forEach { window ->
+            val first = window.first; val last = window.last
             add(first - 1); add(first); add(last); add(last + 1)
             val middleUs = frames[first].outputTimeUs + (frames[last].outputTimeUs - frames[first].outputTimeUs) / 2
             add(index.nearest(middleUs).coerceIn(first, last))
-            sampleWindow?.let { window ->
-                val peakUs = window.authoredStartUs + (window.authoredEndUs - window.authoredStartUs) / 2 - window.offsetUs
-                add(index.nearest(peakUs).coerceIn(first, last))
-            }
+            window.authoredPeak?.let { add(it) }
         }
-        graph.renderOverlays().forEach { overlay -> effect(overlay.sampleWindow?.startUs ?: overlay.startMs * 1_000L,
-            overlay.sampleWindow?.endUs ?: overlay.endMs * 1_000L, overlay.sampleWindow) }
-        graph.renderNodes().forEach { node -> effect(node.sampleWindow?.startUs ?: node.startUs,
-            node.sampleWindow?.endUs ?: node.endUs, node.sampleWindow) }
         return selected.map { frames[it].outputTimeUs }
     }
 }

@@ -1,0 +1,112 @@
+name: Render QA legacy compatibility
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/render-qa-legacy.yml'
+      - 'app/src/main/java/com/example/autoedit/RenderQa*.kt'
+      - 'app/src/main/java/com/example/autoedit/RenderedVisualSampler.kt'
+      - 'app/src/test/java/com/example/autoedit/*Qa*Test.kt'
+      - 'app/src/test/java/com/example/autoedit/ManualRenderOverridesTest.kt'
+      - 'app/src/test/java/com/example/autoedit/ManualMontageAcceptanceTest.kt'
+      - 'tools/verify_render_qa_legacy.py'
+      - 'tools/fixtures/render-qa-legacy/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  legacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      QA_EVIDENCE: .superpowers/sdd/2026-10-10-manual-montage/task-4d-evidence
+      QA_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Record exact checkout and prepare ignored evidence
+        run: |
+          printf '\n/.superpowers/\n' >> "$(git rev-parse --git-path info/exclude)"
+          mkdir -p "$QA_EVIDENCE"
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+          head = git("rev-parse", "HEAD")
+          assert head == os.environ["QA_SOURCE_SHA"]
+          paths = [
+              ".github/workflows/render-qa-legacy.yml",
+              "tools/verify_render_qa_legacy.py",
+              "tools/fixtures/render-qa-legacy/RenderQaGraphEvents.kt",
+              "tools/fixtures/render-qa-legacy/LegacyRenderQaCheck.kt",
+              "app/src/main/java/com/example/autoedit/RenderQaSampling.kt",
+              "app/src/main/java/com/example/autoedit/RenderQaGraphEvents.kt",
+          ]
+          provenance = {
+              "checkout_sha": head,
+              "source_sha": os.environ["QA_SOURCE_SHA"],
+              "event_sha": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "inputs": [{"path": p, "blob": git("rev-parse", f"HEAD:{p}"),
+                          "sha256": hashlib.sha256(Path(p).read_bytes()).hexdigest()} for p in paths],
+          }
+          (Path(os.environ["QA_EVIDENCE"]) / "job-provenance.json").write_text(
+              json.dumps(provenance, indent=2), encoding="utf-8")
+          PY
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Warm actual Kotlin compiler dependencies
+        id: warm
+        run: |
+          set -o pipefail
+          bash ./gradlew :app:compileDebugKotlin --no-daemon --max-workers=1 2>&1 | tee "$QA_EVIDENCE/warm.log"
+      - name: RED actual old selector against immutable music sources
+        if: ${{ !cancelled() && steps.warm.outcome == 'success' }}
+        run: |
+          set -o pipefail
+          python tools/verify_render_qa_legacy.py --mode red 2>&1 | tee "$QA_EVIDENCE/red-result.log"
+      - name: GREEN shared selector and legacy adapter against the same sources
+        if: ${{ !cancelled() && steps.warm.outcome == 'success' }}
+        run: |
+          set -o pipefail
+          python tools/verify_render_qa_legacy.py --mode green 2>&1 | tee "$QA_EVIDENCE/green-result.log"
+      - name: Save exact-source manifests and execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-qa-legacy-${{ github.event.pull_request.head.sha || github.sha }}
+          include-hidden-files: true
+          if-no-files-found: warn
+          path: |
+            .superpowers/sdd/2026-10-10-manual-montage/task-4d-evidence/job-provenance.json
+            .superpowers/sdd/2026-10-10-manual-montage/task-4d-evidence/*.log
+            .superpowers/sdd/2026-10-10-manual-montage/task-4d-evidence/red/manifest.json
+            .superpowers/sdd/2026-10-10-manual-montage/task-4d-evidence/red/*.log
+            .superpowers/sdd/2026-10-10-manual-montage/task-4d-evidence/green/manifest.json
+            .superpowers/sdd/2026-10-10-manual-montage/task-4d-evidence/green/*.log
