@@ -34,11 +34,18 @@ internal class GlesFrameCompositor(
     private val onPassExecuted: (RenderPassPlanner.PassKind) -> Unit = {},
     private val programDriver: GlProgramOwnership.Driver = GlesProgram,
     private val sourceAttachments: List<SourceAttachments> = emptyList(),
-    manualFraming: ManualFramingTable? = null
+    manualFraming: ManualFramingTable? = null,
+    previewMemoryBudget: PreviewMemoryBudget? = null
 ) : AutoCloseable {
     private val width = target.size.width
     private val height = target.size.height
     private val worker = Thread.currentThread()
+    // Null is the explicit legacy/export path. The common runtime owns any supplied budget.
+    private val previewOwner = previewMemoryBudget?.let { PreviewAllocationOwner(it) { target.makeCurrent() } }
+    private val previewTextures = mutableMapOf<Int, PreviewTexture>()
+    private var uploadStorage: PreviewUploadBuffer? = null
+    private var previewPositions: PreviewUploadBuffer? = null
+    private var previewCoordinates: PreviewUploadBuffer? = null
     data class DrawEvidence(
         val frame: HighQualityFramePlan.Frame, val blend: GpuTransitionModel.FrameBlend?,
         val dualDecoder: Boolean, val secondarySourceTimeUs: Long?,
@@ -53,14 +60,15 @@ internal class GlesFrameCompositor(
     private var depthTexture = 0
     private var flowTexture = 0
     private var openingTitleTexture = 0
-    private val positionBuffer: FloatBuffer
-    private val texBuffer: FloatBuffer
+    private var positionBuffer: FloatBuffer? = null
+    private var texBuffer: FloatBuffer? = null
     private var sceneTarget: OffscreenTarget? = null
     private var motionTarget: OffscreenTarget? = null
     private var depthTarget: OffscreenTarget? = null
     private var glowTargetA: OffscreenTarget? = null
     private var glowTargetB: OffscreenTarget? = null
     private var released = false
+    private var closing = false
     private val passExecutions = linkedMapOf<RenderPassPlanner.PassKind, Int>()
     private var heartbeatTextureLogged = false
     private data class PivotKey(val clipIndex: Int, val sourceIndex: Int, val crop: SourceFraming.Crop)
@@ -70,6 +78,10 @@ internal class GlesFrameCompositor(
     init {
         try {
             manualFraming?.requireTarget(target.size)
+            if (previewOwner != null) {
+                PreviewAllocationOwner.imageBytes(width, height)
+                titleDimensions(authoredTitle)
+            }
             makeCurrent()
             incomingInput = DecoderInput(0)
             outgoingInput = DecoderInput(1)
@@ -79,10 +91,14 @@ internal class GlesFrameCompositor(
             depthTexture = create2dTexture()
             flowTexture = create2dTexture()
             openingTitleTexture = createOpeningTitleTexture(authoredTitle)
-            positionBuffer = floatBuffer(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
+            val positions = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
+            if (previewOwner == null) positionBuffer = floatBuffer(positions)
+            else previewPositions = PreviewUploadBuffer.create(previewOwner, 32).also { it.setVertices(positions) }
             // SurfaceTexture's matrix owns the decoder-to-GL orientation. These coordinates must
             // remain unflipped or Samsung CameraX masters are rendered upside down.
-            texBuffer = floatBuffer(VideoDisplayOrientation.externalOesTextureCoordinates())
+            val coordinates = VideoDisplayOrientation.externalOesTextureCoordinates()
+            if (previewOwner == null) texBuffer = floatBuffer(coordinates)
+            else previewCoordinates = PreviewUploadBuffer.create(previewOwner, 32).also { it.setVertices(coordinates) }
             val hasMotionPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.DIRECTIONAL_BLUR }
             val hasDepthPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.DEPTH_COMPOSITE }
             val hasGlowPass = renderPlan.passes.any { it.kind == RenderPassPlanner.PassKind.GLOW_EXTRACT }
@@ -100,7 +116,11 @@ internal class GlesFrameCompositor(
             glowTargetA = glowScale?.let { createOffscreenTarget(scaled(width, it), scaled(height, it)) }
             glowTargetB = glowScale?.let { createOffscreenTarget(scaled(width, it), scaled(height, it)) }
         } catch (error: Throwable) {
-            runCatching { close() }.exceptionOrNull()?.let(error::addSuppressed)
+            val cleanupFailure = runCatching { close() }.exceptionOrNull()
+            if (cleanupFailure != null) {
+                if (previewOwner != null) throw PreviewAllocationFailure(error, cleanupFailure, this)
+                error.addSuppressed(cleanupFailure)
+            }
             throw error
         }
     }
@@ -119,7 +139,8 @@ internal class GlesFrameCompositor(
     /** Pan/zoom the retained decoded images. No input submission, allocation or revision change. */
     fun updateManualFraming(framing: ManualFramingTable) {
         checkWorker()
-        check(!released) { "GLES compositor is closed" }
+        check(!released && !closing) { "GLES compositor is closed" }
+        previewOwner?.requireUsable()
         val current = requireNotNull(manualFraming) { "Cached update requires an initial MANUAL selection table" }
         framing.requireTarget(target.size)
         require(target.size == OutputSize(width, height)) { "Composition resize requires the display controller" }
@@ -163,6 +184,17 @@ internal class GlesFrameCompositor(
         incomingRotation: Int,
         outgoingRotation: Int
     ) {
+        val owner = previewOwner
+        if (owner == null) drawOwnedFrame(incomingFrame, outgoingFrame, incomingRotation, outgoingRotation)
+        else owner.using { drawOwnedFrame(incomingFrame, outgoingFrame, incomingRotation, outgoingRotation) }
+    }
+
+    private fun drawOwnedFrame(
+        incomingFrame: HighQualityFramePlan.Frame,
+        outgoingFrame: HighQualityFramePlan.Frame?,
+        incomingRotation: Int,
+        outgoingRotation: Int
+    ) {
         makeCurrent()
         manualFraming?.let {
             it.requireTarget(target.size)
@@ -179,13 +211,6 @@ internal class GlesFrameCompositor(
         val secondarySamplerInput = MediaCodecSpeedRampRenderer.boundSecondaryInput(
             incomingInput, outgoingInput, debugTextureProbe, debugProbeIncomingOnBothUnits
         )
-        if (sceneTarget == null) bindOutput() else {
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, sceneTarget!!.framebuffer)
-            GLES20.glViewport(0, 0, sceneTarget!!.width, sceneTarget!!.height)
-        }
-        GLES20.glClearColor(0f, 0f, 0f, 1f); GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-        GLES20.glUseProgram(program)
-        val transform = FloatArray(16); Matrix.setIdentityM(transform, 0)
         val actualPts = incomingInput.timestampUs()
         val attachments = if (sourceAttachments.isNotEmpty() ||
             incomingFrame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY || sigmaProfile
@@ -193,6 +218,15 @@ internal class GlesFrameCompositor(
             MediaCodecSpeedRampRenderer.decodedAttachments(incomingFrame, actualPts,
                 attachmentTimeline, sourceAttachments)
         } else incomingFrame.attachments
+        // Complete admission before changing any currently valid output or semantic binding.
+        if (previewOwner != null) preparePreviewSemantics(attachments)
+        if (sceneTarget == null) bindOutput() else {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, sceneTarget!!.framebuffer)
+            GLES20.glViewport(0, 0, sceneTarget!!.width, sceneTarget!!.height)
+        }
+        GLES20.glClearColor(0f, 0f, 0f, 1f); GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        GLES20.glUseProgram(program)
+        val transform = FloatArray(16); Matrix.setIdentityM(transform, 0)
         val fearPivot = if (fearProfile && incomingFrame.transform.scale > 1.0001f) {
             fearPivotByClip.getOrPut(PivotKey(incomingFrame.clipIndex, incomingFrame.sourceIndex, incomingCrop)) {
                 val face = attachments?.faceRegion
@@ -262,8 +296,10 @@ internal class GlesFrameCompositor(
         GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(program, "uOutgoingTexMatrix"), 1, false, outgoingTexMatrix, 0)
         val position = GLES20.glGetAttribLocation(program, "aPosition")
         val tex = GLES20.glGetAttribLocation(program, "aTexCoord")
-        GLES20.glEnableVertexAttribArray(position); GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 0, positionBuffer)
-        GLES20.glEnableVertexAttribArray(tex); GLES20.glVertexAttribPointer(tex, 2, GLES20.GL_FLOAT, false, 0, texBuffer)
+        GLES20.glEnableVertexAttribArray(position)
+        bindPositionAttribute(position)
+        GLES20.glEnableVertexAttribArray(tex)
+        bindCoordinateAttribute(tex)
         val blend = TransitionTimeline.blendFor(incomingFrame)?.takeIf {
             outgoingFrame != null || incomingFrame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY
         }
@@ -452,6 +488,25 @@ internal class GlesFrameCompositor(
     override fun close() {
         checkWorker()
         if (released) return
+        if (previewOwner != null) {
+            closing = true
+            // Context failure is retryable and keeps target/session alive and every resource charged.
+            target.makeCurrent()
+            GLES20.glFinish()
+            val attributes = IntArray(1)
+            GLES20.glGetIntegerv(GLES20.GL_MAX_VERTEX_ATTRIBS, attributes, 0)
+            for (index in 0 until attributes[0]) GLES20.glDisableVertexAttribArray(index)
+            GLES20.glUseProgram(0)
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            previewOwner.close()
+            previewTextures.clear()
+            uploadStorage = null; previewPositions = null; previewCoordinates = null
+            sceneTarget = null; motionTarget = null; depthTarget = null; glowTargetA = null; glowTargetB = null
+            // Only completed disposal permits destroying EGL. Never clear the shared budget.
+            target.close()
+            released = true
+            return
+        }
         released = true
         val current = runCatching { target.makeCurrent() }.isSuccess
         if (::incomingInput.isInitialized) runCatching { incomingInput.release(current) }
@@ -476,7 +531,8 @@ internal class GlesFrameCompositor(
     }
     private fun makeCurrent() {
         checkWorker()
-        check(!released) { "GLES compositor is closed" }
+        check(!released && !closing) { "GLES compositor is closed" }
+        previewOwner?.requireUsable()
         target.makeCurrent()
     }
     private fun bindOutput() {
@@ -502,6 +558,131 @@ internal class GlesFrameCompositor(
         passExecutions[kind] = (passExecutions[kind] ?: 0) + 1
         onPassExecuted(kind)
     }
+
+    private inner class PreviewTexture(val width: Int, val height: Int) {
+        val name = IntArray(1)
+        val texture: Int get() = name[0]
+        var initialized = false
+        lateinit var reservation: PreviewAllocationOwner.Reservation
+        fun allocate() {
+            target.makeCurrent()
+            GLES20.glGenTextures(1, name, 0)
+            check(texture != 0) { "Unable to allocate preview texture" }
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            check(GLES20.glGetError() == GLES20.GL_NO_ERROR) { "Preview texture setup failed" }
+        }
+    }
+
+    private fun reservePreviewTexture(width: Int, height: Int): PreviewTexture {
+        val bytes = PreviewAllocationOwner.imageBytes(width, height)
+        val resource = PreviewTexture(width, height)
+        resource.reservation = checkNotNull(previewOwner).reserve(bytes) { deletePreviewTexture(resource.name) }
+        return resource
+    }
+
+    private fun deletePreviewTexture(names: IntArray) {
+        if (names[0] == 0) return
+        GLES20.glDeleteTextures(1, names, 0)
+        val disposed = !GLES20.glIsTexture(names[0])
+        val error = GLES20.glGetError()
+        if (disposed) names[0] = 0 // Never retry deletion of a name GL has already made reusable.
+        check(disposed && error == GLES20.GL_NO_ERROR) {
+            "Preview texture disposal failed"
+        }
+    }
+
+    private fun bindPreviewTexture(unit: Int, texture: Int) {
+        makeCurrent()
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + unit)
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+    }
+
+    /** Only owned uploads are charged here. Core page handles/leases remain an integration prerequisite. */
+    private fun preparePreviewSemantics(attachments: FrameAttachments?) {
+        val owner = checkNotNull(previewOwner)
+        val old = listOf(maskTexture, depthTexture, flowTexture).map { checkNotNull(previewTextures[it]) }
+        val widths = intArrayOf(attachments?.mask?.width ?: 1, attachments?.depth?.width ?: 1, attachments?.flow?.width ?: 1)
+        val heights = intArrayOf(attachments?.mask?.height ?: 1, attachments?.depth?.height ?: 1, attachments?.flow?.height ?: 1)
+        val capacities = (0..2).map { PreviewUploadBuffer.pixelCapacity(widths[it], heights[it], if (it == 2) 2 else 1) }
+        val capacity = capacities.max()
+        val pending = mutableListOf<PreviewTexture>()
+        var newStorage: PreviewUploadBuffer? = null
+        val next = old.toMutableList()
+        try {
+            // Reserve the whole change before allocating any replacement native texture or changing bindings.
+            for (index in 0..2) {
+                if (old[index].width != widths[index] || old[index].height != heights[index]) {
+                    next[index] = reservePreviewTexture(widths[index], heights[index]).also { pending += it }
+                }
+            }
+            if (capacity > (uploadStorage?.capacity ?: 0)) newStorage = PreviewUploadBuffer.create(owner, capacity)
+        } catch (error: Throwable) {
+            for (resource in pending) runCatching { resource.reservation.close() }.exceptionOrNull()?.let(error::addSuppressed)
+            runCatching { newStorage?.close() }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
+        }
+        try {
+            pending.forEach { it.allocate() }
+            val storage = checkNotNull(newStorage ?: uploadStorage)
+            for (index in 0..2) {
+                val resource = next[index]
+                bindPreviewTexture(index + 2, resource.texture)
+                when (index) {
+                    0 -> storage.uploadPlane(resource.width, resource.height, attachments?.mask,
+                        attachments?.maskBlendTarget, attachments?.maskBlendProgress ?: 0f, !resource.initialized)
+                    1 -> storage.uploadPlane(resource.width, resource.height, attachments?.depth, null, 0f, !resource.initialized)
+                    2 -> storage.uploadFlow(resource.width, resource.height, attachments?.flow, !resource.initialized)
+                }
+                resource.initialized = true
+            }
+        } catch (error: Throwable) {
+            // A GL failure can leave partially uploaded contents. Protect the session until cleanup.
+            closing = true
+            for (resource in pending) runCatching { resource.reservation.close() }.exceptionOrNull()?.let(error::addSuppressed)
+            runCatching { newStorage?.close() }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
+        }
+        maskTexture = next[0].texture; depthTexture = next[1].texture; flowTexture = next[2].texture
+        pending.forEach { previewTextures[it.texture] = it }
+        if (newStorage != null) {
+            val previous = uploadStorage
+            uploadStorage = newStorage
+            previous?.close()
+        }
+        for (index in 0..2) if (old[index] !== next[index]) {
+            val oldName = old[index].texture
+            old[index].reservation.close()
+            previewTextures.remove(oldName)
+        }
+        makeCurrent()
+    }
+
+    private fun titleDimensions(spec: AuthoredTitleProfile.Spec?): Pair<Int, Int> {
+        if (spec == null) return 1 to 1
+        require(spec.textSizePx.isFinite() && spec.textSizePx > 0f && spec.texts.isNotEmpty())
+        // Preserve the existing float-based title raster dimensions exactly.
+        val row = maxOf(64f, kotlin.math.ceil(spec.textSizePx * 1.4f)).toDouble()
+        require(row <= Int.MAX_VALUE.toDouble() / spec.texts.size)
+        val height = row.toInt() * spec.texts.size
+        PreviewUploadBuffer.pixelCapacity(OPENING_TITLE_ATLAS_WIDTH, height, 1)
+        return OPENING_TITLE_ATLAS_WIDTH to height
+    }
+
+    private fun bindPositionAttribute(location: Int) {
+        if (previewOwner != null) checkNotNull(previewPositions).bindAttribute(location)
+        else GLES20.glVertexAttribPointer(location, 2, GLES20.GL_FLOAT, false, 0, checkNotNull(positionBuffer).apply { position(0) })
+    }
+
+    private fun bindCoordinateAttribute(location: Int) {
+        if (previewOwner != null) checkNotNull(previewCoordinates).bindAttribute(location)
+        else GLES20.glVertexAttribPointer(location, 2, GLES20.GL_FLOAT, false, 0, checkNotNull(texBuffer).apply { position(0) })
+    }
+
     private fun createExternalTexture(): Int = IntArray(1).also {
         GLES20.glGenTextures(1, it, 0); GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, it[0])
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
@@ -509,19 +690,38 @@ internal class GlesFrameCompositor(
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
     }[0]
-    private fun create2dTexture(): Int = IntArray(1).also {
-        GLES20.glGenTextures(1, it, 0)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, it[0])
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-    }[0]
+    private fun create2dTexture(textureWidth: Int = 1, textureHeight: Int = 1): Int {
+        if (previewOwner != null) {
+            val resource = reservePreviewTexture(textureWidth, textureHeight)
+            try {
+                resource.allocate()
+                previewTextures[resource.texture] = resource
+                return resource.texture
+            } catch (error: Throwable) {
+                runCatching { resource.reservation.close() }.exceptionOrNull()?.let(error::addSuppressed)
+                throw error
+            }
+        }
+        return IntArray(1).also {
+            GLES20.glGenTextures(1, it, 0)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, it[0])
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        }[0]
+    }
 
     private fun createOpeningTitleTexture(spec: AuthoredTitleProfile.Spec?): Int {
-        val texture = create2dTexture()
+        val dimensions = if (previewOwner != null) titleDimensions(spec) else null
+        val texture = create2dTexture(dimensions?.first ?: 1, dimensions?.second ?: 1)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
         if (spec == null) {
+            if (previewOwner != null) {
+                uploadStorage = PreviewUploadBuffer.create(previewOwner, 1)
+                uploadStorage!!.uploadTitle(null)
+                return texture
+            }
             GLES20.glTexImage2D(
                 GLES20.GL_TEXTURE_2D, 0, GLES20.GL_ALPHA, 1, 1, 0,
                 GLES20.GL_ALPHA, GLES20.GL_UNSIGNED_BYTE, ByteBuffer.allocateDirect(1)
@@ -529,40 +729,64 @@ internal class GlesFrameCompositor(
             return texture
         }
         val rowHeight = maxOf(64, kotlin.math.ceil(spec.textSizePx * 1.4f).toInt())
-        val atlas = Bitmap.createBitmap(
-            OPENING_TITLE_ATLAS_WIDTH,
-            rowHeight * spec.texts.size,
-            Bitmap.Config.ALPHA_8
-        )
-        val canvas = Canvas(atlas)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
-            color = Color.WHITE
-            textAlign = Paint.Align.CENTER
-            textSize = spec.textSizePx
-            typeface = Typeface.create(
-                if (spec.condensedBold) "sans-serif-condensed" else "sans-serif",
-                if (spec.condensedBold) Typeface.BOLD else Typeface.NORMAL
+        var atlas: Bitmap? = null
+        var titleCanvas: Canvas? = null
+        val bitmapReservation = previewOwner?.reserve(PreviewAllocationOwner.imageBytes(
+            OPENING_TITLE_ATLAS_WIDTH, checkNotNull(dimensions).second)) {
+            titleCanvas?.setBitmap(null)
+            titleCanvas = null
+            atlas?.recycle()
+            atlas = null
+        }
+        try {
+            atlas = Bitmap.createBitmap(
+                OPENING_TITLE_ATLAS_WIDTH,
+                rowHeight * spec.texts.size,
+                Bitmap.Config.ALPHA_8
             )
-            letterSpacing = spec.letterSpacing
+            val bitmap = checkNotNull(atlas)
+            val canvas = Canvas(bitmap).also { titleCanvas = it }
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+                color = Color.WHITE
+                textAlign = Paint.Align.CENTER
+                textSize = spec.textSizePx
+                typeface = Typeface.create(
+                    if (spec.condensedBold) "sans-serif-condensed" else "sans-serif",
+                    if (spec.condensedBold) Typeface.BOLD else Typeface.NORMAL
+                )
+                letterSpacing = spec.letterSpacing
+            }
+            val metrics = paint.fontMetrics
+            spec.texts.forEachIndexed { row, text ->
+                val rowCenter = (row + .5f) * rowHeight
+                val baseline = rowCenter - (metrics.ascent + metrics.descent) * .5f
+                canvas.drawText(text, OPENING_TITLE_ATLAS_WIDTH * .5f, baseline, paint)
+            }
+            if (previewOwner != null) {
+                uploadStorage = PreviewUploadBuffer.create(previewOwner, bitmap.byteCount)
+                // Its reservation may have evicted a foreign owner's resource/context.
+                makeCurrent()
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+                uploadStorage!!.uploadTitle(bitmap)
+                return texture
+            }
+            val bytes = ByteBuffer.allocateDirect(bitmap.byteCount)
+            bitmap.copyPixelsToBuffer(bytes)
+            bytes.position(0)
+            GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)
+            GLES20.glTexImage2D(
+                GLES20.GL_TEXTURE_2D, 0, GLES20.GL_ALPHA,
+                bitmap.width, bitmap.height, 0,
+                GLES20.GL_ALPHA, GLES20.GL_UNSIGNED_BYTE, bytes
+            )
+            GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 4)
+            return texture
+        } finally {
+            if (bitmapReservation != null) bitmapReservation.close() else {
+                titleCanvas?.setBitmap(null)
+                atlas?.recycle()
+            }
         }
-        val metrics = paint.fontMetrics
-        spec.texts.forEachIndexed { row, text ->
-            val rowCenter = (row + .5f) * rowHeight
-            val baseline = rowCenter - (metrics.ascent + metrics.descent) * .5f
-            canvas.drawText(text, OPENING_TITLE_ATLAS_WIDTH * .5f, baseline, paint)
-        }
-        val bytes = ByteBuffer.allocateDirect(atlas.byteCount)
-        atlas.copyPixelsToBuffer(bytes)
-        bytes.position(0)
-        GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)
-        GLES20.glTexImage2D(
-            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_ALPHA,
-            atlas.width, atlas.height, 0,
-            GLES20.GL_ALPHA, GLES20.GL_UNSIGNED_BYTE, bytes
-        )
-        GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 4)
-        atlas.recycle()
-        return texture
     }
 
     private fun bindPlaneTexture(
@@ -572,6 +796,10 @@ internal class GlesFrameCompositor(
         blendTarget: FrameAttachments.Plane? = null,
         blendProgress: Float = 0f
     ) {
+        if (previewOwner != null) {
+            bindPreviewTexture(unit, texture)
+            return
+        }
         val width = plane?.width ?: 1
         val height = plane?.height ?: 1
         val bytes = ByteBuffer.allocateDirect(width * height)
@@ -599,6 +827,10 @@ internal class GlesFrameCompositor(
     }
 
     private fun bindFlowTexture(unit: Int, texture: Int, flow: FrameAttachments.FlowPlane?) {
+        if (previewOwner != null) {
+            bindPreviewTexture(unit, texture)
+            return
+        }
         val width = flow?.width ?: 1
         val height = flow?.height ?: 1
         val bytes = ByteBuffer.allocateDirect(width * height * 2)
@@ -624,6 +856,17 @@ internal class GlesFrameCompositor(
     private fun createOffscreenTarget(targetWidth: Int, targetHeight: Int): OffscreenTarget {
         val textures = IntArray(1)
         val framebuffers = IntArray(1)
+        val reservation = previewOwner?.reserve(Math.addExact(
+            PreviewAllocationOwner.imageBytes(targetWidth, targetHeight), 1024L)) {
+            if (framebuffers[0] != 0) {
+                GLES20.glDeleteFramebuffers(1, framebuffers, 0)
+                val disposed = !GLES20.glIsFramebuffer(framebuffers[0])
+                val error = GLES20.glGetError()
+                if (disposed) framebuffers[0] = 0
+                check(disposed && error == GLES20.GL_NO_ERROR)
+            }
+            deletePreviewTexture(textures)
+        }
         try {
             GLES20.glGenTextures(1, textures, 0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[0])
@@ -657,10 +900,18 @@ internal class GlesFrameCompositor(
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
             return OffscreenTarget(framebuffers[0], textures[0], targetWidth, targetHeight)
         } catch(error: Throwable) {
-            GLES20.glDeleteFramebuffers(1, framebuffers, 0)
-            GLES20.glDeleteTextures(1, textures, 0)
+            if (reservation != null) runCatching { reservation.close() }.exceptionOrNull()?.let(error::addSuppressed)
+            else {
+                GLES20.glDeleteFramebuffers(1, framebuffers, 0)
+                GLES20.glDeleteTextures(1, textures, 0)
+            }
             throw error
-        } finally { GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0) }
+        } finally {
+            // Cleanup may fail to restore this context. Never mutate whichever foreign one is current.
+            if (previewOwner == null || runCatching { target.makeCurrent() }.isSuccess) {
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            }
+        }
     }
 
     private fun releaseTarget(target: OffscreenTarget) {
@@ -765,12 +1016,10 @@ internal class GlesFrameCompositor(
         GLES20.glUseProgram(postProgram)
         val position = GLES20.glGetAttribLocation(postProgram, "aPosition")
         val tex = GLES20.glGetAttribLocation(postProgram, "aTexCoord")
-        positionBuffer.position(0)
-        texBuffer.position(0)
         GLES20.glEnableVertexAttribArray(position)
-        GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 0, positionBuffer)
+        bindPositionAttribute(position)
         GLES20.glEnableVertexAttribArray(tex)
-        GLES20.glVertexAttribPointer(tex, 2, GLES20.GL_FLOAT, false, 0, texBuffer)
+        bindCoordinateAttribute(tex)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, input.texture)
         GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uInput"), 0)
@@ -801,24 +1050,43 @@ internal class GlesFrameCompositor(
     private inner class DecoderInput(private val textureUnit: Int) {
         private val frameLock = Object()
         private var frameAvailable = false
-        val texture = run {
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + textureUnit)
-            createExternalTexture()
-        }
+        var texture = 0
+            private set
         private lateinit var surfaceTexture: SurfaceTexture
-        val surface: Surface
+        private var ownedSurface: Surface? = null
+        val surface: Surface get() = checkNotNull(ownedSurface)
+        private var surfaceTextureReleased = false
+        private val reservation = previewOwner?.reserve(1024L) {
+            ownedSurface?.release()
+            ownedSurface = null
+            if (::surfaceTexture.isInitialized && !surfaceTextureReleased) {
+                surfaceTexture.release()
+                surfaceTextureReleased = true
+            }
+            val names = intArrayOf(texture)
+            try { deletePreviewTexture(names) } finally { texture = names[0] }
+        }
 
         init {
             try {
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + textureUnit)
+                texture = createExternalTexture()
+                check(texture != 0) { "Unable to allocate decoder input texture" }
+                if (previewOwner != null) check(GLES20.glGetError() == GLES20.GL_NO_ERROR) {
+                    "Unable to configure decoder input texture"
+                }
                 surfaceTexture = SurfaceTexture(texture)
                 surfaceTexture.setDefaultBufferSize(width, height)
                 surfaceTexture.setOnFrameAvailableListener {
                     synchronized(frameLock) { frameAvailable = true; frameLock.notifyAll() }
                 }
-                surface = Surface(surfaceTexture)
+                ownedSurface = Surface(surfaceTexture)
             } catch (error: Throwable) {
-                if (::surfaceTexture.isInitialized) runCatching { surfaceTexture.release() }
-                GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
+                if (reservation != null) runCatching { reservation.close() }.exceptionOrNull()?.let(error::addSuppressed)
+                else {
+                    if (::surfaceTexture.isInitialized) runCatching { surfaceTexture.release() }
+                    GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
+                }
                 throw error
             }
         }
@@ -842,6 +1110,7 @@ internal class GlesFrameCompositor(
         fun timestampUs(): Long = surfaceTexture.timestamp / 1_000L
         fun transformMatrix(): FloatArray = FloatArray(16).also(surfaceTexture::getTransformMatrix)
         fun release(current: Boolean) {
+            if (reservation != null) { reservation.close(); return }
             runCatching { surface.release() }
             runCatching { surfaceTexture.release() }
             if (current) GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
@@ -849,5 +1118,42 @@ internal class GlesFrameCompositor(
     }
     private fun floatBuffer(values: FloatArray): FloatBuffer = ByteBuffer.allocateDirect(values.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(values); position(0) }
     private companion object { const val OPENING_TITLE_ATLAS_WIDTH = 720 }
-    private fun createProgram(vertex: String, fragment: String): Int = GlProgramOwnership.create(programDriver, vertex, fragment)
+    private fun createProgram(vertex: String, fragment: String): Int {
+        if (previewOwner == null) return GlProgramOwnership.create(programDriver, vertex, fragment)
+        var name = 0
+        val shaders = IntArray(2)
+        val reservation = previewOwner.reserve((vertex.length.toLong() + fragment.length) * 4 + 65_536L) {
+            if (name != 0) {
+                GLES20.glUseProgram(0)
+                programDriver.deleteProgram(name)
+                val disposed = !GLES20.glIsProgram(name)
+                val error = GLES20.glGetError()
+                if (disposed) name = 0
+                check(disposed && error == GLES20.GL_NO_ERROR)
+            }
+            for (index in shaders.indices) if (shaders[index] != 0) {
+                programDriver.deleteShader(shaders[index])
+                val disposed = !GLES20.glIsShader(shaders[index])
+                val error = GLES20.glGetError()
+                if (disposed) shaders[index] = 0
+                check(disposed && error == GLES20.GL_NO_ERROR)
+            }
+        }
+        try {
+            shaders[0] = programDriver.createShader(GLES20.GL_VERTEX_SHADER)
+            check(shaders[0] != 0)
+            programDriver.compile(shaders[0], vertex)
+            shaders[1] = programDriver.createShader(GLES20.GL_FRAGMENT_SHADER)
+            check(shaders[1] != 0)
+            programDriver.compile(shaders[1], fragment)
+            name = programDriver.createProgram()
+            check(name != 0)
+            programDriver.attach(name, shaders[0]); programDriver.attach(name, shaders[1])
+            programDriver.link(name)
+            return name
+        } catch (error: Throwable) {
+            runCatching { reservation.close() }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
+        }
+    }
 }

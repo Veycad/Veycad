@@ -2,9 +2,20 @@ plugins {
     id("com.android.application")
 }
 
+// Emulator JNI validation adds x86_64; normal builds preserve the two existing ARM ABIs.
+val previewNativeAbis = listOf("arm64-v8a", "armeabi-v7a") +
+    if (providers.gradleProperty("previewNativeCi").orNull == "true") listOf("x86_64") else emptyList()
+
 android {
     namespace = "com.veycad.app"
     compileSdk = 36
+    ndkVersion = "28.2.13676358"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 
     defaultConfig {
         applicationId = "com.veycad.app"
@@ -13,6 +24,8 @@ android {
         versionCode = 17
         versionName = "0.1.16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Build filters and the existing APK splits use the same ABIs; do not add conflicting ndk packaging filters.
+        externalNativeBuild { cmake { abiFilters += previewNativeAbis } }
     }
 
     buildTypes {
@@ -38,7 +51,7 @@ android {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a")
+            include(*previewNativeAbis.toTypedArray())
             isUniversalApk = true
         }
     }
