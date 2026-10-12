@@ -1,4 +1,4 @@
-name: Android MVP smoke and APK
+name: Android MVP APK build
 
 on:
   pull_request:
@@ -27,33 +27,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
-      - name: Build isolated APKs with the real bundled model
+      - name: Build isolated APK with the real bundled model
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --console=plain -PdeviceTestBuildType=mvp :app:assembleMvp :app:assembleMvpAndroidTest
+          ./gradlew --no-daemon --console=plain :app:assembleMvp
           mkdir -p build/reports/mvp
           cp app/build/outputs/apk/mvp/app-universal-mvp.apk build/reports/mvp/app-mvp.apk
-          python3 tools/verify_mvp_apk.py build/reports/mvp/app-mvp.apk build/reports/mvp/apk-verification.json
-      - name: Enable emulator acceleration
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Run four selected real MVP cases
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: default
-          arch: x86_64
-          avd-name: VeycadMvp_API36
-          emulator-port: 5556
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: bash tools/run_mvp_smoke.sh
-      - name: Save installable APK and actual smoke evidence
-        if: always()
+      - name: Save installable APK
         uses: actions/upload-artifact@v4
         with:
           name: veycad-mvp-${{ github.event.pull_request.head.sha }}
-          path: build/reports/mvp/
+          path: build/reports/mvp/app-mvp.apk
           if-no-files-found: error

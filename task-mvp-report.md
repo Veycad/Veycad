@@ -29,3 +29,5 @@ Human testing after a successful remote build/smoke:
 5. For automatic subtitles, separately choose a raw Russian speech MP4 in «Текст», recognize its speech, correct/review the captions and export. Do not use the gallery montage's music as source speech.
 
 Root coordinator owns the independent review, publication, draft PR, real remote CI and APK delivery. No publication, external messaging, local process cleanup or local media execution was performed by this implementer.
+
+2026-10-12 direct human override: «скипни проверку». Independent review and test runs are explicitly skipped. The MVP workflow now only assembles the isolated APK with the existing real-model packaging and uploads `app-mvp.apk`; AndroidTest build, emulator/smoke and APK verification execution are removed. Source tests/helpers remain for future acceptance. Build-only remote execution is pending; no PASS or runtime acceptance is claimed.
