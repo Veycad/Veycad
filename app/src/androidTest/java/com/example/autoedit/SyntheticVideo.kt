@@ -11,11 +11,11 @@ import java.io.File
 /** A real, decodable AVC clip generated on-device, independent of user footage. */
 internal object SyntheticVideo {
     fun create(target: File, durationMs: Long = 3_000, width: Int = 160, height: Int = 240,
-        lumaBase: Int = 40, fps: Int = 30): File {
+        lumaBase: Int = 40, fps: Int = 30, textureSeed: Int? = null): File {
         require(durationMs in 1_000..180_000)
         require(width > 0 && height > 0 && width % 2 == 0 && height % 2 == 0 && lumaBase in 0..155)
         require(fps == 30 || fps == 60)
-        if (fps == 30 && lumaBase == 40 && target.isFile && target.length() > 0) {
+        if (textureSeed == null && fps == 30 && lumaBase == 40 && target.isFile && target.length() > 0) {
             val valid = runCatching {
                 MediaMetadataRetriever().use { metadata ->
                     metadata.setDataSource(target.path)
@@ -61,7 +61,13 @@ internal object SyntheticVideo {
                             inputEnded = true
                         } else {
                             val pixels = ByteArray(width * height * 3 / 2) { offset ->
-                                if (offset < width * height) (lumaBase + frame % 100).toByte() else 128.toByte()
+                                if (offset >= width * height) 128.toByte()
+                                else if (textureSeed == null) (lumaBase + frame % 100).toByte()
+                                else {
+                                    val x = offset % width; val y = offset / width
+                                    val bright = ((x + frame + textureSeed * 7) / 8 + y / 8) % 2 == 0
+                                    (if (bright) 200 - textureSeed * 8 else 40 + textureSeed * 12).toByte()
+                                }
                             }
                             codec.getInputBuffer(index)!!.apply { clear(); put(pixels) }
                             codec.queueInputBuffer(index, 0, pixels.size, frame * 1_000_000L / fps, 0)

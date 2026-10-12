@@ -32,7 +32,7 @@ class UiXmlRunListener : RunListener() {
     }
     override fun testRunFinished(result: Result) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        check(context.packageName.endsWith(".uitest"))
+        check(context.packageName.endsWith(".uitest") || context.packageName.endsWith(".mvp"))
         val target = File(context.filesDir, "ui-test-results.xml")
         val temporary = File(target.path + ".partial")
         temporary.outputStream().use { stream ->

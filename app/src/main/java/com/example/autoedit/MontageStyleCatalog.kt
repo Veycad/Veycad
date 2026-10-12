@@ -36,14 +36,16 @@ internal object MontageStyleCatalog {
         Style("upcoming_rhythm", "Next Rhythm", "В разработке · следующий вариант", null, null),
         Style("upcoming_portrait", "Next Portrait", "В разработке · следующий вариант", null, null)
     )
-    val all = listOf(sigma, heartbeat, fearStrobe, dualityLoop, upcoming) + comingSoon
+    val all = (if (BuildConfig.GALLERY_MVP) listOf(galleryMontage) else emptyList()) +
+        listOf(sigma, heartbeat, fearStrobe, dualityLoop, upcoming) + comingSoon
     val available = all.filter { it.available }
     val minimumStylesForScrollablePicker = 8
     val isScrollableCatalog: Boolean
         get() = all.size >= minimumStylesForScrollablePicker
     fun restore(id: String?): Style = all.firstOrNull { it.id == id && it.available } ?: heartbeat
 
-    fun isRecipeAvailable(recipe: Recipe): Boolean = recipe != Recipe.SIGMA && recipe != Recipe.GALLERY_MONTAGE
+    fun isRecipeAvailable(recipe: Recipe): Boolean = recipe != Recipe.SIGMA &&
+        (recipe != Recipe.GALLERY_MONTAGE || BuildConfig.GALLERY_MVP)
 
     fun requireRecipeAvailable(recipe: Recipe) {
         check(isRecipeAvailable(recipe)) {

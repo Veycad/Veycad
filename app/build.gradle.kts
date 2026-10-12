@@ -7,6 +7,22 @@ plugins {
     id("com.android.application")
 }
 
+// MVP instrumentation compiles only the reused real helpers/editor cases, never the
+// uiTest fake application. The default complete uiTest source set remains unchanged.
+val mvpDeviceTests = providers.gradleProperty("deviceTestBuildType").orNull == "mvp"
+val mvpSmokeSources = layout.buildDirectory.dir("generated/mvpSmokeSources")
+val prepareMvpSmokeSources by tasks.registering(Sync::class) {
+    from("src/androidTest/java") {
+        include("com/example/autoedit/SyntheticVideo.kt",
+            "com/example/autoedit/UiXmlRunListener.kt",
+            "com/example/autoedit/TextEditActivityDeviceTest.kt")
+    }
+    into(mvpSmokeSources)
+}
+if (mvpDeviceTests) tasks.configureEach {
+    if (name == "preMvpAndroidTestBuild") dependsOn(prepareMvpSmokeSources)
+}
+
 // Network access is build-time only. The application contains the verified model in assets.
 val speechAssets = layout.buildDirectory.dir("generated/speechAssets")
 val prepareSpeechAssets by tasks.registering {
@@ -59,6 +75,7 @@ android {
         targetSdk = 36
         versionCode = 17
         versionName = "0.1.16"
+        buildConfigField("boolean", "GALLERY_MVP", "false")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild.cmake {
             arguments += listOf("-DFETCHCONTENT_BASE_DIR=" + File(System.getProperty("user.home"), ".cache/veycad-speech/cmake").path.replace('\\','/'))
@@ -67,6 +84,15 @@ android {
     }
 
     buildTypes {
+        create("mvp") {
+            initWith(getByName("debug"))
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".mvp"
+            versionNameSuffix = "-mvp"
+            buildConfigField("boolean", "GALLERY_MVP", "true")
+            matchingFallbacks += "debug"
+        }
         create("cameraPilot") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".camera"
@@ -79,7 +105,7 @@ android {
             matchingFallbacks += "debug"
         }
     }
-    testBuildType = "uiTest"
+    testBuildType = providers.gradleProperty("deviceTestBuildType").orNull ?: "uiTest"
 
     buildFeatures {
         buildConfig = true
@@ -106,6 +132,8 @@ android {
     }
     androidResources { noCompress += "bin" }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/speechAssets").get().asFile)
+    if (mvpDeviceTests) sourceSets.getByName("androidTest").java.setSrcDirs(
+        listOf(mvpSmokeSources.get().asFile))
 
     lint {
         // This product currently has one Russian-localized UI. Keep correctness, permissions,
