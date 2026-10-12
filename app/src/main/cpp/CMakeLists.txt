@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(veycad_preview_memory LANGUAGES CXX)
+add_library(veycad_preview_memory SHARED preview_memory.cpp)
+target_compile_features(veycad_preview_memory PRIVATE cxx_std_17)
+target_compile_options(veycad_preview_memory PRIVATE -Wall -Wextra -Werror)

@@ -2,7 +2,7 @@ package com.veycad.app
 
 /** Single owner of the authored shader source; relocated without algorithm changes. */
 internal object GlesFrameShaders {
-internal const val VERTEX_SHADER = "attribute vec4 aPosition; attribute vec4 aTexCoord; uniform mat4 uTransform,uIncomingTexMatrix,uOutgoingTexMatrix; uniform vec2 uIncomingCrop,uOutgoingCrop; varying vec2 vIncomingTexCoord,vOutgoingTexCoord,vScreenTexCoord,vSemanticTexCoord,vOutputTexCoord; void main() { gl_Position = uTransform * aPosition; vec2 incoming=vec2(.5)+(aTexCoord.xy-vec2(.5))*uIncomingCrop; vec2 outgoing=vec2(.5)+(aTexCoord.xy-vec2(.5))*uOutgoingCrop; vIncomingTexCoord = (uIncomingTexMatrix * vec4(incoming,0.,1.)).xy; vOutgoingTexCoord = (uOutgoingTexMatrix * vec4(outgoing,0.,1.)).xy; vScreenTexCoord=incoming; vSemanticTexCoord=vec2(incoming.x,1.0-incoming.y); vOutputTexCoord=aTexCoord.xy; }"
+internal const val VERTEX_SHADER = "attribute vec4 aPosition; attribute vec4 aTexCoord; uniform mat4 uTransform,uIncomingTexMatrix,uOutgoingTexMatrix; uniform vec2 uIncomingCrop,uOutgoingCrop,uIncomingWindowOffset,uOutgoingWindowOffset; varying vec2 vIncomingTexCoord,vOutgoingTexCoord,vScreenTexCoord,vSemanticTexCoord,vOutputTexCoord; void main() { gl_Position = uTransform * aPosition; vec2 incoming=vec2(.5)+(aTexCoord.xy-vec2(.5))*uIncomingCrop+uIncomingWindowOffset; vec2 outgoing=vec2(.5)+(aTexCoord.xy-vec2(.5))*uOutgoingCrop+uOutgoingWindowOffset; vIncomingTexCoord = (uIncomingTexMatrix * vec4(incoming,0.,1.)).xy; vOutgoingTexCoord = (uOutgoingTexMatrix * vec4(outgoing,0.,1.)).xy; vScreenTexCoord=incoming; vSemanticTexCoord=vec2(incoming.x,1.0-incoming.y); vOutputTexCoord=aTexCoord.xy; }"
 
 internal const val POST_VERTEX_SHADER = "attribute vec4 aPosition; attribute vec4 aTexCoord; varying vec2 vTexCoord; void main(){gl_Position=aPosition;vTexCoord=aTexCoord.xy;}"
 internal val POST_FRAGMENT_SHADER = """
@@ -11,14 +11,26 @@ internal val POST_FRAGMENT_SHADER = """
     uniform sampler2D uInput,uAuxiliary,uFlow,uDepth;
     uniform float uMode,uAmount,uFlowConfidence,uDepthConfidence;
     uniform vec2 uDirection,uTexel;
+    uniform float uManualSemanticMapping;
+    uniform highp mat4 uInverseSourceTransform;
+    uniform highp vec4 uSourceWindow;
     vec3 screenBlend(vec3 base,vec3 glow){return 1.0-(1.0-base)*(1.0-glow);}
     void main(){
         vec4 source=texture2D(uInput,vTexCoord);
+        highp vec2 semanticUv=vTexCoord;
+        float semanticValid=1.;
+        if(uManualSemanticMapping>.5){
+            // Undo the exact incoming draw transform, then apply its top-down source window.
+            highp vec2 local=(uInverseSourceTransform*vec4(vTexCoord*2.-1.,0.,1.)).xy*.5+.5;
+            semanticUv=uSourceWindow.xy+(local-vec2(.5))*uSourceWindow.zw*vec2(1.,-1.);
+            semanticValid=step(0.,local.x)*step(local.x,1.)*step(0.,local.y)*step(local.y,1.)*
+                step(0.,semanticUv.x)*step(semanticUv.x,1.)*step(0.,semanticUv.y)*step(semanticUv.y,1.);
+        }
         if(uMode<.5){
             gl_FragColor=source;
         }else if(uMode<1.5){
-            vec2 measured=texture2D(uFlow,vTexCoord).ra*2.0-1.0;
-            vec2 direction=normalize(mix(uDirection,measured,clamp(uFlowConfidence,0.,.72))+vec2(.0001,0.));
+            vec2 measured=semanticValid>.5?texture2D(uFlow,semanticUv).ra*2.0-1.0:vec2(0.);
+            vec2 direction=normalize(mix(uDirection,measured,clamp(uFlowConfidence*semanticValid,0.,.72))+vec2(.0001,0.));
             vec2 stepUv=direction*uAmount*.24;
             vec4 blurred=texture2D(uInput,vTexCoord-stepUv*3.0)*.07+
                 texture2D(uInput,vTexCoord-stepUv*2.0)*.11+
@@ -46,12 +58,12 @@ internal val POST_FRAGMENT_SHADER = """
             vec3 glow=texture2D(uAuxiliary,vTexCoord).rgb*clamp(uAmount*2.2,0.,.72);
             gl_FragColor=vec4(screenBlend(source.rgb,glow),source.a);
         }else{
-            float depth=texture2D(uDepth,vTexCoord).r;
+            float depth=semanticValid>.5?texture2D(uDepth,semanticUv).r:0.;
             vec2 direction=normalize(uDirection+vec2(.0001,0.));
-            float separation=(.58-depth)*uAmount*uDepthConfidence;
+            float separation=(.58-depth)*uAmount*uDepthConfidence*semanticValid;
             vec2 shifted=clamp(vTexCoord+direction*separation*.045,vec2(.002),vec2(.998));
             vec4 parallax=texture2D(uInput,shifted);
-            float subject=smoothstep(.68,.22,depth)*clamp(uDepthConfidence,0.,1.);
+            float subject=smoothstep(.68,.22,depth)*clamp(uDepthConfidence*semanticValid,0.,1.);
             gl_FragColor=mix(parallax,source,subject);
         }
     }

@@ -1,6 +1,8 @@
 # Android/Gradle generated state
 .gradle/
 .kotlin/
+.cxx/
+**/.cxx/
 .gradle-local/
 .idea/
 **/build/
