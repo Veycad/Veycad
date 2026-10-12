@@ -11,6 +11,42 @@ import org.junit.rules.TemporaryFolder
 class HybridManualPayloadCompatibilityTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun oversizedDenseHistoryIsRejectedBeforeLaterPayloadAndKeepsCurrent() {
+        val files = temporary.newFolder()
+        val store = HybridProjectStore(files)
+        val sources = ProjectAssetStore(store.directory("project"))
+        val video = sources.import(temporary.newFile().apply { writeText("video") }, ProjectAsset.Kind.VIDEO, 2_000_000)
+        val audio = sources.import(temporary.newFile().apply { writeText("music") }, ProjectAsset.Kind.AUDIO, 2_000_000)
+        val base = storageProject(listOf(video, audio))
+        store.create(base)
+        // Each permitted map occupies 4,800,008 bytes. Four copies exceed 16 MiB,
+        // even though all history entries share the same immutable in-memory mapping.
+        val map = ClipTimeMapping(30, 2_000_000, LongArray(600_001) { it.toLong() })
+        val timing = EditableFrameTiming(30, listOf(EditableClipTiming("c", map, FrameRange(0, 30), 0, 30)))
+        var rejectLaterAccess = false
+        val laterPayload = object : AbstractList<SourceAttachments>() {
+            override val size: Int get() {
+                if (rejectLaterAccess) throw AssertionError("Oversized dense history reached later payload")
+                return 0
+            }
+            override fun get(index: Int): SourceAttachments = throw IndexOutOfBoundsException()
+        }
+        val graph = base.current.graph.copy(version = 3,
+            metadata = base.current.graph.metadata.copy(schemaVersion = 3), editableTiming = timing)
+        val revisions = (1L..4L).map { id -> base.current.copy(id = id, parentId = id - 1,
+            graph = if (id == 3L) graph.copy(sourceAttachments = laterPayload) else graph) }
+        // Codec order is original, current r4, then undo r1/r2/r3; r3 must reject
+        // its dense block before touching the subsequent attachment list.
+        val candidate = base.copy(current = revisions.last(), nextRevisionId = 5,
+            undo = listOf(base.original) + revisions.dropLast(1))
+        rejectLaterAccess = true
+        val pointer = File(store.directory("project"), "CURRENT")
+        val before = pointer.readBytes()
+        assertThrows(IllegalArgumentException::class.java) { store.save(candidate, 0) }
+        assertArrayEquals(before, pointer.readBytes())
+        assertEquals(base, HybridProjectStore(files).load("project"))
+    }
+
     @Test fun codecPreservesAuthoredNodeAnchorsPhasesAndDenseTimingAndRejectsInvalidSampleCounts() {
         val base = storageProject()
         val window = EffectSampleWindow(10, 900_000, -3, 7, 899_997, -2, 30)

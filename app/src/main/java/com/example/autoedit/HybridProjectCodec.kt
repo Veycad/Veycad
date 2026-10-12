@@ -16,7 +16,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
     private val authoredMaps: AuthoredSourceMapStore = sidecars.authoredMaps()) {
     fun encode(project: HybridProject): ByteArray {
-        val bytes = ByteArrayOutputStream()
+        val bytes = ManifestOutput()
         Writer(DataOutputStream(bytes), sidecars, authoredMaps.writer()).apply {
             out.writeInt(MAGIC); out.writeInt(FORMAT_VERSION)
             string(project.id); out.writeInt(project.fps); out.writeLong(project.nextRevisionId)
@@ -47,7 +47,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         val hashes = hashSetOf<String>()
         val maps = authoredMaps.writer()
         return revisions.associate { revision ->
-            val bytes = ByteArrayOutputStream()
+            val bytes = ManifestOutput()
             val output = DataOutputStream(bytes)
             output.writeInt(MAGIC); output.writeInt(FORMAT_VERSION)
             Writer(output, sidecars, maps, planes, hashes).revision(revision)
@@ -104,6 +104,31 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
                 "Hybrid payload exceeds $MAX_TOTAL_ITEMS generic collection entries across all revisions"
             }
             remaining -= count
+        }
+    }
+
+    /** Both project and standalone revision output reject before an append/allocation. */
+    private class ManifestOutput : ByteArrayOutputStream() {
+        private fun prepare(length: Int) {
+            require(length.toLong() <= MAX_MANIFEST_BYTES.toLong() - count) {
+                "Hybrid output exceeds the manifest byte budget"
+            }
+            val needed = count + length
+            if (needed > buf.size) {
+                buf = buf.copyOf(minOf(MAX_MANIFEST_BYTES, maxOf(needed, buf.size * 2)))
+            }
+        }
+
+        override fun write(value: Int) {
+            prepare(1)
+            buf[count++] = value.toByte()
+        }
+
+        override fun write(values: ByteArray, offset: Int, length: Int) {
+            require(offset in 0..values.size && length in 0..(values.size - offset))
+            prepare(length)
+            System.arraycopy(values, offset, buf, count, length)
+            count += length
         }
     }
 
@@ -231,6 +256,12 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         fun timeMapping(value: ClipTimeMapping) = with(value) {
             // Dense compiler samples are exact; no interpolation/rebasing at persistence.
             require(frameCount in 1 until MAX_SOURCE_POINTS.toLong())
+            // Include the entire fixed header + dense block before obtaining its copy.
+            // out.size includes all preceding graph/history bytes in either encoding entry point.
+            val requiredBytes = 24L + (frameCount + 1L) * 8L
+            require(requiredBytes <= MAX_MANIFEST_BYTES.toLong() - out.size().toLong()) {
+                "Dense timing exceeds the remaining manifest byte budget"
+            }
             out.writeInt(fps); out.writeLong(sourceDurationUs); out.writeLong(frameOrigin)
             val samples = sourceUsByFrame
             out.writeInt(samples.size); samples.forEach { out.writeLong(it) }
