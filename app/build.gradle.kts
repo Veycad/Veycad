@@ -37,7 +37,8 @@ android {
     // Remote diagnostic only: prebuilt JNI never enters an application source set.
     if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
         sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicSoftwareDiagnostic/kotlin"
-        sourceSets.getByName("androidTest").jniLibs.srcDir(layout.buildDirectory.dir("customMusicSoftwareDiagnostic/jniLibs"))
+        // The remote runner populates this directory before Gradle; Android SourceSet accepts a File.
+        sourceSets.getByName("androidTest").jniLibs.srcDir(layout.buildDirectory.dir("customMusicSoftwareDiagnostic/jniLibs").get().asFile)
     }
 
     buildFeatures {
