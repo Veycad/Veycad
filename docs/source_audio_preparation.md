@@ -51,9 +51,15 @@ bounds on real codecs.
 Source encoding owns one additional 4096-byte stereo PCM block. It coalesces borrowed writes
 into 1024-frame blocks and holds the last full or partial block until `finish`, placing EOS on
 that nonempty work at its actual starting sample PTS. It does not pad PCM or restamp codec output.
-The inspected API36 C2 encoder computes subsequent flush timestamps from the current input work;
-an empty EOS after a partial block instead changes that base. This is a source-backed correction
-pending exact-head native proof, not a claim that API35 implements the same flush behavior.
+That Java input contract does not imply a nonempty C2 EOS work. The inspected API36
+[CCodecBufferChannel](https://android.googlesource.com/platform/frameworks/av/+/android-16.0.0_r1/media/codec2/sfplugin/CCodecBufferChannel.cpp)
+splits a nonempty EOS buffer into data and an empty EOS work with the same timestamp. The AAC
+component clamps the empty work to the preceding PCM endpoint, then bases subsequent flush
+timestamps on it. The actual 48,000-frame probe ends with 896 frames at 981,333 us; the hidden
+work clamps to 999,999 us and its second flushed packet is at 1,021,332 us. The fix3 hypothesis
+that nonempty Java EOS alone restores AAC packet cadence was disproved by exact-head native
+evidence. These are encoder metadata observations, not evidence that PCM samples were lost.
+API35 equivalence is unproven.
 The public [MediaCodec EOS contract](https://developer.android.com/reference/android/media/MediaCodec#end-of-stream-handling)
 permits EOS on the final valid input buffer; it also says an empty EOS timestamp is ignored.
 
@@ -86,8 +92,32 @@ passes per preparation; there is no persistent or cross-project calibration cach
 Probe ledgers record input start/count/PTS/EOS, accepted versus submitted frames, raw output
 PTS/size/flags before the strict packet guard, container packets/format and decoded chunks/counts.
 They stream to `SourceAacTiming` logcat with a 256-row cap per stream and explicit truncation/count
-summary; debug preparations also log input/output rows. No media or packet list is retained for
-diagnostics. A failure before container/decode reaches those stages leaves them unproven.
+summary; debug preparations also log input/output rows. No packet list is retained.
+
+The current diagnostic checkpoint permits only the raw synthetic calibration probe to defer its
+first timestamp violation while preserving every raw packet's bytes, order and PTS. It drains
+actual output EOS, closes the same muxer, and inspects/decodes the resulting raw container. On a
+mismatch it also runs a sequential 51,200-frame full-block probe. Both use the existing owners.
+The diagnostics record cumulative decoded sample positions alongside unchanged chunk-PTS
+positions for the first/middle/tail markers, coded/container packet counts, actual decoded sample
+count and discontinuities. They reject lost container packets, a decoded count different from
+complete coded access units, missing markers and unreleased decoder ownership. Even plausible
+waveform evidence cannot pass preparation: the first timestamp failure is rethrown before the
+trimmed probe or real composition. The default real/trimmed encoder guard remains at two
+microseconds, and the five-file host acceptance gate remains unchanged.
+
+Diagnostic work is bounded to 48,000 or 51,200 input frames, 50 input works, 256 output events,
+256 packets/chunks, 262,144 decoded frames, 64 KiB per encoded packet and 2 MiB of encoded data
+or retained container. Encoder and diagnostic decode phases each have a 60-second limit in
+addition to existing stall/cancellation checks. The two probes are sequential; no whole PCM or
+AAC array is retained. In debug instrumentation's existing `source-audio-native-evidence` case
+directory only, `diagnostic-*` files retain the synthetic raw containers, streamed input/output/
+container/chunk ledgers, exact encoder/container CSD-0 hex (bounded to 256 bytes), and
+`.diagnostic-sha256.txt` hashes. These names are separate from accepted
+artifacts and cannot satisfy the five acceptance sidecars. Normal owned scratch files are still
+deleted on failure/cancellation. Failed/incomplete observations are not complete EOS or decode
+evidence; exact-head remote execution is required. No packet normalization is authorized by this
+checkpoint, and the known preparation-dependent native tests are expected to remain failing.
 
 The UI runner retains generated WAV/M4A/MP4 evidence byte-for-byte using a binary stream and
 archives its SHA256. CI's separate FFmpeg native float AAC oracle checks the exact device-recorded

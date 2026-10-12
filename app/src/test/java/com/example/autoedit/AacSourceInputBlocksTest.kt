@@ -25,7 +25,7 @@ class AacSourceInputBlocksTest {
     }
 
     @Test fun fragmented_full_and_partial_endpoints_queue_each_authored_sample_once() {
-        for (length in listOf(1,1023,1024,1025,48000,48128,49600,48800)) {
+        for (length in listOf(1,1023,1024,1025,48000,48128,49600,48800,51200)) {
             val work=mutableListOf<Work>()
             val blocks=AacEncoderMuxer.SourceInputBlocks { samples,count,start,eos ->
                 repeat(count*2) { assertEquals("length=$length sample=${start*2+it}",((start*2+it)%30000).toShort(),samples[it]) }
@@ -51,26 +51,64 @@ class AacSourceInputBlocksTest {
         }
     }
 
-    @Test fun api36_flush_recurrence_reproduces_empty_eos_gap_and_nonempty_eos_keeps_au_spacing() {
-        // Independent transcription of C2SoftAacEnc API36: emit old nextPTS, then set nextPTS
-        // to current work inputPTS + cumulative emitted AUs in that work. This is not a codec.
-        fun flush(previousNext: Long, workStart: Long, count: Int): List<Long> =
-            listOf(pts(previousNext)) + (1 until count).map { pts(workStart)+it*1024L*1_000_000/48_000 }
-        val old=flush(47104,48000,3)
-        assertEquals(1_021_333L,old[1]) // exact preserved packet47 native RED
-        assertEquals(1_002_666L,pts(48_128))
-        assertTrue(abs(old[1]-pts(48_128))>2)
-        for (length in listOf(1,1023,1024,1025,48000,48128,49600,48800)) {
-            val work=mutableListOf<Work>()
-            val blocks=AacEncoderMuxer.SourceInputBlocks { _,count,start,eos -> work+=Work(start,count,eos) }
-            var frames=0
-            while (frames<length) { val count=minOf(1024,length-frames); blocks.append(ShortArray(count*2),count); frames+=count }
-            blocks.finish()
-            val last=work.last()
-            for (tailPackets in 1..4) flush(last.start,last.start,tailPackets).forEachIndexed { i,time ->
-                assertTrue("length=$length packet=$i",abs(time-pts(last.start+i*1024))<=2)
-            }
-        }
+    @Test fun api36_framework_splits_nonempty_eos_and_clamps_hidden_empty_work_to_pcm_end() {
+        // Characterization of TWO primary sources, not an executed codec: CCodecBufferChannel
+        // removes EOS from the data work and queues an empty work at the SAME Java timestamp.
+        // C2SoftAacEnc clamps that work to the preceding PCM end before advancing its flush PTS.
+        val work=mutableListOf<Work>()
+        val blocks=AacEncoderMuxer.SourceInputBlocks { _,count,start,eos -> work+=Work(start,count,eos) }
+        repeat(46) { blocks.append(ShortArray(2048),1024) }
+        blocks.append(ShortArray(1792),896); blocks.finish()
+        assertEquals(Work(47_104,896,true),work.last())
+        val dataPts=pts(work.last().start)
+        val hiddenEosPts=maxOf(dataPts,dataPts+pts(work.last().count.toLong()))
+        assertEquals(981_333L,dataPts)
+        assertEquals(999_999L,hiddenEosPts)
+        val observedFlush=listOf(dataPts,hiddenEosPts+pts(1024))
+        assertEquals(listOf(981_333L,1_021_332L),observedFlush) // actual e9f0db71 packets46/47
+        assertTrue(abs(observedFlush[1]-1_002_666L)>2)
+        // A full final data work already emitted an AU. Its next timestamp equals its end,
+        // so splitting EOS does not create this partial-work discontinuity.
+        val fullEnd=1_045_333L+pts(1024)
+        assertEquals(1_066_666L,fullEnd)
+        assertEquals(1_087_999L,fullEnd+pts(1024))
+    }
+
+    @Test fun diagnostic_timestamp_audit_retains_first_failure_and_never_accepts_it() {
+        val audit=AacEncoderMuxer.SourcePacketTimestampAudit("observed-codec",deferForProbe=true)
+        audit.record(45,959_999); audit.record(46,981_333)
+        audit.record(47,1_021_332)
+        val first=requireNotNull(audit.failure)
+        audit.record(48,1_042_665)
+        audit.record(49,1_045_333) // Later conforming metadata cannot erase a retained failure.
+        assertSame(first,audit.failure); assertEquals(2L,audit.violations)
+        assertSame(first,assertThrows(IllegalStateException::class.java) { audit.requireValid() })
+        val strict=AacEncoderMuxer.SourcePacketTimestampAudit("observed-codec")
+        assertThrows(IllegalStateException::class.java) { strict.record(47,1_021_332) }
+        assertEquals(1L,strict.violations)
+    }
+
+    @Test fun decoded_probe_observes_sample_ordinal_and_pts_without_filling_or_hiding_a_gap() {
+        val probe=AacEncoderMuxer.SourceProbeSamples()
+        fun chunk(ptsUs: Long, count: Int, peak: Int)=PcmChunk(PcmFormat(48000,2),ptsUs,
+            ShortArray(count*2) { if(it/2==peak) 20_000 else 0 })
+        probe.append(chunk(0,10_000,1600))
+        probe.append(chunk(208_333,24_000,14_000))
+        probe.append(chunk(727_000,14_000,12_400)) // 896-frame PTS gap; PCM has no inserted frames
+        assertEquals(48_000L,probe.frames)
+        assertEquals(listOf(1600L,24_000L,46_400L),probe.sequentialMarkers.toList())
+        assertEquals(listOf(1600L,24_000L,47_296L),probe.ptsMarkers.toList())
+        assertEquals(1L,probe.discontinuities)
+        assertEquals(896L,probe.maximumGapFrames)
+    }
+
+    @Test fun diagnostic_probe_has_hard_chunk_and_sample_limits() {
+        val chunks=AacEncoderMuxer.SourceProbeSamples()
+        repeat(256) { chunks.append(PcmChunk(PcmFormat(48000,2),it*1_000_000L/48000,shortArrayOf(0,0))) }
+        assertThrows(IllegalStateException::class.java) { chunks.append(PcmChunk(PcmFormat(48000,2),5333,shortArrayOf(0,0))) }
+        val frames=AacEncoderMuxer.SourceProbeSamples()
+        repeat(5) { frames.append(PcmChunk(PcmFormat(48000,2),it*1_000_000L,ShortArray(96_000))) }
+        assertThrows(IllegalStateException::class.java) { frames.append(PcmChunk(PcmFormat(48000,2),5_000_000,ShortArray(96_000))) }
     }
 
     @Test fun failed_queue_preserves_cancellation_identity_and_close_releases_pending_ownership() {
