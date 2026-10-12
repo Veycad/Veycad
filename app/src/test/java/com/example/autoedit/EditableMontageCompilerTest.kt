@@ -85,13 +85,13 @@ class EditableMontageCompilerTest {
             assertEquals(HighQualityFramePlan.build(graph, fps), HighQualityFramePlan.build(compiled, fps))
             val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
             val encoded = codec.encode(project.shared)
-            assertEquals(5, java.nio.ByteBuffer.wrap(encoded).getInt(4))
+            assertEquals(6, java.nio.ByteBuffer.wrap(encoded).getInt(4))
             assertEquals(3, MontageGraph.CURRENT_VERSION)
             val decoded = codec.decode(encoded)
             assertEquals(3, decoded.current.graph.version)
             assertEquals(3, decoded.current.graph.metadata.schemaVersion)
             assertEquals(project.shared.current.music, decoded.current.music)
-            // Manual timing/phase payload persistence is a separate owner A2 gate.
+            assertEquals(project.shared.current.graph.manualMontageState, decoded.current.graph.manualMontageState)
         }
     }
 
