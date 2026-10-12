@@ -35,7 +35,7 @@ import androidx.core.view.doOnLayout
 import java.io.File
 import java.util.concurrent.Executors
 
-/** Production "one director" flow. There is intentionally no manual editing mode. */
+/** Production director flow and entry to the saved-project manual MVP. */
 class MainActivity : AppCompatActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private var sourceFile: File? = null
@@ -315,6 +315,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
+        findViewById<Button>(R.id.manualMvpButton).setOnClickListener {
+            startActivity(Intent(this, ManualMvpActivity::class.java))
+        }
         findViewById<Button>(R.id.galleryModeButton).setOnClickListener { setCaptureMode(false) }
         findViewById<Button>(R.id.autoModeButton).setOnClickListener { setCaptureMode(true) }
         findViewById<Button>(R.id.captureMusicMode).setOnClickListener { captureMode = CaptureMode.MUSIC; setCaptureMode(true) }

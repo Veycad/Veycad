@@ -29,6 +29,12 @@ android {
     }
 
     buildTypes {
+        create("manualMvp") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".manualmvp"
+            versionNameSuffix = "-manual-mvp"
+            matchingFallbacks += "debug"
+        }
         create("cameraPilot") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".camera"
