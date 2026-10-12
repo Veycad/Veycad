@@ -5,6 +5,9 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -109,7 +112,9 @@ class HybridTimingV5FixtureCaptureTest {
         val output = File(repository, "app/build/reports/tests/hybrid-v5-capture")
         check(!output.exists()) { "Capture output must be fresh; use the existing clean CI gate" }
         check(output.mkdirs())
-        assertTrue(files.copyRecursively(File(output, "store"))) // entire genuine tree, including all old manifests
+        val storeArchive = File(output, "store.zip")
+        packageStore(files, storeArchive, beforeLoad) // hidden files remain actual archive entries through upload
+        writeInventory(File(output, "store-SHA256SUMS.tsv"), beforeLoad)
         val codec = HybridProjectCodec(AnalysisSidecarStore(File(directory, "analysis")), AuthoredSourceMapStore(maps))
         val indexLines = mutableListOf("manifest\trevisionId\tsha256\tprojectPayloadSha256")
         val currentName = File(directory, "CURRENT").readText(Charsets.US_ASCII)
@@ -146,7 +151,7 @@ class HybridTimingV5FixtureCaptureTest {
             }
         }
         assertTrue(File(output, "project.bin").isFile)
-        assertEquals(beforeLoad, inventory(File(output, "store")))
+        assertEquals(beforeLoad, inventory(files))
         File(output, "manifest-revision-index.tsv").writeText(indexLines.joinToString("\n", postfix = "\n"))
         File(output, "literal-expectations.md").writeText(LITERAL_EXPECTATIONS)
         File(output, "observed-revisions.tsv").writeText(buildString {
@@ -168,6 +173,10 @@ class HybridTimingV5FixtureCaptureTest {
             append("production_main_tree=$PRODUCTION_TREE\nproduction_codec_blob=$CODEC_BLOB\n")
             append("capture_utility_blob=$captureBlob\nedit_helper_blob=$EDIT_HELPER_BLOB\nphysical_format=5\n")
             append("current_manifest=$currentName\nsource_bytes=synthetic_only\n")
+            append("store_archive=store.zip\nstore_inventory=store-SHA256SUMS.tsv\n")
+            append("store_file_count=${beforeLoad.size}\nstore_archive_bytes=${storeArchive.length()}\n")
+            append("store_directory_count=${files.walkTopDown().count { it.isDirectory && it != files }}\n")
+            append("store_uncompressed_bytes=${files.walkTopDown().filter { it.isFile }.sumOf { it.length() }}\n")
             append("creation_api=ProjectAssetStore.importVideo;SelectedVideo.fromInspected;HybridProjectStore.create/save\n")
             append("capture_api=HybridProjectStore.loadWithAnalysisStatus/loadRevision;HybridProjectCodec.decode/decodeRevision\n")
             append("execution_gate=existing Android baseline clean baselineVerify; not timing-proof RED/GREEN\n")
@@ -176,7 +185,11 @@ class HybridTimingV5FixtureCaptureTest {
         })
         File(output, "README.md").writeText("""
             Genuine physical-v5 capture from unchanged production code. Synthetic bytes are not media or timing measurement.
-            store/ is the complete store tree; project.bin and revision-0.bin through revision-6.bin are byte-for-byte
+            store.zip packages the complete actual store tree, including original hidden/empty .store.lock and
+            empty directories. ZIP roundtrip entries/bytes are checked against the original store before upload.
+            store-SHA256SUMS.tsv inventories every original file by its path inside the ZIP, size and SHA-256.
+            No hidden outer files are required by the unchanged artifact uploader; do not recreate omitted files.
+            project.bin and revision-0.bin through revision-6.bin are byte-for-byte
             convenience copies extracted from its current envelope and published blobs. No hand-written binary encoder.
             provenance.txt records the actual checkout commit (possibly a CI merge ref), producer and utility blobs.
             It records SHALLOW or COMPLETE history. In shallow history the utility author is explicitly UNKNOWN;
@@ -186,15 +199,15 @@ class HybridTimingV5FixtureCaptureTest {
             Bind the actual utility author and tested PR head from trusted complete Git/provider metadata,
             match the author's utility blob to the captured blob, and retain that evidence before phase2.
             Verify the exact CI run/artifact digest, checkout/author/PR-head identities, producer blob, all checksums,
+            then safely extract store.zip and verify its complete inner inventory including the actual lock entry,
             CURRENT/envelope indexes, physical-v5 headers, maps and literal expectations before retaining resources.
             Utility GREEN proves fixture capture only. Phase2, proof persistence/projection and device acceptance remain pending.
         """.trimIndent() + "\n")
         val captured = inventory(output)
+        assertTrue(captured.keys.all { path -> path.split('/').none { it.startsWith('.') } })
         assertTrue(captured.size <= 100)
         assertTrue(output.walkTopDown().filter { it.isFile }.sumOf { it.length() } <= 1_048_576)
-        File(output, "SHA256SUMS.tsv").writeText("path\tbytes\tsha256\n" + captured.entries.joinToString("\n", postfix = "\n") {
-            "${it.key}\t${it.value}"
-        })
+        writeInventory(File(output, "SHA256SUMS.tsv"), captured)
     }
 
     private fun assertLiteralRequests(revisions: Map<Long, HybridRevision>) {
@@ -250,6 +263,46 @@ class HybridTimingV5FixtureCaptureTest {
             file.relativeTo(directory).invariantSeparatorsPath to "${file.length()}\t${contentHash(file.readBytes())}"
         }
 
+    private fun packageStore(directory: File, archive: File, expected: Map<String, String>) {
+        assertTrue(expected.containsKey("projects/.store.lock")) // real production file, never generated here
+        assertTrue(expected.size <= 100)
+        assertTrue(directory.walkTopDown().filter { it.isFile }.sumOf { it.length() } <= 1_048_576)
+        val directories = directory.walkTopDown().filter { it.isDirectory && it != directory }
+            .map { it.relativeTo(directory).invariantSeparatorsPath + "/" }.toSet()
+        assertTrue(directories.size <= 100)
+        ZipOutputStream(archive.outputStream()).use { zip ->
+            directories.sorted().forEach { path ->
+                zip.putNextEntry(ZipEntry(path)); zip.closeEntry()
+            }
+            expected.keys.forEach { path ->
+                zip.putNextEntry(ZipEntry(path))
+                File(directory, path).inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        val roundtrip = linkedMapOf<String, String>()
+        ZipFile(archive).use { zip ->
+            val entries = zip.entries().asSequence().toList()
+            assertTrue(entries.size <= 200)
+            assertEquals(entries.size, entries.map { it.name }.distinct().size)
+            assertEquals(directories, entries.filter { it.isDirectory }.map { it.name }.toSet())
+            entries.filterNot { it.isDirectory }.forEach { entry ->
+                assertTrue(expected.containsKey(entry.name))
+                val bytes = zip.getInputStream(entry).use { it.readBytesBounded(65_536) }
+                assertArrayEquals(File(directory, entry.name).readBytes(), bytes)
+                roundtrip[entry.name] = "${bytes.size}\t${contentHash(bytes)}"
+            }
+        }
+        assertEquals(expected, roundtrip) // exact paths/lengths/hashes, including the genuine empty lock file
+        assertEquals(expected, inventory(directory))
+    }
+
+    private fun writeInventory(file: File, files: Map<String, String>) {
+        file.writeText("path\tbytes\tsha256\n" + files.entries.joinToString("\n", postfix = "\n") {
+            "${it.key}\t${it.value}"
+        })
+    }
+
     private fun git(repository: File, vararg arguments: String): String {
         val process = ProcessBuilder(listOf("git", "-C", repository.absolutePath) + arguments).redirectErrorStream(true).start()
         check(process.waitFor(10, TimeUnit.SECONDS)) { "Git provenance command timed out" }
@@ -298,7 +351,7 @@ class HybridTimingV5FixtureCaptureTest {
             right backing phaseStart=0, slipUs=123456, selectedRevisionId=4, automatic=false;
             hidden backing frame0=300000, frame10=600000, boundary30=1500000. Current resetEvent=false.
             All seven revisions published through the real store. All old manifests, map hashes, source bytes,
-            revision blobs, CURRENT and its complete referenced manifest are retained in store/.
+            revision blobs, CURRENT and its complete referenced manifest are retained unchanged inside store.zip.
             No analysis planes, actual inspection, recognition version, Gallery admission, native EOS or A2b acceptance.
         """.trimIndent() + "\n"
     }
