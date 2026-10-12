@@ -28,8 +28,12 @@ class HybridTimingV5FixtureCaptureTest {
         assertEquals(EDIT_HELPER_BLOB, gitBlob(File(repository, EDIT_HELPER_PATH)))
         val captureBlob = git(repository, "rev-parse", "HEAD:$CAPTURE_PATH")
         assertEquals(captureBlob, gitBlob(File(repository, CAPTURE_PATH)))
-        val captureCommit = git(repository, "log", "-1", "--format=%H", "--", CAPTURE_PATH)
-        assertEquals(captureBlob, git(repository, "rev-parse", "$captureCommit:$CAPTURE_PATH"))
+        val shallowHistory = git(repository, "rev-parse", "--is-shallow-repository")
+        assertTrue(shallowHistory in listOf("true", "false"))
+        val visibleHistoryCandidate = git(repository, "log", "-1", "--format=%H", "--", CAPTURE_PATH)
+        assertEquals(captureBlob, git(repository, "rev-parse", "$visibleHistoryCandidate:$CAPTURE_PATH"))
+        // At a shallow boundary this candidate may be the merge checkout, not the file's author.
+        val utilityAuthorCommit = if (shallowHistory == "true") "UNKNOWN" else visibleHistoryCandidate
         assertEquals(WORKFLOW_BLOB, git(repository, "rev-parse", "HEAD:$WORKFLOW_PATH"))
         assertEquals(WORKFLOW_BLOB, gitBlob(File(repository, WORKFLOW_PATH)))
 
@@ -156,7 +160,11 @@ class HybridTimingV5FixtureCaptureTest {
         })
         File(output, "provenance.txt").writeText(buildString {
             append("accepted_base=$BASE\ncapture_checkout_commit=$checkoutCommit\n")
-            append("capture_utility_commit=$captureCommit\nexisting_baseline_workflow_blob=$WORKFLOW_BLOB\n")
+            append("capture_history_availability=${if (shallowHistory == "true") "SHALLOW" else "COMPLETE"}\n")
+            append("capture_utility_author_commit=$utilityAuthorCommit\n")
+            append("visible_history_utility_candidate_commit=$visibleHistoryCandidate\n")
+            append("tested_pr_head_commit=UNKNOWN_CONTROLLER_BINDING_REQUIRED\n")
+            append("existing_baseline_workflow_blob=$WORKFLOW_BLOB\n")
             append("production_main_tree=$PRODUCTION_TREE\nproduction_codec_blob=$CODEC_BLOB\n")
             append("capture_utility_blob=$captureBlob\nedit_helper_blob=$EDIT_HELPER_BLOB\nphysical_format=5\n")
             append("current_manifest=$currentName\nsource_bytes=synthetic_only\n")
@@ -171,8 +179,13 @@ class HybridTimingV5FixtureCaptureTest {
             store/ is the complete store tree; project.bin and revision-0.bin through revision-6.bin are byte-for-byte
             convenience copies extracted from its current envelope and published blobs. No hand-written binary encoder.
             provenance.txt records the actual checkout commit (possibly a CI merge ref), producer and utility blobs.
+            It records SHALLOW or COMPLETE history. In shallow history the utility author is explicitly UNKNOWN;
+            the visible-history candidate proves only a matching file blob, not authorship. Complete path history
+            supplies the author commit. The tested PR head remains UNKNOWN here and requires controller metadata.
             SHA256SUMS.tsv records length and SHA-256 for every emitted file except itself.
-            Verify the exact CI run/artifact digest, utility commit ancestry, producer blob, all checksums,
+            Bind the actual utility author and tested PR head from trusted complete Git/provider metadata,
+            match the author's utility blob to the captured blob, and retain that evidence before phase2.
+            Verify the exact CI run/artifact digest, checkout/author/PR-head identities, producer blob, all checksums,
             CURRENT/envelope indexes, physical-v5 headers, maps and literal expectations before retaining resources.
             Utility GREEN proves fixture capture only. Phase2, proof persistence/projection and device acceptance remain pending.
         """.trimIndent() + "\n")
