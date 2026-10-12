@@ -1,134 +1,201 @@
-# Текст и локальные субтитры: план общей интеграции
+# Текст и автосубтитры Implementation Plan
 
-> Исполнение: superpowers:subagent-driven-development, отдельный исполнитель и ревью каждой связной части. Изменение от 2026-10-10 учитывает согласование координатора по делегированному пользователем полномочию. Повторное подтверждение обычной интеграции не требуется.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking. Execution is authorized by the owner's request to prepare the plan and implement the whole feature in PR 12.
 
-**Цель:** сохранить весь одобренный сценарий редактируемого текста и локальных русских субтитров, включая слышимую исходную речь после монтажа, без конкурирующих хранилищ, редакторов и STT.
+**Goal:** Добавить пользовательский текст и редактируемые локальные автосубтитры для исходного видео и готового MP4.
 
-**Спецификация:** [2026-10-10-text-subtitles-design.md](../specs/2026-10-10-text-subtitles-design.md). Продуктовые требования сохранены. Выбор Vosk и независимых TextTrack/EditProjectStore из первоначальной версии плана заменён общей реализацией ниже. Это архитектурное согласование, а не подтверждение качества Whisper.
+**Architecture:** Отдельный экран завершения видео сохраняет порядок кадров и звук выбранного файла. Общая модель и Canvas-раскладка обслуживают предпросмотр и GLES-экспорт. Whisper работает на ограниченных PCM-окнах и освобождается до видеоэкспорта.
 
-## Владельцы и зависимости
+**Tech Stack:** Kotlin, Android API 26–36, Canvas, MediaCodec/MediaMuxer, GLES2, whisper.cpp 1.8.7, multilingual base, NDK 28.2.13676358, CMake 3.22.1, JUnit и Android instrumentation.
 
-- PR #15, `codex/hybrid-mode-design`, чат «Добавить экспорт и шеринг»: единственные HybridProject, ProjectAsset, ревизии, ProjectClock 30/60 fps, SourceTimeMap, долговечные assets и общий project store. Закоммиченная основа при согласовании: `74b58038abedc918c0877cfa3cec215a0f4d9a9e`. Store ещё реализуется; использовать закоммиченный проверенный контракт, не копировать незакоммиченные TODO.
-- PR #12, `codex/text-subtitles`, чат «Добавить субтитры и текстовые плашки»: TextLayer, CaptionCue, редактор, layout/preview/export и Whisper за SpeechTranscriber. Общий интерфейс должен принимать подготовленную дорожку исходной речи, не требуя фиктивного видео для PCM.
-- PR #18, музыкальный коммит `fc21f629`: сверить MediaCodecAudioDecoder/AacEncoderMuxer, encoder delay и MP3 offset перед подключением смешивания; не откатывать эти исправления.
-- Этот план и план галереи #13: мультивыбор и импорт, анализ/режиссура, список источников, адаптеры source audio/time map/mix, связь текста с общим проектом, интеграционные проверки. Второй Vosk-модуль и второй текстовый редактор не создаются.
-- Изменения публикуются в отдельных `codex/*` ветках и stacked PR с явно указанной базой. Не сливать зависимости ради продолжения без явного одобрения владельца.
+**Spec:** [Подтверждённая спецификация](../specs/2026-10-10-text-subtitles-design.md).
 
-## Сохраняемые требования
+**Execution notes:** План исполняется в этом чате. JVM-модель, часы, окна,
+outcome/parser/integrity и регрессии проходили RED→GREEN. Первые UI-сценарии
+добавлены после начальной реализации экрана: pre-implementation RED для всего
+UI не заявляется. Отдельный device-RED воспроизвёл откат A→B при recreation,
+подмену первой аудиодорожки и ошибку длительности при ненулевом PTS. UI-RED также проверил доступность
+кнопок через прокрутку и привёл к переносу системных отступов за пределы ScrollView.
+Подготовка модели размещена в основном `app/build.gradle.kts`: отдельный
+подключаемый `.gradle.kts` вызывал падение UAST Android lint.
 
-- Локальная обработка без аккаунта, runtime-загрузки модели и передачи кадров/аудио. Production APK содержит настоящую модель; для импортированного видео не требуется микрофон или новое сетевое разрешение.
-- Обязательна русская речь. Ручной текст Unicode с кириллицей, emoji и комбинируемыми символами. Перевод и diarization вне объёма.
-- Заголовок по умолчанию `[0,min(3 s,duration))`, до трёх строк и 180 code points. Пустой текст убирает надпись.
-- Sans/serif/mono, три размера, светлый/тёмный текст, фон none/dark/accent, появление none/fade/slight scale до 200 ms с ограничением интервалом надписи. Различия текущих enum модуля #12 закрыть там совместимым расширением, не вторым набором классов.
-- Safe area x=0.08..0.92, y=0.10..0.85; заголовок выше, субтитры ниже, максимум две строки субтитров. Отдельно проверить FEAR квадратный и существующие авторские надписи.
-- Полуоткрытые интервалы `[startUs,endUs)` в пределах результата; соседние cues не пересекаются.
-- Режимы «Музыка», «Исходный звук», «Речь и музыка». Включение субтитров явно выбирает слышимый исходный звук с музыкой; тихие субтитры на музыке без речи не добавляются молча.
-- Два различных входа STT сохраняются: слышимый звук готового MP4 и исходная речь, собранная по окончательному монтажу до добавления музыки приложения. Музыка приложения с вокалом не создаёт слова для второго сценария.
-- STT вход — PCM 16 kHz, signed 16-bit mono, точные интервалы. Единственная модель в памяти; decode PCM buffer максимум одна секунда, отмена закрывает ресурсы и удаляет временное аудио. Peak-buffer test проверяет этот предел на длинном наборе источников.
-- Cues обычно 1–4 s, максимум 6 s; паузы от 350 ms разделяют фразы. Короткое слово не растягивается через тишину; confidence ниже 0.75 помечает needsReview; при отсутствии сопоставимой word confidence результат явно требует проверки, без фиктивного значения уверенности.
-- Ручная правка/оформление не запускают STT и анализ видео; изменение источников/графа/режима звука инвалидирует transcript. Предыдущий MP4 сохраняется при ошибке.
-- Медианная ошибка размеченных границ слов ≤200 ms, p95 ≤500 ms; audio/video duration различается максимум на кадр. Если backend не выдаёт слова, расширить общий контракт и проверить качество, а не заменить измерение точностью фраз.
-- Проверки сейчас на выделенном эмуляторе. Samsung A25, скорость/память на телефоне и человеческая приёмка — отдельные непроверенные критерии, реализацию не останавливать в ожидании телефона.
+## Global Constraints
 
-## Предварительное согласование API
+- Все изменения остаются в `codex/text-subtitles`, PR 12; слияние вручную.
+- Обработка локальная, без INTERNET, аккаунта, ключа и разрешения микрофона.
+- Заголовок по умолчанию 0–3 с; интервалы `[startUs,endUs)` ограничены видео.
+- Четыре шрифта с кириллицей, три положения, три цвета, прозрачная/тёмная/акцентная подложка, none/fade/slide/scale.
+- Новые TITLE <=180 Unicode code points/3 строки; plate/motion в x=.08.. .92/y=.10.. .85, без пересечений.
+- Субтитры максимум в две строки; RU/EN/авто; исправление текста и времени.
+- Исходное видео сохраняет длительность, ориентацию, порядок кадров и слышимый звук.
+- Готовый музыкальный эдит распознаётся по своей дорожке; удалённая речь не восстанавливается.
+- Веса не входят в Git; закреплённые артефакты проверяются SHA-256 и входят в APK.
+- ARM64/ARMv7 поддерживаются сборкой; x86_64 используется для проверки на эмуляторе.
+- Новый MP4 публикуется только после успешного mux и проверки контейнера.
 
-До адаптеров зафиксировать в отчёте фактические закоммиченные сигнатуры #12/#15/#18:
+## Review Focus
 
-1. Импорт до наличия graph/music: draft envelope под тем же project ID и владельцем assets; не создавать фиктивный HybridRevision. Порядок выбора отличается от дедупликации файлов по hash.
-2. Открытие/закрытие lease, удаление источников без удаления опубликованного MP4, атомарная публикация и migration marker принадлежат общему store.
-3. SourceTimeMap обеспечивает источник и PTS по тому же frame clock, что GPU. Старый speed ramp сохраняет точный результат; аудио использует предвычисленные якоря, не интегрирует ramp 80 раз на каждый PCM sample.
-4. SpeechTranscriber принимает уже подготовленный PCM/WAV, а путь готового MP4 продолжает существовать. Общая структура результата различает Success, NoSpeech, Failure и содержит реальные слова/границы либо документированное расширение backend.
-5. Общая ревизия хранит текст и ключ transcript; временный TextEditProject для готового MP4 может служить adapter, но не независимым источником истины для HybridProject.
+- Ротация 90/270°: предпросмотр и экспорт используют одну геометрию.
+- Ненулевой PTS и короткая звуковая дорожка: тишина сохраняет синхронизацию, реплики не зацикливаются.
+- Исправленные субтитры: повторный STT не заменяет их без подтверждения пользователя.
+- Отмена и смерть процесса: прежний MP4 и черновик сохраняются, временный результат не публикуется.
+- Тишина и длинные видео: нет придуманных субтитров и загрузки всего PCM в RAM.
 
-### T1: Сверка общей модели текста и валидации
+### Task 1: Модель, черновик и сегментация
 
-**Владелец:** #12; этот поток проверяет интеграционный контракт.
+**Files:** Create `app/src/main/java/com/example/autoedit/TextEditProject.kt`, `TextEditStore.kt`, `CaptionSegmenter.kt`; tests `TextEditProjectTest.kt`, `TextEditStoreTest.kt`, `CaptionSegmenterTest.kt`.
 
-- [ ] Сверить TextLayer/CaptionCue/TextStyle с требованиями выше: code points, интервалы, пустая надпись, сохранение Unicode/ручных правок, 180/181 symbols и короткий результат.
-- [ ] Недостающие mono/accent/scale/ограничения реализовать у владельца; не дублировать TextTrack/CaptionCue.
-- [ ] Получить конкретный commit и red/green evidence необходимых тестов; review diff и совместимость сериализации.
+**Interfaces:** `TextEditProject(sourcePath:String, durationUs:Long, width:Int, height:Int, layers:List<TextLayer>, captions:List<CaptionCue>, captionStyle:TextStyle)`; `activeLayers(timeUs:Long):List<TextLayer>`; `TextEditStore(directory:File).save(project)` / `load(sourcePath:String):TextEditProject?`; `CaptionSegmenter.merge(existing:List<CaptionCue>, incoming:List<CaptionCue>, durationUs:Long):List<CaptionCue>`.
 
-### T2: Исходный звук после монтажа и три режима микса
+- [x] Написать тесты: заголовок короткого видео ограничен 800000 us; интервал исключает end; неверное время отклонено; кириллица/переносы и исправления переживают сохранение; разные файлы не смешиваются; дубликат окна не повторяется.
+- [x] Запустить `:app:testDebugUnitTest --tests '*TextEdit*Test' --tests '*CaptionSegmenterTest'`; ожидается отказ из-за отсутствующих классов.
+- [x] Реализовать immutable-модель, валидацию, Properties-черновик с атомарной заменой и явной версией, объединение пересекающихся фраз.
+- [x] Повторить тесты; ожидается PASS. Просмотреть diff и создать `feat(text): добавить модель текста и устойчивый черновик`.
 
-**Владелец:** этот поток. Files: `SourceAudioComposer.kt`, `PcmStream.kt`, `AudioMixSettings.kt`, адаптеры общего source map и действующего AAC muxer; JVM/device tests.
+### Task 2: Раскладка и экспорт с исходным звуком
 
-- [ ] Red tests для 3+ источников, ненулевого первого audio PTS, gap, клипа без аудио между звучащими, speed ramp, повторного использования источника, EOF и отмены.
-- [ ] MediaCodec декодирует ограниченными chunks. Собрать timeline 48 kHz 16-bit stereo по source map; пустые места остаются тишиной, за EOF чтения нет. На склейке основной источник и 10 ms fade, без наложения двух несвязанных голосов.
-- [ ] Якоря времени на границах видео-кадров/склеек и с шагом ≤1 ms; внутри — интерполяция. Не выполнять интеграл legacy ramp на каждый из 48k samples.
-- [ ] Сделать STT вход 16 kHz mono до музыки. Потоковый AAC export, режим MUSIC сохраняет старое поведение; SOURCE не добавляет музыку, SPEECH_AND_MUSIC смешивает явно заданные конечные gain в 0..1. Headroom/limiter удерживает mixedPeak ≤1; overlapping full-scale source/music проверяются regression test на пики и слышимый клиппинг в WAV/AAC.
-- [ ] Проверить waveform/маркерные точки и длительность, учесть исправления музыкального #18; commit с тестами и scoped review.
+**Files:** Create `TextLayerLayout.kt`, `TextPcmDecoder.kt`, `TextAudioMuxer.kt`, `TextVideoExporter.kt`, `TextVideoGeometry.kt`; modify `MediaCodecSpeedRampRenderer.kt`; tests `TextVideoGeometryTest.kt`, `TextPcmTimelineTest.kt` и `TextExportDeviceTest.kt`.
 
-### T3: Настоящая offline модель и упаковка
+**Interfaces:** `TextLayerLayout.draw(canvas:Canvas, project:TextEditProject, timeUs:Long)`; `TextVideoGeometry.oriented(width:Int,height:Int,rotation:Int):Pair<Int,Int>`; `TextPcmDecoder.decode(source:File, directory:File, sampleRate:Int, channels:Int, checkCancelled:()->Unit):PcmFile`; `TextAudioMuxer.mux(video:File, pcm:PcmFile, output:File, checkCancelled:()->Unit)`; `TextVideoExporter.export(context:Context,project:TextEditProject,output:File,checkCancelled:()->Unit,onProgress:(Int)->Unit)`.
 
-**Владелец:** #12. Этот поток потребляет и проверяет артефакт.
+- [x] Написать независимые проверки ориентации 90/270 и PCM-времени: 500 ms задержки дают 8000 mono-сэмплов тишины при 16 kHz; короткая дорожка не повторяется. Device-тест экспортирует цветовой видеофикстур с надписью и проверяет пиксели, аудио и длительность.
+- [x] Запустить JVM/device-тесты; зафиксировать RED до реализации.
+- [x] Реализовать общую Canvas-раскладку и дополнительную RGBA-текстуру поверх итогового GLES-кадра. Прямой граф из одного клипа 1× не использует монтажную приёмку рецептов.
+- [x] Декодировать PCM потоково на диск по фактическим PTS; ограничить RAM буфером. Кодировать звук в AAC потоково; добавить тишину до длительности видео, без loop.
+- [x] Проверить настоящий экспорт на эмуляторе, запустить JVM-серию; ожидается PASS. Коммит `feat(text): экспортировать текст с сохранением исходного звука`.
 
-- [ ] Зафиксировать source artifact модели, версию, byte size, SHA-256 и license; при каждой сборке проверять размер/checksum до packaging. В каждом production APK проверить checksum payload и license notices; generated model payload не коммитить. Архивы распаковывать с проверкой traversal/required files. Проверить ABI, native page alignment и universal APK; несовместимость заявляемого ABI/page size блокирует выпуск.
-- [ ] Не создавать Vosk/JNA/model downloader поверх Whisper. Ошибка модели отличается от отсутствия речи; runtime сеть не нужна.
-- [ ] Реальный model load/recognition и освобождение ресурсов на эмуляторе, без fake STT. Missing/corrupt-model tests подтверждают явную Failure и сохранность проекта/прежнего MP4; ограничения телефона обозначить отдельно.
+### Task 3: Настоящий локальный STT
 
-### T4: Адаптер распознавания смонтированной речи
+**Files:** Create `SpeechTranscriber.kt`, `WhisperSpeechTranscriber.kt`, `WhisperNative.kt`, `app/src/main/cpp/CMakeLists.txt`, `whisper_jni.cpp`, `app/src/main/assets/licenses/whisper.txt`; modify `app/build.gradle.kts` (including verified model assets task); tests `SpeechWindowTest.kt`, `WhisperDeviceTest.kt`.
 
-**Совместная граница:** SpeechTranscriber в #12; PCM integration в этом потоке.
+**Interfaces:** `SpeechTranscriber.transcribe(context:Context, source:File, language:String, checkCancelled:()->Unit,onProgress:(Int)->Unit):List<CaptionCue>`; native `open(modelPath:String):Long`, `recognize(handle:Long,samples:FloatArray,language:String,cancel:NativeCancellation):Array<String>`, `close(handle:Long)`.
 
-- [ ] Red test: prepared PCM без video track проходит в общий recognizer. Путь готового MP4 продолжает работать.
-- [ ] Success/NoSpeech/Failure различаются; progress/cancellation проходят до decoder/model, нет повторного распознавания из-за style.
-- [ ] Лицензированные русские fixtures и ручные границы; per-sample WER, шумная русская речь и речь с музыкой исходника. Проверить тишину, слово после gap, повтор source, app music с голосом поверх цифровой тишины без речи. Тихая разборчивая source speech распознаётся без подмены словами музыки приложения.
-- [ ] Если Whisper доказанно не подходит по RU, RAM/времени или границам, предложить совместную замену за тем же интерфейсом с evidence; не объявлять backend пригодным по одному load.
+- [x] Написать тесты границ окон и удаления дубликатов; device-тест: настоящий bundled base распознаёт короткую EN-фикстуру и не выдаёт фразу на тишине.
+- [x] Запустить тесты и зафиксировать RED. Закрепить whisper.cpp commit `48f628a84833905ee4a0658ee6d4a5c915ce1997` и model revision/checksum после чтения метаданных поставщика.
+- [x] Подключить CPU JNI, 16 KiB alignment, отмену и release в finally; модель в assets проверяется на сборке, при распаковке и перед каждым открытием кэша.
+- [x] Читать PCM окнами до 30 с, переносить временные метки в абсолютные PTS, отбрасывать пустые/безречевые результаты и объединять перекрытия.
+- [x] Собрать ARM64/ARMv7 и test x86_64, запустить device-тесты; ожидается реальное распознавание. Коммит `feat(subtitles): добавить локальное распознавание Whisper`.
 
-### T5: Фразы, шрифты и геометрия
+### Task 4: Экран и подключение двух сценариев
 
-**Владелец:** #12; этот поток добавляет проверки интеграции со стилями.
+**Files:** Create `TextEditActivity.kt`, `TextEditSession.kt`, `TextPreviewOverlay.kt`, `TextVideoProbe.kt`, `res/values/text_strings.xml`; modify `MainActivity.kt`, `activity_main.xml`, `AndroidManifest.xml`; test `TextEditActivityDeviceTest.kt`.
 
-- [ ] Настоящие glyph metrics Canvas/Typeface, grapheme-safe переносы, две строки субтитров, fit до SMALL или понятная ошибка overflow до экспорта.
-- [ ] Сохранить реальный интервал короткого слова; паузы и max duration, без дубликатов на overlapping STT windows.
-- [ ] Проверить квадратный FEAR, авторские Heartbeat/FEAR titles, emoji и длинное русское слово; один layout для preview/export.
+**Interfaces:** `TextEditActivity.open(context:Context, file:File?=null)`; `TextEditSession` owns import/STT/export jobs and observable state; Activity never owns worker resources. State contains project, busy/progress/error/result and cancellation.
 
-### T6: Текст в общем GPU-экспорте
+- [x] Написать device-сценарий: вход через главное меню и готовый MP4; добавить заголовок и плашку; изменить оформление и время; восстановить черновик; отменить работу; экспортировать.
+- [x] Запустить и зафиксировать RED. Реализовать предпросмотр с общей раскладкой, три раздела, seek к фразам, все настройки из спецификации и confirmation только для замены исправленного STT.
+- [x] Добавить главный вход и кнопку готового результата; импорт независим от стиля. Восстанавливать сохранённый проект и прерванные задания, писать изменения атомарно.
+- [x] Запустить device/JVM-проверки; ожидается PASS. Коммит `feat(ui): добавить редактор текста и автосубтитров`.
 
-**Владелец:** #12; multi-source renderer integration — этот поток.
+### Task 5: Полная проверка и PR
 
-- [ ] Текст после эффектов, существующие авторские надписи сохраняются. Активные/ближайшие atlas, ограниченный LRU ≤16 MiB.
-- [ ] Одинаковые half-open интервалы и sampler в preview/export, fade/scale ограничены cue; проверка первого/последнего кадра надписи и координат.
-- [ ] Упаковка и GL cleanup проверяются реальным экспортом, не только unit bitmap tests.
+**Files:** Update spec status, README and this plan; create `docs/testing/text-subtitles.md` with actual evidence and limitations.
 
-### T7: Ревизии, transcript cache и повторный экспорт
+**Interfaces:** Final feature uses all contracts above. Publication uses `CompletedRenderStore`; previous source/result never overwritten.
 
-**Общий store:** #15; text types — #12; этот поток реализует adapters/coordinator.
+- [x] Запустить `clean baselineVerify`, соответствующие UI/device-тесты и собрать APK всех объявленных ABI; ожидается PASS без ослабления gates.
+- [x] Проверить MP4: читаемая кириллица, time boundaries, оригинальный звук, ориентация и длительность. Зафиксировать доступные устройства; не заявлять Samsung-проверку без устройства.
+- [x] Провести свежий обзор всего изменения через отдельного reviewer согласно executing-plans; исправления подтверждать RED→GREEN.
+- [x] Подготовить обновление PR 12 вокруг фактической реализации, результатов и оставшейся человеческой приёмки. Опубликовать итоговый пакет этого плана push без force; сохранить draft для аппаратной и визуальной приёмки.
 
-- [ ] Ключ transcript включает ordered fingerprints, graph/source map, audio mode/settings, model hash и requested recognition language (`ru`/`en`/`auto`). Detected language хранится отдельно и не заменяет requested `auto` в ключе. Styling/ручные cues не меняют этот ключ. Подробный outcome и допустимые raw word intervals закреплены в [совместном контракте](../specs/2026-10-10-speech-result-integration-contract.md).
-- [ ] Сохранять raw результат и правки в общей ревизии; ни один cache path не заменяет долговечный asset.
-- [ ] compose → STT → segment/save → mix/video/text → QA → atomic publish. Ошибка сохраняет прошлый MP4 и редактируемый draft, временный PCM удаляется finally.
-- [ ] Re-export из общей ревизии без нового video analysis/STT. Source deletion делает недоступность редактирования явной, MP4 остаётся; старый MP4 без sources редактируется как готовое видео, не как восстановленный исходный монтаж.
-- [ ] Tests: process death, missing source/model, transcript invalidation, сохранность исправлений, один lease на render.
+## Итог выполнения
 
-### T8: Общий UI и жизненный цикл
+Проверенный код: `a2e36bd60f756cf374673562d8323d71698fd474`. Clean gate прошёл:
+655 JVM, 255 Python, lint 0 ошибок / 26 предупреждений, APK трёх ABI. Все 12
+уникальных feature-device сценариев прошли в сериях 8 export/STT + 4 UI;
+производственный APK между сериями не менялся. После тестовой правки навигации
+повторён baseline и собран test APK. Полная остановка процесса вручную проверила
+восстановление исправленного черновика и результата. Точные границы этих проверок,
+SHA-256 APK и открытая приёмка A25 приведены в [протоколе](../../testing/text-subtitles.md).
+Результат удалённых CI последнего коммита фиксируется в PR; локальные результаты
+не подменяют CI или одобрение слияния.
 
-**Владелец текста:** #12; gallery/audio adapter — этот поток.
+## Совместимые интеграционные расширения
 
-- [ ] Согласованный экран для заголовка, исправления captions/интервалов, style и re-export; второй редактор не добавлять.
-- [ ] Явный выбор звука, PREPARING_AUDIO/TRANSCRIBING/RENDERING, NoSpeech отдельно от Failure/retry; один активный render при повторных taps.
-- [ ] Rotation/process restore не запускает заново STT. Preview использует те же часы и слышимый audio mode, что export.
-- [ ] Instrumentation проверяет действие пользователя и durable corrections, а не наличие кнопок.
+10 октября координатор по делегированному полномочию владельца передал сверку
+принятого интеграционного сценария. Базовый MP4 checkpoint `109b0c7a` сохраняется;
+следующие изменения принадлежат этому же PR 12. Общая схема ревизий остаётся у
+PR 15, второй STT и project store не создаются.
 
-### T9: Финальная интеграционная проверка
+### Task 6: Модель, Unicode и review evidence
 
-- [ ] `clean baselineVerify`, полная обнаруженная UI suite на выделенном `.uitest`; для AGP9.1.1 известного device-filter failure использовать документированный direct AndroidJUnitRunner workaround с фактическими результатами.
-- [ ] Настоящие 3+ source MP4: offset, silent middle, ramps, repeats; полный decode без артефактов. Маркеры слова/audio/video, median/p95 boundaries и duration diff ≤frame.
-- [ ] App music с голосом поверх цифровой тишины без source speech даёт NoSpeech для исходной дорожки. Тихая разборчивая исходная речь не исчезает и не заменяется словами музыки; MP4-caption workflow распознаёт слышимый финальный звук отдельно.
-- [ ] Offline emulator: настоящая RU модель, manual edit/re-export, отсутствие rerun STT и утечек/лишних decoders. CI относится к точному последнему commit.
-- [ ] Evidence report фиксирует commit/APK/model hash, device/API/ABI/page size, fixture license, annotation method, per-sample WER, median/p95 word boundaries, STT/export runtime, peak RAM/buffer, cancel latency, MP4 durations и preview/export samples. Отдельно перечислить непроверенные Samsung A25, RAM/time/cancel SLA на телефоне и человеческую читаемость; draft PR не выдавать за полную приёмку.
+- [x] RED: MONO/accent/scale roundtrip, старые BOLD/SLIDE/v1 без новых полей;
+  TITLE 180/181 Unicode code points (кириллица, emoji, combining), отличия
+  TITLE/PLATE/SUBTITLE и неизвестная/низкая confidence.
+- [x] Добавить совместимые enum/optional поля: MONO, ACCENT, SCALE, вид слоя,
+  cue confidence/manual review. Новые заголовки ограничить 180 code points;
+  старые длинные слои загружать как LEGACY без обрезания. Субтитры две строки,
+  новые заголовки три. Evidence не присваивает измерения или калибровку.
+- [x] GREEN JVM; scoped commit модели и сохранения `784d1b3`.
 
-## Команды и публикация
+### Task 7: Общая safe-area раскладка и редактор
 
-Package `com.veycad.app`, пути Kotlin пока `com/example/autoedit`; не переименовывать. Windows setup по WINDOWS.md. Bundled Python, не Store alias:
+- [x] RED отсутствующих pure-geometry/motion API → GREEN. Device-тесты
+  фактических границ 720p/1080p и квадратного видео добавлены; runtime RED
+  этих Canvas-тестов не заявляется. Они проверяют одновременные слои и появление.
+- [x] Геометрия x=.08.. .92/y=.10.. .85 включает подложку и анимацию.
+  Упорядоченные слои размещать без пересечений; чрезмерную плотность явно
+  показывать в preview и отклонять в экспорте, сохраняя черновик/MP4.
+- [x] Подключить MONO/accent/slight scale и review evidence к существующему
+  экрану, сохранив прежние BOLD/SLIDE и ручные исправления.
+- [x] Проверить реальный layout/UI/export, свежий reviewer, новый clean gate;
+  scoped commit, exact checked contract, push в PR 12.
+  Код `cb64b287` проверен удалёнными baseline/UI: 662 JVM, 255 Python,
+  81 Android (79 экранных + 2 permissions), включая 16 feature-сценариев.
+  XML и SHA-256 скачанных CI-артефактов проверены; ошибок и пропусков нет.
 
-```powershell
-$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
-$env:PYTHON = 'C:\Users\rexar\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
-$env:ANDROID_SERIAL = 'emulator-5556'
-.\gradlew.bat :app:testDebugUnitTest --tests 'com.veycad.app.SourceAudioComposerTest'
-.\gradlew.bat clean baselineVerify
-.\tools\run_ui_tests.ps1 -Serial emulator-5556
-```
+### Task 8: Честный word-alignment контракт и оценка
 
-Тестовые имена фиксируются вместе с реальными adapters. Перед commit scoped staging, просмотр cached diff и `git diff --cached --check`. Каждая связная часть — отдельный Conventional Commit с тестами, затем review. Публикация через PR; merge только после явного одобрения владельца и успешных checks последнего commit. Эти проверки запланированы, их прохождение документируется только после фактического запуска.
+- [x] Проверить закреплённый Whisper/JNI: token timestamps, DTW и probability
+  semantics. Не делить фразы на равные интервалы и не объявлять token p
+  откалиброванной уверенностью слова.
+- [x] Подготовить конкретный outcome/alignment proposal и протокол RU corpus:
+  лицензия/согласие, ручная разметка start/end, holdout, WER, coverage,
+  отдельные median/p95 ошибок обеих границ <=200/500 ms.
+- [x] Оставить word-quality gate открытым без настоящего alignment и измерений;
+  сохранить draft. Последние CI фиксируются отдельно для exact head.
+
+### Task 9: Raw token evidence и воспроизводимый валидатор
+
+Продолжение по принятому координатором proposal: один существующий
+SpeechTranscriber/JNI, без дополнительного recognizer или project store.
+
+- [x] JVM RED отсутствующих API → GREEN: UTF-8 через границы BPE, UNKNOWN/zero
+  timing, malformed wire, immutable raw evidence, повторы на перекрытиях,
+  исходная причина однократной отмены. Семь новых тестов и связанные speech
+  тесты прошли; промежуточные логи сохранены локально.
+- [x] Добавить ASCII/hex JNI protocol с backend commit и SHA исходника bridge,
+  raw сегментами/токенами, языком каждого окна и requested language. Производные
+  слова маркировать TOKEN_HEURISTIC; confidence остаётся некалиброванной.
+- [x] Провести независимое ревью, scoped commit `07ec407`; P3 phantom token
+  воспроизведён regression RED 7/1 failure → GREEN 17/5 suites.
+  ARM64 NDK syntax-only прошёл; это не native build.
+- [x] Запустить JNI на реальной модели, коротком и последнем неполном окне.
+  Baseline `a5310149` успешен: 917 JVM / 121 suites, 285 Python и native build
+  трёх ABI без ошибок/пропусков. Android UI: 82 cases, 1 failure tick800>756
+  в auto-RU MP4, errors/skips0; 30s/6s tail прошёл. Общий PASS не заявляется.
+  Исправление bounded decode domain выполняется до sampling, со своим patch
+  SHA в header v2; raw rows не обрезаются, strict parser не ослабляется.
+  Проверки исправления обязательны для exact head и фиксируются в PR 12.
+- [x] TDD валидатора: hashes/WAV/provenance, 8 pilot + 2 holdout speakers,
+  две независимые разметки, WER/coverage и median/p95 обеих границ.
+  Отдельные alignment/confidence gates, неизменяемые evidence/report files.
+- [x] Сверить окончательный diff и независимое ревью валидатора; targeted
+  30/30 и полная Python-серия 285/285 без failures/errors/skips. Подтверждённые
+  P2 calibration gate/duplicate audio/hardlink overwrite воспроизведены до
+  исправлений. Preregistration связывает source/protocol/Unicode до holdout.
+  Инструменты и протокол сохраняются отдельным scoped commit.
+- [x] Обновить контракт и PR; результаты каждого CI закреплять за его коммитом.
+  Отсутствующие RU gold/holdout, acoustic alignment, A25 и человеческая
+  приёмка остаются явно открытыми; структурные тесты не заменяют измерения.
+
+### Согласование с обновлённой main
+
+`5f836b6` объединяет main `a32a6a84` без переписывания истории. Сохранены
+sourceAttachments и global project clock в renderer; временные дубликаты
+текстовых типов убраны. Actual compile RED выявил redeclaration; после исправления
+46 speech/frame/core/legacy-codec tests в 8 suites прошли за 2m23s.
+Независимое review разрешения конфликтов не нашло P1/P2. Incoming integration
+spec/plan сохранены отдельными `-integration` файлами, ссылки исправлены.
+Rich-text Hybrid codec сохраняет пока только старые поля: его расширение и
+gallery/source-audio handoff остаются отдельной открытой интеграцией владельцев.

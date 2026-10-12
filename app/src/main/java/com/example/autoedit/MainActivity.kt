@@ -35,7 +35,7 @@ import androidx.core.view.doOnLayout
 import java.io.File
 import java.util.concurrent.Executors
 
-/** Production "one director" flow. There is intentionally no manual editing mode. */
+/** Automatic montage flow, with a separate text finishing editor for source or result MP4. */
 class MainActivity : AppCompatActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private var sourceFile: File? = null
@@ -315,6 +315,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
+        findViewById<Button>(R.id.textEditorButton).setOnClickListener { stopPreviewPlayback(); TextEditActivity.open(this) }
+        findViewById<Button>(R.id.addResultTextButton).setOnClickListener {
+            renderedFile?.let { stopPreviewPlayback(); TextEditActivity.open(this,it) }
+        }
         findViewById<Button>(R.id.galleryModeButton).setOnClickListener { setCaptureMode(false) }
         findViewById<Button>(R.id.autoModeButton).setOnClickListener { setCaptureMode(true) }
         findViewById<Button>(R.id.captureMusicMode).setOnClickListener { captureMode = CaptureMode.MUSIC; setCaptureMode(true) }
@@ -451,6 +455,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateReadyState() {
         val ready = !rendering && !importing && !saving && legacySaveEntry == null
+        findViewById<Button>(R.id.textEditorButton).isEnabled = ready
+        findViewById<Button>(R.id.addResultTextButton).isEnabled = ready && renderedFile != null
         findViewById<Button>(R.id.galleryModeButton).isEnabled = ready
         findViewById<Button>(R.id.autoModeButton).isEnabled = ready
         findViewById<Button>(R.id.captureMusicMode).isEnabled = ready
@@ -661,6 +667,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun preparePreview(file: File) {
+        findViewById<Button>(R.id.addResultTextButton).isEnabled = !rendering && !importing && !saving
         stopPreviewPlayback()
         val generation = previewGeneration
         previewPlaybackRequested = true

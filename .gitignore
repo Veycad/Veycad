@@ -33,6 +33,9 @@ outputs/
 # User-owned and Golden video fixtures stay local and never enter Git/APK.
 app/src/testFixtures/golden-mp4/*.mp4
 *.mp4
+# Tiny synthetic color/tone fixtures for text-export regression tests only.
+!app/src/androidTest/assets/media/two-audio.mp4
+!app/src/androidTest/assets/media/offset-short-audio.mp4
 
 # Platform files
 .DS_Store
