@@ -1,14 +1,22 @@
 package com.veycad.app
 
-/** Physical video facts. Duration and SHA-256 fingerprint live on the immutable ProjectAsset. */
+/** Physical video facts. Declared duration and SHA-256 fingerprint live on the immutable ProjectAsset. */
 data class VideoSourceMetadata(val geometry: SourceGeometry, val sizeBytes: Long,
-    val mime: String, val colorTransfer: Int?, val hasAudio: Boolean) {
-    init { require(sizeBytes > 0 && mime.startsWith("video/")) }
+    val mime: String, val colorTransfer: Int?, val hasAudio: Boolean,
+    /** Physical measurement; null is UNKNOWN for old constructors/files. */
+    val firstVideoPtsUs: Long? = null,
+    /** Independently measured exclusive raw endpoint; null is UNKNOWN. */
+    val videoEndPtsUs: Long? = null) {
+    init {
+        require(sizeBytes > 0 && mime.startsWith("video/") && (firstVideoPtsUs == null || firstVideoPtsUs >= 0))
+        require(videoEndPtsUs == null || videoEndPtsUs > 0)
+        require(firstVideoPtsUs == null || videoEndPtsUs == null || videoEndPtsUs > firstVideoPtsUs)
+    }
 
     companion object {
         fun fromInspected(source: MediaSource, pixelAspectRatio: Float) = VideoSourceMetadata(
             SourceGeometry(source.width, source.height, source.rotationDegrees, pixelAspectRatio),
-            source.sizeBytes, source.mime, source.colorTransfer, source.hasAudio)
+            source.sizeBytes, source.mime, source.colorTransfer, source.hasAudio, source.firstVideoPtsUs, source.videoEndPtsUs)
     }
 }
 

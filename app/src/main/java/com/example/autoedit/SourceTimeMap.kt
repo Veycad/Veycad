@@ -4,7 +4,8 @@ import java.math.BigInteger
 import java.util.Collections
 
 /**
- * Source PTS at local frame boundaries, including 0 and the end-exclusive clip boundary.
+ * Absolute decoder REQUEST timestamps at local frame boundaries, including the exclusive
+ * boundary. These authored targets are not evidence of actual decoded presentation times.
  * Holds are allowed. Slicing preserves saved interior points and samples both boundaries;
  * extensions preserve all existing points and continue only the nearest edge segment.
  */

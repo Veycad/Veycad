@@ -57,6 +57,19 @@ object MediaCodecSpeedRampRenderer {
             sourceFiles ?: listOfNotNull(requireNotNull(masterFile), secondaryFile)))
         val masterFile: File get() = this.sourceFiles.first()
         val secondaryFile: File? get() = this.sourceFiles.getOrNull(1)
+        internal var preparedExport: PreparedHybridExportBinding? = null
+            private set
+
+        internal fun bindPreparedExport(binding: PreparedHybridExportBinding) {
+            require(preparedExport == null)
+            binding.validate(this)
+            preparedExport = binding
+        }
+
+        internal fun resolvedFramePlan(): HighQualityFramePlan.Plan = preparedExport?.let {
+            it.validate(this)
+            it.prepared.framePlan
+        } ?: HighQualityFramePlan.build(graph, fps)
 
         init {
             require(sourceFiles == null || (masterFile == null && secondaryFile == null)) {
@@ -78,20 +91,35 @@ object MediaCodecSpeedRampRenderer {
         executor.execute {
             onDone(runCatching { render(request) }.fold(
                 onSuccess = { Outcome.Saved(request.outputFile, it) },
-                onFailure = { request.outputFile.delete(); Outcome.Failed(it) }
+                onFailure = {
+                    if (request.preparedExport == null) request.outputFile.delete()
+                    Outcome.Failed(it)
+                }
             ))
         }
     }
 
     /** Synchronous by design; callers must use [renderAsync] or a background executor. */
     fun render(request: Request): Int {
+        if (request.preparedExport == null) return renderOwned(request)
+        // Prepared exports own failure cleanup, including synchronous cancellation/native failures.
+        // Admission happens outside cleanup: an invalid request must not touch an existing output.
+        request.preparedExport!!.validate(request)
+        return try { renderOwned(request) } catch (error: Throwable) {
+            request.outputFile.delete()
+            File(request.outputFile.parentFile, request.outputFile.nameWithoutExtension + ".video.mp4").delete()
+            throw error
+        }
+    }
+
+    private fun renderOwned(request: Request): Int {
         require(Build.VERSION.SDK_INT >= 26) { "MediaCodec GPU renderer requires Android 8+" }
         val sourceFiles = request.sourceFiles
         require(sourceFiles.all(File::isFile))
         require(request.graph.clips.all { it.sourceIndex in sourceFiles.indices }) {
             "Montage references a video source that was not supplied"
         }
-        val completePlan = HighQualityFramePlan.build(request.graph, request.fps)
+        val completePlan = request.resolvedFramePlan()
         val plan = request.outputWindow?.let { outputWindow(completePlan, it) } ?: completePlan
         request.outputFile.parentFile?.mkdirs()
         request.outputFile.delete()
@@ -115,9 +143,11 @@ object MediaCodecSpeedRampRenderer {
                 FearStrobeProfile.appliesTo(request.graph),
                 request.graph.metadata.generator == DualityLoopProfile.ID,
                 ReferenceMontageProfile.appliesTo(request.graph),
-                VideoDisplayOrientation.cropsForFiles(sourceFiles, request.width, request.height,
-                    request.checkCancelled),
+                request.preparedExport?.let { binding -> sourceFiles.indices.map(binding.framing::crop) }
+                    ?: VideoDisplayOrientation.cropsForFiles(sourceFiles, request.width, request.height,
+                        request.checkCancelled),
                 sourceAttachments = request.graph.sourceAttachments,
+                manualFraming = request.preparedExport?.framing,
                 onDraw = inspector::record).also { glOwner = it }
             val muxer = MediaMuxer(videoOnlyFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxerOwner = it }
             val muxerState = MuxerState()

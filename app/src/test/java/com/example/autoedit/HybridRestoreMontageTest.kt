@@ -40,7 +40,7 @@ class HybridRestoreMontageTest {
         val edited = authored(HybridEditCommands.moveCut(project(), "right", 28))
         val restored = HybridEditCommands.apply(edited, ProjectCommand.RestoreAutomatic)
         assertEquals(edited.original.copy(id = edited.nextRevisionId, parentId = edited.current.id,
-            restoresAutomaticSources = true), restored.current)
+            restoresAutomaticSources = true), restored.current.copy(sourceBackings = emptyMap()))
     }
 
     @Test fun resetEventHistoryAndRepeatKeepExactPayloadAndMonotoneIds() {
@@ -129,7 +129,7 @@ class HybridRestoreMontageTest {
         val restored = reset(HybridEditCommands.moveCut(project(), "right", 28))
         val edited = authored(restored)
         val graphOriginal = HybridEditCommands.commitRevision(edited, edited.current.copy(graph = edited.original.graph))
-        val gap = graphOriginal.copy(undo = emptyList())
+        val gap = graphOriginal.withoutSourceBackings().copy(undo = emptyList())
         val reset = reset(gap)
         assertEquals(gap.nextRevisionId, reset.current.id)
         assertSame(reset, reset(reset))
@@ -215,7 +215,7 @@ class HybridRestoreMontageTest {
         val original = base.current.copy(clips = base.current.clips.map { it.copy(sourceMap = map) })
         var edited = base.copy(original = original, current = original)
         repeat(15) {
-            edited = HybridEditCommands.commitRevision(edited, edited.current.copy(
+            edited = legacyCommit(edited, edited.current.copy(
                 clips = edited.current.clips.map { it.copy(sourceMap = SourceTimeMap(it.sourceMap.points)) },
                 style = edited.current.style.copy(showAuthoredText = !edited.current.style.showAuthoredText)))
         }
