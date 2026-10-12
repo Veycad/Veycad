@@ -74,6 +74,13 @@ android {
 }
 
 androidComponents {
+    if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
+        onVariants(selector().withBuildType("uiTest")) { variant ->
+            // Keep the reviewed binary byte-for-byte in the diagnostic test APK.
+            checkNotNull(variant.androidTest) { "Software audio diagnostic requires the uiTest AndroidTest variant" }
+                .packaging.jniLibs.keepDebugSymbols.add("**/libsoftware_aac_probe.so")
+        }
+    }
     beforeVariants(selector().all()) { variant ->
         (variant as com.android.build.api.variant.HasUnitTestBuilder).enableUnitTest =
             variant.buildType == "debug"
