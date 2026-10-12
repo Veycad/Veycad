@@ -106,7 +106,10 @@ class MontageTextRoutingDeviceTest {
         val source = SyntheticVideo.create(File(directory, "source.mp4"), 2000,
             width = 240, height = 240, lumaBase = 90)
         val graph = MontageGraph(2000, 6000, clips = listOf(clip(0, 2000, 6000).copy(
-            exposureBias = .25f, redBias = .60f, greenBias = -.30f, blueBias = -.30f)),
+            exposureBias = .25f, redBias = .60f, greenBias = -.30f, blueBias = -.30f,
+            transform = MontageGraph.ClipTransform(listOf(
+                MontageGraph.ClipTransform.Keyframe(0f, 1.1f, .35f, .03f, 12f),
+                MontageGraph.ClipTransform.Keyframe(1f, 1.1f, .35f, .03f, 12f))))),
             metadata = NleProjectMetadata(generator = FearStrobeProfile.ID),
             effectGraph = GpuEffectGraph(listOf(GpuEffectGraph.Node("authored-glow", GpuEffectGraph.Kind.GLOW,
                 4_000_000, 5_200_000, 1f))))
@@ -142,7 +145,10 @@ class MontageTextRoutingDeviceTest {
             val baseWitness = VeykadRenderInspector.decodedFrameProvenance(
                 requireNotNull(VeykadRenderInspector.latest(context, base)))
             val (overlay, overlayPasses) = export("overlay", graph, text)
-            assertEquals(basePasses, overlayPasses)
+            // Direct output needs one extra full-viewport glyph draw per frame; offscreen
+            // output already composites glyphs in its final copy/glow draw.
+            assertEquals(if (name == "direct") basePasses + (RenderPassPlanner.PassKind.FINAL_COMPOSITE to 15)
+                else basePasses, overlayPasses)
             assertEquals(baseWitness, VeykadRenderInspector.decodedFrameProvenance(
                 requireNotNull(VeykadRenderInspector.latest(context, overlay))))
             if (name == "offscreen") assertTrue(overlayPasses.getValue(RenderPassPlanner.PassKind.GLOW_EXTRACT) > 0)
@@ -150,6 +156,17 @@ class MontageTextRoutingDeviceTest {
             val noGrade = export("no-grade", graph.copy(clips = graph.clips.map {
                 it.copy(exposureBias = 0f, redBias = 0f, greenBias = 0f, blueBias = 0f)
             }), null).first
+            val identity = export("identity", graph.copy(clips = graph.clips.map {
+                it.copy(transform = MontageGraph.ClipTransform.hold())
+            }), null).first
+            withFrames(listOf(base to 6, identity to 6)) { images ->
+                // Literal output pixel lies outside the shifted/rotated video quad but inside
+                // the owner's top plate. An identity control proves the camera stimulus works.
+                val bare = images[0].getPixel(35, 28)
+                val covered = images[1].getPixel(35, 28)
+                assertTrue(Color.red(bare) < 8 && Color.green(bare) < 8 && Color.blue(bare) < 8)
+                assertTrue(Color.red(covered) > 40)
+            }
             withFrames(listOf(base to 6, noGlow to 6, noGrade to 6)) { images ->
                 assertTrue("Fixture proves a visible authored post effect", difference(images[0], images[1], outside) > 4)
                 assertTrue("Fixture proves a visible authored grade", difference(images[0], images[2], outside) > 15)
@@ -170,7 +187,8 @@ class MontageTextRoutingDeviceTest {
                     assertEquals("Subtitle half-open interval and upright orientation on $name index $index", visible, cyan > 15)
                     assertEquals(0, count(actual, bottom) { r, g, b -> g > 180 && r < 100 && b < 130 })
                     if (visible) {
-                        // Literal accent colour must survive glow without being graded again.
+                        // Literal accent colour must cover this pixel even though the video
+                        // quad does not, and survive glow without being graded again.
                         val accent = actual.getPixel(35, 28)
                         assertTrue(kotlin.math.abs(Color.red(accent) - 84) < 18)
                         assertTrue(kotlin.math.abs(Color.green(accent) - 39) < 18)
@@ -178,8 +196,11 @@ class MontageTextRoutingDeviceTest {
                         // The known 201/255 black matte leaves 54/255 of the already rendered
                         // background. This checks alpha compositing against decoded base pixels,
                         // independently of layout/shader calculations under test.
-                        val matte = actual.getPixel(35, 199)
-                        val background = baseline.getPixel(35, 199)
+                        // This right-hand plate pixel remains covered by the panned video,
+                        // giving a nonblack independent background for the alpha oracle.
+                        val matte = actual.getPixel(180, 199)
+                        val background = baseline.getPixel(180, 199)
+                        assertTrue(Color.red(background) > 40)
                         assertTrue(kotlin.math.abs(Color.red(matte) - Color.red(background) * 54.0 / 255) < 10)
                         assertTrue(kotlin.math.abs(Color.green(matte) - Color.green(background) * 54.0 / 255) < 10)
                         assertTrue(kotlin.math.abs(Color.blue(matte) - Color.blue(background) * 54.0 / 255) < 10)

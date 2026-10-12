@@ -844,10 +844,10 @@ object MediaCodecSpeedRampRenderer {
             }
             GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uUserText"), 6)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uTextOnly"), if (finishingText) 1f else 0f)
-            // Montage glyphs must survive every post pass. Without offscreen passes this
-            // shader is final; otherwise drawPost composites the same texture at the end.
+            // This quad follows the video's camera transform. Keep the legacy finishing
+            // mapping here; montage glyphs use a full-output quad after all video passes.
             GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uCompositeUserText"),
-                if (textProject != null && (finishingText || sceneTarget == null)) 1f else 0f)
+                if (finishingText) 1f else 0f)
             val openingTitle = authoredTitle?.sampleAt?.invoke(incomingFrame.globalOutputTimeUs)
             GLES20.glUniform1f(
                 GLES20.glGetUniformLocation(program, "uOpeningTitle"),
@@ -978,7 +978,10 @@ object MediaCodecSpeedRampRenderer {
                 recordPass(RenderPassPlanner.PassKind.FOREGROUND_COMPOSITE)
             }
             sceneTarget?.let { renderPostPipeline(it, incomingFrame, blend, attachments) }
-                ?: recordPass(RenderPassPlanner.PassKind.ENCODER_SURFACE)
+                ?: run {
+                    if (textProject != null && !finishingText) drawDirectUserText()
+                    recordPass(RenderPassPlanner.PassKind.ENCODER_SURFACE)
+                }
             EGLExt.eglPresentationTimeANDROID(display, surface, incomingFrame.outputTimeUs * 1_000L)
             check(EGL14.eglSwapBuffers(display, surface)) { "Unable to submit GL frame" }
         }
@@ -1296,6 +1299,45 @@ object MediaCodecSpeedRampRenderer {
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         }
 
+        /** Covers the full encoder output, including pixels outside the transformed video quad. */
+        private fun drawDirectUserText() {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            GLES20.glViewport(0, 0, width, height)
+            // Retain the already rendered video: unlike drawPost, this draw must not clear it.
+            GLES20.glUseProgram(postProgram)
+            val position = GLES20.glGetAttribLocation(postProgram, "aPosition")
+            val tex = GLES20.glGetAttribLocation(postProgram, "aTexCoord")
+            positionBuffer.position(0)
+            texBuffer.position(0)
+            GLES20.glEnableVertexAttribArray(position)
+            GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 0, positionBuffer)
+            GLES20.glEnableVertexAttribArray(tex)
+            GLES20.glVertexAttribPointer(tex, 2, GLES20.GL_FLOAT, false, 0, texBuffer)
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE6)
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, userTextTexture)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uUserText"), 6)
+            // All samplers reference the complete owned 2D texture in this standalone mode;
+            // no source FBO or framebuffer readback is needed to blend over the output.
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uInput"), 6)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uAuxiliary"), 6)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uFlow"), 6)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uDepth"), 6)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uMode"), 6f)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uCompositeUserText"), 0f)
+            GLES20.glBlendEquation(GLES20.GL_FUNC_ADD)
+            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+            GLES20.glEnable(GLES20.GL_BLEND)
+            try {
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+                recordPass(RenderPassPlanner.PassKind.FINAL_COMPOSITE)
+            } finally {
+                // The owned video/post pipeline renders with blending disabled.
+                GLES20.glDisable(GLES20.GL_BLEND)
+                GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ZERO)
+            }
+        }
+
         private fun scaled(value: Int, scale: Float): Int = (value * scale).toInt().coerceAtLeast(1)
 
         private inner class DecoderInput(private val textureUnit: Int) {
@@ -1360,6 +1402,11 @@ object MediaCodecSpeedRampRenderer {
         uniform vec2 uDirection,uTexel;
         vec3 screenBlend(vec3 base,vec3 glow){return 1.0-(1.0-base)*(1.0-glow);}
         void main(){
+            if(uMode>5.5){
+                // Standalone full-output overlay; fixed-function blending handles premultiplication.
+                gl_FragColor=texture2D(uUserText,vec2(vTexCoord.x,1.-vTexCoord.y));
+                return;
+            }
             vec4 source=texture2D(uInput,vTexCoord);
             vec4 result;
             if(uMode<.5){
