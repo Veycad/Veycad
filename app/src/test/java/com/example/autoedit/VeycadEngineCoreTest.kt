@@ -257,6 +257,9 @@ class VeycadEngineCoreTest {
 
         assertEquals(400_000L, windowed.durationUs)
         assertEquals(0L, windowed.frames.first().outputTimeUs)
+        assertEquals(900_000L, windowed.frames.first().globalOutputTimeUs)
+        assertEquals(complete.frames.filter { it.outputTimeUs in 900_000L until 1_300_000L }
+            .map { it.outputTimeUs }, windowed.frames.map { it.globalOutputTimeUs })
         assertTrue(windowed.frames.last().outputTimeUs < windowed.durationUs)
         assertEquals(setOf(0, 1), windowed.frames.map { it.clipIndex }.toSet())
         assertTrue(windowed.frames.filter { it.clipIndex == 1 }.all {

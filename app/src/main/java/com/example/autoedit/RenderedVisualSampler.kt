@@ -155,15 +155,17 @@ internal object RenderedVisualSampler {
     internal fun withDecodedSourceTime(
         frame: HighQualityFramePlan.Frame,
         timeline: FrameAttachmentTimeline,
-        decodedUs: Long?
+        decodedUs: Long?,
+        sources: List<SourceAttachments> = emptyList(),
+        refreshAllTransitions: Boolean = false
     ): HighQualityFramePlan.Frame {
         if (decodedUs == null) return frame
         require(decodedUs >= 0L)
-        val attachments = if ((frame.clipIndex == 0 &&
+        val attachments = if (sources.isNotEmpty() || ((frame.clipIndex == 0 || refreshAllTransitions) &&
             frame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY) ||
             frame.layer.kind == MontageGraph.OverlayKind.SUBJECT_STAGE ||
             frame.layer.kind == MontageGraph.OverlayKind.MIRROR_SLICE) {
-            timeline.interpolated(decodedUs)
+            MediaCodecSpeedRampRenderer.decodedAttachments(frame, decodedUs, timeline, sources)
         } else frame.attachments
         return frame.copy(sourceTimeUs = decodedUs, attachments = attachments)
     }
@@ -173,21 +175,21 @@ internal object RenderedVisualSampler {
         plan: List<HighQualityFramePlan.Frame>,
         timeline: FrameAttachmentTimeline,
         decodedUs: Long?,
-        provenance: VeykadRenderInspector.DecodedFrameProvenance?
+        provenance: VeykadRenderInspector.DecodedFrameProvenance?,
+        sources: List<SourceAttachments> = emptyList(),
+        refreshAllTransitions: Boolean = false,
+        sigmaProfile: Boolean = false,
+        expectedDrawFrames: List<HighQualityFramePlan.Frame> = LiveDecoderTransitionPlan.drawFrames(plan, sigmaProfile)
     ): HighQualityFramePlan.Frame {
-        if (provenance == null) return withDecodedSourceTime(frame, timeline, decodedUs)
-        val held = provenance.clipIndex != frame.clipIndex || provenance.sourceIndex != frame.sourceIndex
-        val reference = if (held) {
-            // Mirror the renderer's first-overlap hold of the previous clip's final planned frame.
-            requireNotNull(plan.lastOrNull {
-                it.clipIndex == provenance.clipIndex && it.sourceIndex == provenance.sourceIndex &&
-                    it.outputTimeUs < frame.outputTimeUs
-            }) { "Rendered frame source/clip is absent from the supplied plan" }.also {
-                require(it.sourceTimeUs == provenance.sourceTimeUs) { "Rendered hold does not match its source frame" }
-            }.copy(outputTimeUs = frame.outputTimeUs, transitionIn = provenance.transition,
-                transitionProgress = -1f)
-        } else frame
-        return withDecodedSourceTime(reference, timeline, provenance.decodedSourceTimeUs)
+        if (provenance == null) return withDecodedSourceTime(frame, timeline, decodedUs, sources, refreshAllTransitions)
+        val reference = expectedDrawFrames[RenderQaFrameIndex(expectedDrawFrames).nearest(frame.outputTimeUs)]
+        require(reference.outputTimeUs == frame.outputTimeUs) { "Frame is absent from the supplied draw schedule" }
+        require(provenance.clipIndex == reference.clipIndex && provenance.sourceIndex == reference.sourceIndex &&
+            provenance.sourceTimeUs == reference.sourceTimeUs && provenance.transition == reference.transitionIn) {
+            "Rendered provenance does not match the expected draw schedule"
+        }
+        return withDecodedSourceTime(reference, timeline, provenance.decodedSourceTimeUs,
+            sources, refreshAllTransitions)
     }
 
     /** A rounded 60 fps target can be 1 us above a decoder's truncated PTS. */
@@ -238,14 +240,18 @@ internal object RenderedVisualSampler {
         val bufferInfo = MediaCodec.BufferInfo()
         var inputEnded = false
         var outputEnded = false
-        val sampleTargetsUs = samplingTargets(graph, intervalUs)
-        val heartbeatTailStartUs = if (HeartbeatMontageProfile.appliesTo(graph))
+        val plan = HighQualityFramePlan.build(graph, renderFps)
+        val sampleTargetsUs = samplingTargets(graph, intervalUs, renderFps, plan)
+        val heartbeatTailStartUs = if (graph.manualOverrides == null && HeartbeatMontageProfile.appliesTo(graph))
             HeartbeatPulseAudit.tailSamplingTargetsUs().first() - 1L else null
         var nextSampleIndex = 0
         var previous: Features? = null
         var previousOutputMask: FloatArray? = null
         var previousEntranceTravel: Float? = null
-        val framePlan = HighQualityFramePlan.build(graph,renderFps).frames
+        var previousMaskSource: Int? = null
+        val framePlan = plan.frames
+        val frameIndex = RenderQaFrameIndex(framePlan)
+        val expectedDrawFrames = LiveDecoderTransitionPlan.drawFrames(framePlan, ReferenceMontageProfile.appliesTo(graph))
         var idleIterations = 0
         while (!outputEnded) {
             checkCancelled()
@@ -281,17 +287,20 @@ internal object RenderedVisualSampler {
                         sampleTargetsUs.getOrNull(nextSampleIndex), heartbeatTailStartUs)) {
                         val image = decoder.getOutputImage(outputIndex)
                             ?: error("Decoder did not expose a YUV image at $ptsUs us")
-                        val plannedFrame = framePlan.minByOrNull { abs(it.outputTimeUs - ptsUs) }
-                        val provenance = plannedFrame?.let { decodedFrameProvenance[it.outputTimeUs] }
-                        val scheduledFrame = plannedFrame?.let {
-                            withDecodedFrameProvenance(it, framePlan, graph.frameAttachments,
-                                decodedSourceTimes[it.outputTimeUs], provenance)
+                        val plannedFrame = framePlan[frameIndex.nearest(ptsUs)]
+                        val provenance = decodedFrameProvenance[plannedFrame.outputTimeUs]
+                        val scheduledFrame = withDecodedFrameProvenance(plannedFrame, framePlan,
+                            graph.frameAttachments, decodedSourceTimes[plannedFrame.outputTimeUs], provenance,
+                            graph.sourceAttachments, refreshAllTransitions = graph.manualOverrides != null,
+                            expectedDrawFrames = expectedDrawFrames)
+                        val sourceRetriever = sourceReference.retriever(scheduledFrame.sourceIndex)
+                        val framing = sourceReference.crop(scheduledFrame.sourceIndex)
+                        val authoredTransition = transitionAt(scheduledFrame)
+                        if (previousMaskSource != scheduledFrame.sourceIndex) {
+                            previousOutputMask = null
+                            previousEntranceTravel = null
                         }
-                        val sourceRetriever = sourceReference.retriever(scheduledFrame?.sourceIndex)
-                        val framing = sourceReference.crop(scheduledFrame?.sourceIndex)
-                        val authoredTransition = if (provenance != null &&
-                            scheduledFrame?.clipIndex != plannedFrame?.clipIndex) provenance.transition
-                            else transitionAt(graph, ptsUs)
+                        previousMaskSource = scheduledFrame.sourceIndex
                         val reentryProgress = scheduledFrame?.transitionProgress ?: -1f
                         val incomingMask = scheduledFrame?.attachments?.mask?.takeIf {
                             authoredTransition == MontageGraph.Transition.FOREGROUND_REENTRY &&
@@ -337,7 +346,7 @@ internal object RenderedVisualSampler {
                                 val subjectEnvelope = TransitionTimeline.blendFor(scheduledFrame)
                                     ?.foregroundReentry ?: 0f
                                 val entranceTravel = if (ReferenceMontageProfile.appliesTo(graph))
-                                    SigmaComposition.entranceTravel(scheduledFrame.outputTimeUs)
+                                    SigmaComposition.entranceTravel(scheduledFrame.originalOutputTimeUs)
                                 else ForegroundReentryMotion.verticalTravel(subjectEnvelope)
                                 val sigma = ReferenceMontageProfile.appliesTo(graph)
                                 exact.copy(values = SemanticMaskMetrics.transform(
@@ -407,7 +416,7 @@ internal object RenderedVisualSampler {
                             edgeLeakRatio = measurement.edgeLeakRatio
                             maskEvidence = measurement.evidence
                             val currentTravel = if (ReferenceMontageProfile.appliesTo(graph))
-                                SigmaComposition.entranceTravel(ptsUs) * (scheduledFrame?.transform?.scale ?: 1f)
+                                SigmaComposition.entranceTravel(scheduledFrame?.originalOutputTimeUs ?: ptsUs) * (scheduledFrame?.transform?.scale ?: 1f)
                                 else null
                             maskTemporalIou = previousOutputMask?.takeIf {
                                 measurement.evidence == RenderedMp4Acceptance.MaskEvidence.MEASURED &&
@@ -439,7 +448,7 @@ internal object RenderedVisualSampler {
                             subjectStageBackgroundLuma(current.pixels, mask)
                         }
                         val subjectStageBackgroundLoss = if (ReferenceMontageProfile.appliesTo(graph) &&
-                            expectedStageMask != null && scheduledFrame != null && scheduledFrame.layer.finalFadeOpacity < .01f) {
+                            expectedStageMask != null && scheduledFrame.layer.finalFadeOpacity < .01f) {
                             sourceLumaAtCamera(sourceRetriever, scheduledFrame, framing, outputAspect)?.let { source ->
                                 SigmaComposition.backgroundLoss(current.pixels, source, expectedStageMask)
                             }
@@ -893,6 +902,7 @@ internal object RenderedVisualSampler {
     ): Boolean {
         require(timeUs >= 0L && renderFps > 0)
         if (isIntentionalFlash(layer)) return true
+        if (graph.manualOverrides != null) return false
         if (!HeartbeatMontageProfile.appliesTo(graph)) return false
         val frameDurationUs = (1_000_000L + renderFps - 1L) / renderFps
         return HeartbeatMontageProfile.pulses.any { pulse ->
@@ -907,8 +917,15 @@ internal object RenderedVisualSampler {
     ): Boolean = transition == MontageGraph.Transition.FOREGROUND_REENTRY &&
         progress?.let { it in 0f..FOREGROUND_DARK_STAGE_END } == true
 
-    internal fun samplingTargets(graph: MontageGraph, intervalUs: Long): List<Long> {
+    internal fun samplingTargets(graph: MontageGraph, intervalUs: Long,
+        renderFps: Int = graph.editableTiming?.fps ?: HighQualityFramePlan.DEFAULT_FPS,
+        plan: HighQualityFramePlan.Plan? = null): List<Long> {
         require(intervalUs > 0L)
+        val framePlan = plan ?: HighQualityFramePlan.build(graph, renderFps)
+        val witnesses = RenderQaSampling.targets(graph, framePlan, intervalUs)
+        if (graph.manualOverrides != null || graph.editableTiming != null) {
+            return witnesses
+        }
         val durationUs = graph.outputDurationMs * 1_000L
         val uniform = generateSequence(0L) { previous ->
             (previous + intervalUs).takeIf { it <= durationUs }
@@ -941,35 +958,28 @@ internal object RenderedVisualSampler {
             } + HeartbeatPulseAudit.tailSamplingTargetsUs().asSequence()
         } else emptySequence()
         val fearCheckpoints = if (FearStrobeProfile.appliesTo(graph)) {
-            HighQualityFramePlan.build(graph, FearStrobeProfile.REFERENCE_FPS).frames.asSequence()
-                .map { it.outputTimeUs } + FearStrobeProfile.pulses.asSequence().flatMap { pulse ->
+            // Preserve the raw author grid without building another render/ML frame plan.
+            val authorFrames = if (framePlan.fps == FearStrobeProfile.REFERENCE_FPS) {
+                framePlan.frames.asSequence().map { it.outputTimeUs }
+            } else {
+                generateSequence(0L) { it + 1L }
+                    .map { frameTimeUs(it, FearStrobeProfile.REFERENCE_FPS) }
+                    .takeWhile { it < durationUs }
+            }
+            authorFrames + FearStrobeProfile.pulses.asSequence().flatMap { pulse ->
                 sequenceOf(pulse.startUs, (pulse.endUs - 1L).coerceAtLeast(pulse.startUs))
             } + FearStrobeProfile.scenes.asSequence().map { it.startUs }
         } else emptySequence()
-        return (uniform + accents.asSequence() + effectCheckpoints + heartbeatCheckpoints + fearCheckpoints)
+        return (uniform + accents.asSequence() + effectCheckpoints + heartbeatCheckpoints + fearCheckpoints + witnesses.asSequence())
             .filter { it <= durationUs }
             .distinct()
             .sorted()
             .toList()
     }
 
-    private fun transitionAt(graph: MontageGraph, timeUs: Long): MontageGraph.Transition {
-        var cursorUs = 0L
-        graph.clips.forEach { clip ->
-            val end = cursorUs + clip.outputDurationMs * 1_000L
-            if (timeUs in cursorUs until end) {
-                val transitionEnd = cursorUs +
-                    TransitionTimeline.durationMs(clip.transitionIn) * 1_000L
-                return if (timeUs <= transitionEnd) {
-                    clip.transitionIn
-                } else {
-                    MontageGraph.Transition.HARD_CUT
-                }
-            }
-            cursorUs = end
-        }
-        return MontageGraph.Transition.HARD_CUT
-    }
+    internal fun transitionAt(frame: HighQualityFramePlan.Frame?): MontageGraph.Transition =
+        if (frame != null && TransitionTimeline.blendFor(frame) != null) frame.transitionIn
+        else MontageGraph.Transition.HARD_CUT
 
     private const val FACE_EXPECTATION_TOLERANCE_US = 400_000L
     private const val FACE_TIMEOUT_MS = 900L

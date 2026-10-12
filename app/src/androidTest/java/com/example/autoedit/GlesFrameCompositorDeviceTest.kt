@@ -119,10 +119,17 @@ class GlesFrameCompositorDeviceTest {
             val outputTexture = SurfaceTexture(false).apply { setDefaultBufferSize(size.width,size.height) }
             val outputSurface = Surface(outputTexture)
             val collector = VeykadRenderInspector.Collector(graph,2)
+            val draws = mutableListOf<GlesFrameCompositor.DrawEvidence>()
+            val semantics = listOf(19 to .2f, 7 to .9f).map { (source, confidence) ->
+                SourceAttachments(source, FrameAttachmentTimeline(listOf(33_333L, 266_667L).map { pts ->
+                    FrameAttachments(pts, mask = FrameAttachments.Plane(1, 1, listOf(confidence), confidence))
+                }))
+            }
             val compositor = GlesFrameCompositor(EglRenderTarget.forDisplay(outputSurface,size),
                 RenderPassPlanner.plan(graph,RenderPassPlanner.DeviceCapabilities.conservative()),
                 graph.frameAttachments, debugTextureProbe=true, debugProbeIncomingOnBothUnits=incomingOnBoth,
-                sourceCrops=List(20) { SourceFraming.Crop(1f,1f) }, onDraw=collector::record)
+                sourceCrops=List(20) { SourceFraming.Crop(1f,1f) }, sourceAttachments=semantics,
+                onDraw={ draws += it; collector.record(it) })
             try {
                 produceMarkers(compositor.decoderSurface(0),size,266_667L)
                 compositor.awaitTexture(0) {}
@@ -133,6 +140,8 @@ class GlesFrameCompositorDeviceTest {
                 assertEquals(0,held.clipIndex)
                 assertEquals(incoming.outputTimeUs,held.outputTimeUs)
                 assertEquals(266_667L,held.decodedSourceTimeUs)
+                assertEquals(.2f, draws.single().frame.attachments!!.mask!!.confidence, 0f)
+                assertEquals(266_667L, draws.single().frame.attachments!!.sourceTimeUs)
                 produceMarkers(compositor.decoderSurface(1),size,266_667L)
                 compositor.awaitTexture(1) {}
                 produceMarkers(compositor.decoderSurface(0),size,33_333L)
@@ -142,11 +151,80 @@ class GlesFrameCompositorDeviceTest {
                 assertEquals(7,overlap.sourceIndex)
                 assertEquals(1,overlap.clipIndex)
                 assertEquals(33_333L,overlap.decodedSourceTimeUs)
+                assertEquals(.9f, draws.last().frame.attachments!!.mask!!.confidence, 0f)
+                assertEquals(33_333L, draws.last().frame.attachments!!.sourceTimeUs)
                 assertEquals(if(incomingOnBoth) 7 else 19,overlap.secondarySourceIndex)
                 assertEquals(if(incomingOnBoth) 33_333L else 266_667L,overlap.decodedSecondarySourceTimeUs)
+                // Equal texture PTS still carries the two explicitly bound source identities.
+                produceMarkers(compositor.decoderSurface(0), size, 266_667L)
+                compositor.awaitTexture(0) {}
+                compositor.drawTemporalLayer(incoming.copy(sourceTimeUs=266_667,
+                    layer=LayerCompositorModel.Sample(opacity=.6f, kind=MontageGraph.OverlayKind.DOUBLE_EXPOSURE)),
+                    outgoing.copy(sourceTimeUs=266_667), 0, 0)
+                val temporal = draws.last()
+                assertEquals(266_667L, temporal.decodedSourceTimeUs)
+                assertEquals(266_667L, temporal.decodedSecondarySourceTimeUs)
+                assertEquals(if (incomingOnBoth) 7 else 19, temporal.secondarySourceIndex)
                 assertEquals(GLES20.GL_NO_ERROR,GLES20.glGetError())
             } finally { compositor.close(); outputSurface.release(); outputTexture.release() }
         }
+    }
+
+    @Test fun rebased_frame_binds_project_scene_and_disabled_entrance_clocks_to_gpu() {
+        val size = OutputSize(64, 64)
+        val outputTexture = SurfaceTexture(false).apply { setDefaultBufferSize(size.width, size.height) }
+        val outputSurface = Surface(outputTexture)
+        val egl = EglRenderTarget.forDisplay(outputSurface, size) as EglRenderTarget
+        val uniforms = mutableListOf<List<Float>>()
+        val presentations = mutableListOf<Long>()
+        val target = object : RenderTarget by egl, ViewportRenderTarget {
+            override fun bindOutput() = egl.bindOutput()
+            override fun present(outputTimeUs: Long) {
+                val program = integers(GLES20.GL_CURRENT_PROGRAM, 1)[0]
+                uniforms += listOf("uOutputTime", "uOriginalTime", "uEntranceTravel", "uOpeningTitle").map { name ->
+                    val location = GLES20.glGetUniformLocation(program, name)
+                    assertTrue("Missing uniform $name", location >= 0)
+                    FloatArray(1).also { GLES20.glGetUniformfv(program, location, it, 0) }[0]
+                }
+                assertTrue(readPixels(size).toList().chunked(4).any { pixel ->
+                    pixel.take(3).any { (it.toInt() and 255) > 8 }
+                })
+                presentations += outputTimeUs
+                egl.present(outputTimeUs)
+            }
+        }
+        val graph = graph(false)
+        val title = AuthoredTitleProfile.Spec(listOf("CUE"), 22f, 0f, false, .5f, .2f, 1f) { time ->
+            if (time == 2_500_000L) AuthoredTitleProfile.Sample(0, 1f) else null
+        }
+        val compositor = GlesFrameCompositor(target,
+            RenderPassPlanner.plan(graph, RenderPassPlanner.DeviceCapabilities.conservative()),
+            graph.frameAttachments, authoredTitle = title, sigmaProfile = true)
+        try {
+            produceMarkers(compositor.decoderSurface(0), size, sourcePtsUs)
+            compositor.awaitTexture(0) {}
+            val frame = HighQualityFramePlan.build(graph).frames.first().copy(outputTimeUs = 0,
+                globalOutputTimeUs = 2_500_000, originalOutputTimeUs = 1_000_000)
+            compositor.drawScheduled(frame, 0)
+            compositor.drawScheduled(frame.copy(outputTimeUs = 33_333, transitionEffectsAllowed = false), 0)
+            compositor.drawScheduled(frame.copy(outputTimeUs = 66_667, globalOutputTimeUs = 3_500_000,
+                originalOutputTimeUs = 2_000_000), 0)
+            assertEquals(listOf(0L, 33_333L, 66_667L), presentations)
+            assertEquals(2.5f, uniforms[0][0], .00001f)
+            assertEquals(1f, uniforms[0][1], .00001f)
+            assertEquals(.525f, uniforms[0][2], .00001f)
+            assertEquals(1f, uniforms[0][3], .00001f)
+            assertEquals(2.5f, uniforms[1][0], .00001f)
+            assertEquals(1f, uniforms[1][1], .00001f)
+            assertEquals(0f, uniforms[1][2], .00001f)
+            assertEquals(1f, uniforms[1][3], .00001f)
+            // Re-enabling must use the new original scene clock, not latch the disabled zero.
+            assertEquals(3.5f, uniforms[2][0], .00001f)
+            assertEquals(2f, uniforms[2][1], .00001f)
+            assertEquals(.27f, uniforms[2][2], .00001f)
+            assertEquals(0f, uniforms[2][3], .00001f)
+            assertEquals(GLES20.GL_NO_ERROR, GLES20.glGetError())
+        } finally { compositor.close(); outputSurface.release(); outputTexture.release() }
     }
 
     private data class Result(val compositionPixels: ByteArray,val physicalPixels: ByteArray?,

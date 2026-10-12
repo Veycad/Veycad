@@ -97,7 +97,8 @@ object MediaCodecSpeedRampRenderer {
         request.outputFile.delete()
         val videoOnlyFile = File(request.outputFile.parentFile, request.outputFile.nameWithoutExtension + ".video.mp4")
         videoOnlyFile.delete()
-        val inspector = VeykadRenderInspector.Collector(request.graph, plan.frames.size)
+        val drawFrames = LiveDecoderTransitionPlan.drawFrames(plan.frames, ReferenceMontageProfile.appliesTo(request.graph))
+        val inspector = VeykadRenderInspector.Collector(request.graph, plan.frames.size, drawFrames)
         val encoder = createEncoder(request)
         var inputSurface: Surface? = null
         var glOwner: GlesFrameCompositor? = null
@@ -116,6 +117,7 @@ object MediaCodecSpeedRampRenderer {
                 ReferenceMontageProfile.appliesTo(request.graph),
                 VideoDisplayOrientation.cropsForFiles(sourceFiles, request.width, request.height,
                     request.checkCancelled),
+                sourceAttachments = request.graph.sourceAttachments,
                 onDraw = inspector::record).also { glOwner = it }
             val muxer = MediaMuxer(videoOnlyFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxerOwner = it }
             val muxerState = MuxerState()
@@ -147,14 +149,11 @@ object MediaCodecSpeedRampRenderer {
                         // GLES drivers expose that first colour-conversion as black. Legacy
                         // transitions hold a verified texture for one sample. Sigma's authored
                         // whip must start at the beat, including the first scheduled sample.
-                        val overlapStart = if (ReferenceMontageProfile.appliesTo(request.graph) &&
-                            frames.first().transitionIn == MontageGraph.Transition.WHIP) 0 else 1
+                        val overlapStart = LiveDecoderTransitionPlan.overlapStart(overlap,
+                            ReferenceMontageProfile.appliesTo(request.graph))
                         if (overlapStart > 0) {
-                            val held = framesByClip.getValue(clipIndex - 1).last().copy(
-                                outputTimeUs = overlap.incoming.first().outputTimeUs,
-                                transitionIn = MontageGraph.Transition.HARD_CUT,
-                                transitionProgress = -1f
-                            )
+                            val held = heldBoundaryFrame(framesByClip.getValue(clipIndex - 1).last(),
+                                overlap.incoming.first())
                             gl.drawScheduled(held, requireNotNull(decoders).selectIncoming(held.sourceIndex).rotationDegrees)
                             request.checkCancelled()
                             drainEncoder(encoder, muxer, false, muxerState)
@@ -239,6 +238,12 @@ object MediaCodecSpeedRampRenderer {
         return HighQualityFramePlan.Plan(frames, window.durationUs, plan.fps)
     }
 
+    /** Hold the previous image/scene while project cues and encoder presentation advance. */
+    internal fun heldBoundaryFrame(previous: HighQualityFramePlan.Frame, current: HighQualityFramePlan.Frame,
+        transition: MontageGraph.Transition = MontageGraph.Transition.HARD_CUT): HighQualityFramePlan.Frame =
+        previous.copy(outputTimeUs = current.outputTimeUs, globalOutputTimeUs = current.globalOutputTimeUs,
+            transitionIn = transition, transitionProgress = -1f)
+
     private fun createEncoder(request: Request): MediaCodec {
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, request.width, request.height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
@@ -267,32 +272,31 @@ object MediaCodecSpeedRampRenderer {
     ) {
         require(frames.isNotEmpty())
         val incoming = decoders.selectIncoming(sourceIndex)
-        val temporal = if (frames.any { isTemporalLayer(it.layer.kind, sigmaProfile) }) {
-            decoders.selectOutgoing(sourceIndex)
-        } else {
-            null
-        }
-        val sourceDurationUs = if (temporal != null) decoders.sourceDurationUs(sourceIndex) else 0L
         if (!continueIncoming) incoming.beginRange(frames.first().sourceTimeUs)
-        var temporalActive = false
+        var temporalSource: Int? = null
+        var temporalTimeUs = -1L
         frames.forEach { frame ->
             check(incoming.advanceTo(frame.sourceTimeUs) {
                 gl.awaitTexture(0, decoders.checkCancelled)
             }) { "Incoming decoder did not reach clip frame" }
-            val secondary = temporal?.takeIf { isTemporalLayer(frame.layer.kind, sigmaProfile) }?.let { decoder ->
+            val temporal = if (isTemporalLayer(frame.layer.kind, sigmaProfile))
+                decoders.selectOutgoing(frame.secondarySourceIndex ?: sourceIndex) else null
+            val secondary = temporal?.let { decoder ->
+                val secondaryIndex = frame.secondarySourceIndex ?: sourceIndex
                 val sourceTimeUs = temporalLayerSourceTimeUs(
                     frame,
-                    sourceDurationUs = sourceDurationUs
+                    sourceDurationUs = decoders.sourceDurationUs(secondaryIndex)
                 )
-                if (!temporalActive) decoder.beginRange(sourceTimeUs)
-                temporalActive = true
+                if (temporalSource != secondaryIndex || sourceTimeUs < temporalTimeUs) decoder.beginRange(sourceTimeUs)
+                temporalSource = secondaryIndex
+                temporalTimeUs = sourceTimeUs
                 check(decoder.advanceTo(sourceTimeUs) {
                     gl.awaitTexture(1, decoders.checkCancelled)
                 }) { "Temporal layer decoder did not reach source frame" }
-                frame.copy(sourceTimeUs = sourceTimeUs)
+                temporalLayerFrame(frame, sourceTimeUs)
             }
             if (secondary == null) {
-                temporalActive = false
+                temporalSource = null
                 gl.drawScheduled(frame, incoming.rotationDegrees)
             } else {
                 gl.drawTemporalLayer(
@@ -322,6 +326,10 @@ object MediaCodecSpeedRampRenderer {
         frame: HighQualityFramePlan.Frame,
         sourceDurationUs: Long
     ): Long {
+        frame.secondarySourceTimeUs?.let { explicit ->
+            require(explicit in 0 until sourceDurationUs) { "Secondary PTS is outside its source" }
+            return explicit
+        }
         val fallbackOffsetUs = when (frame.layer.kind) {
             MontageGraph.OverlayKind.DOUBLE_EXPOSURE -> -420_000L
             MontageGraph.OverlayKind.MIRROR_SLICE -> 260_000L
@@ -333,9 +341,18 @@ object MediaCodecSpeedRampRenderer {
             .takeIf { it != 0L || frame.layer.heartbeatEcho }
             ?.times(1_000L)
             ?: fallbackOffsetUs
-        return (frame.secondarySourceTimeUs ?: (frame.sourceTimeUs + offsetUs))
+        return (frame.sourceTimeUs + offsetUs)
             .coerceIn(0L, (sourceDurationUs - 1L).coerceAtLeast(0L))
     }
+
+    internal fun temporalLayerFrame(frame: HighQualityFramePlan.Frame, sourceTimeUs: Long) = frame.copy(
+        sourceTimeUs = sourceTimeUs, sourceIndex = frame.secondarySourceIndex ?: frame.sourceIndex,
+        attachments = if (frame.secondarySourceIndex != null) frame.secondaryAttachments else frame.attachments)
+
+    internal fun decodedAttachments(frame: HighQualityFramePlan.Frame, actualPts: Long,
+        legacy: FrameAttachmentTimeline, sources: List<SourceAttachments>): FrameAttachments? =
+        if (sources.isNotEmpty()) sources.firstOrNull { it.sourceIndex == frame.sourceIndex }?.timeline?.interpolated(actualPts)
+        else legacy.interpolated(actualPts)
 
     private fun requestSourceDurationUs(file: File): Long = MediaMetadataRetriever().let { retriever ->
         try {

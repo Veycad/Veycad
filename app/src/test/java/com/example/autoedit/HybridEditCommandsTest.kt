@@ -17,7 +17,8 @@ internal fun editProject(fps: Int = 30, length: Int = 30): HybridProject {
             SourceTimeMap.Point(0, 500_000), SourceTimeMap.Point(length, 1_500_000))), original)
     }
     val clips = listOf(clip("left", 0), clip("right", length), clip("last", length * 2))
-    val revision = HybridRevision(0, null, MontageGraph(3000, 3000, clips = clips.map { it.original }),
+    val revision = HybridRevision(0, null, MontageGraph(3000, 3000, clips = clips.map { it.original },
+        version = 2, metadata = NleProjectMetadata(schemaVersion = 2)),
         clips, ProjectMusic("music", 0, 1f, 0, 0, false), emptyList(),
         ProjectStyle("style", 1, ProjectStyle.Mode.AUTHORED, true), emptySet())
     return HybridProject("project", 1, fps, 1, listOf(

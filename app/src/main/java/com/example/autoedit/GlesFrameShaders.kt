@@ -76,6 +76,7 @@ internal val TRANSITION_FRAGMENT_SHADER = """
     uniform float uDualityProfile;
     uniform float uSigmaProfile,uFinalFade,uEntranceTravel;
     uniform float uOutputTime;
+    uniform float uOriginalTime;
     uniform float uTextureProbe;
     uniform float uFaceRegionProbe;
     uniform float uHeartbeatImagePivot;
@@ -128,8 +129,8 @@ internal val TRANSITION_FRAGMENT_SHADER = """
             float brightSource=clamp(-exposure/.24,0.,1.);
             c=pow(c,vec3(mix(1.04,1.24,brightSource)));
             c=clamp((c-.5)*mix(1.08,1.18,brightSource)+.5,0.,1.);
-            float cascade=step(5.1,uOutputTime)*(1.-step(16.8333,uOutputTime));
-            float opener=1.-step(3.6,uOutputTime);
+            float cascade=step(5.1,uOriginalTime)*(1.-step(16.8333,uOriginalTime));
+            float opener=1.-step(3.6,uOriginalTime);
             c=clamp(c+vec3(.18)*brightSource*cascade*
                 smoothstep(vec3(.30),vec3(.72),c),0.,1.);
             // A bright source graded down to FEAR's dark bed must retain texture in
@@ -358,7 +359,7 @@ internal val TRANSITION_FRAGMENT_SHADER = """
         float grain=(fract(sin(seed)*43758.5453)-.5)*.022;
         float vignette=smoothstep(.82,.20,length(vScreenTexCoord-vec2(.5)));
         base=clamp(base+scan+grain-(1.-vignette)*.045,0.,1.);
-        float opener=1.-step(3.6,uOutputTime);
+        float opener=1.-step(3.6,uOriginalTime);
         if(opener>.5){
             // The reference opening has a cool, dense film surface even before the title.
             vec3 toned=pow(base,vec3(1.30));
