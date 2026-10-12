@@ -49,8 +49,18 @@ class ManualCanonicalCommandTest {
         val trimmed = apply(base, TimelineCommand.Trim("A1", ClipEdge.START, 9))
         val authored = trimmed.copy(shared = HybridEditCommands.apply(trimmed.shared, ProjectCommand.SetAuthoredText(true)))
         val gap = authored.copy(shared = authored.shared.copy(undo = listOf(base.shared.original), redo = listOf(trimmed.shared.current)))
-        val result = MontageTimelineEditor.prepare(gap, TimelineCommand.Trim("A1", ClipEdge.START, 0))
+        // Durable selection survives an undo gap; only a legacy table needs ancestry proof.
+        val recovered = apply(gap, TimelineCommand.Trim("A1", ClipEdge.START, 0))
+        assertEquals(base.shared.original.clips.first().sourceMap.points, recovered.shared.current.clips.first().sourceMap.points)
+        assertEquals(gap.shared.current.sourceBackings["A1"], recovered.shared.current.sourceBackings["A1"])
+        val legacyGap = gap.copy(shared = gap.shared.withoutSourceBackings())
+        assertTrue((listOf(legacyGap.shared.original, legacyGap.shared.current) + legacyGap.shared.undo +
+            legacyGap.shared.redo).all { it.sourceBackings.isEmpty() })
+        val before = legacyGap.shared
+        val result = MontageTimelineEditor.prepare(legacyGap, TimelineCommand.Trim("A1", ClipEdge.START, 0))
         assertTrue(result.toString(), result is TimelinePreparation.Rejected)
+        assertTrue((result as TimelinePreparation.Rejected).reason, result.reason.contains("скрытых кадров"))
+        assertSame(before, legacyGap.shared)
     }
 
     private fun apply(project: EditableMontageProject, command: TimelineCommand): EditableMontageProject {

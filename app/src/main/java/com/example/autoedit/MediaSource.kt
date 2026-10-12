@@ -8,6 +8,7 @@ data class MediaSource(
     val id: String,
     val file: File,
     val displayName: String,
+    /** Declared/container duration; may include an initial edit and is not an observed endpoint. */
     val durationUs: Long,
     val sizeBytes: Long,
     val rotationDegrees: Int,
@@ -16,8 +17,13 @@ data class MediaSource(
     val mime: String,
     val colorTransfer: Int?,
     val hasAudio: Boolean,
-    val fingerprint: String
+    val fingerprint: String,
+    /** Measured first video presentation timestamp; never inferred from duration or requests. */
+    val firstVideoPtsUs: Long? = null,
+    /** Independently measured exclusive raw endpoint; container duration is not this fact. */
+    val videoEndPtsUs: Long? = null
 ) {
+    val timeBounds = SourceTimeBounds(durationUs, firstVideoPtsUs, videoEndPtsUs)
     init {
         require(id.isNotBlank() && displayName.isNotBlank())
         require(durationUs > 0 && sizeBytes > 0)

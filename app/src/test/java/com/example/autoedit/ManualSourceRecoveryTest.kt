@@ -116,6 +116,71 @@ class ManualSourceRecoveryTest {
         assertEquals(before.redo.map { it.id }, store.load(before.id).redo.map { it.id })
     }
 
+    @Test fun reopenedFullNonlinearSelectionSurvivesPublicTrimRecoveryAndRepublish() {
+        val base = ManualMontageFixtures.linearProject()
+        // Independent clock: repeated pairs with a nonlinear rise, distinct from the original.
+        val raw = LongArray(61) { 1_000_000L + (it / 2).toLong() * (it / 2) * 1_000 }
+        val expected = LongArray(61) { raw[it] + 234_567 }
+        val selected = commit(base, base.shared.current.copy(clips = base.shared.current.clips.map { clip ->
+            if (clip.id == "A1") clip.copy(sourceMap = SourceTimeMap(raw.mapIndexed { frame, pts ->
+                SourceTimeMap.Point(frame, pts) })) else clip }))
+        assertEquals(2L, selected.shared.current.id)
+        val slipped = selected.copy(shared = HybridEditCommands.apply(selected.shared, ProjectCommand.SlipClip("A1", 234_567)))
+        val authored = slipped.copy(shared = HybridEditCommands.apply(slipped.shared, ProjectCommand.SetAuthoredText(true)))
+        val pruned = authored.copy(shared = authored.shared.copy(undo = listOf(base.shared.original), redo = emptyList()))
+        assertFalse(pruned.shared.undo.any { it.id == 2L || it.id == pruned.shared.current.parentId })
+
+        fun assertSelection(project: EditableMontageProject, start: Int, end: Int) {
+            val clip = project.shared.current.clips.first { it.id == "A1" }
+            assertEquals("video-0", clip.assetId)
+            assertEquals(start, clip.originalFrameOffset)
+            assertEquals(end - start, clip.span.length)
+            assertArrayEquals(expected.copyOfRange(start, end + 1), LongArray(clip.span.length + 1) { clip.sourceMap.sample(it) })
+            val backing = project.shared.current.sourceBackings.getValue("A1")
+            assertEquals("video-0", backing.assetId)
+            assertEquals(0, backing.phaseStart)
+            assertEquals(234_567L, backing.slipUs)
+            assertEquals(2L, backing.selectedRevisionId)
+            assertFalse(backing.automatic)
+            assertEquals(60, backing.map.points.last().localFrame)
+            assertArrayEquals(raw, LongArray(61) { backing.map.sample(it) })
+            assertTrue(project.shared.current.style.showAuthoredText)
+        }
+
+        // Reopen a complete visible window; trimmed-reopen manual phase persistence is a separate gate.
+        assertSelection(pruned, 0, 60)
+        val store = store(pruned.shared)
+        val storeRoot = store.directory(pruned.id).parentFile.parentFile
+        val reopenedStore = HybridProjectStore(storeRoot)
+        val reopened = pruned.copy(shared = reopenedStore.load(pruned.id))
+        assertSelection(reopened, 0, 60)
+        val leftTrim = apply(reopened, TimelineCommand.Trim("A1", ClipEdge.START, 9))
+        assertSelection(leftTrim, 9, 60)
+        val bothTrim = apply(leftTrim, TimelineCommand.Trim("A1", ClipEdge.END, 51))
+        assertSelection(bothTrim, 9, 51)
+        val recoveredRight = apply(bothTrim, TimelineCommand.Trim("A1", ClipEdge.END, 60))
+        assertSelection(recoveredRight, 9, 60)
+        val recovered = apply(recoveredRight, TimelineCommand.Trim("A1", ClipEdge.START, 0))
+        assertSelection(recovered, 0, 60)
+        reopenedStore.save(recovered.shared, reopened.shared.current.id)
+        val persisted = recovered.copy(shared = HybridProjectStore(storeRoot).load(recovered.id))
+        assertSelection(persisted, 0, 60)
+
+        // Keep proof rejection on the public-edit adapter: raw reloaded trimmed ancestors need A2b metadata.
+        val before = recovered.shared
+        val bytes = files(store, persisted.id)
+        val currentBytes = File(store.directory(persisted.id), "CURRENT").readBytes()
+        for (command in listOf(TimelineCommand.Trim("A1", ClipEdge.START, -1), TimelineCommand.Trim("A1", ClipEdge.END, 61))) {
+            val rejected = MontageTimelineEditor.prepare(recovered, command)
+            assertTrue(rejected.toString(), rejected is TimelinePreparation.Rejected)
+            assertTrue((rejected as TimelinePreparation.Rejected).reason, rejected.reason.contains("скрытых кадров"))
+            assertSame(before, recovered.shared)
+            assertEquals(bytes, files(store, persisted.id))
+            assertArrayEquals(currentBytes, File(store.directory(persisted.id), "CURRENT").readBytes())
+            assertEquals(persisted.shared, store.load(persisted.id))
+        }
+    }
+
     @Test fun knownOriginalBarrierCannotSupplyAConflictingMotionPhase() {
         val base = EditableMontageCompilerTest.imported(ManualMontageFixtures.generatedGraph())
         val candidate = (MontageTimelineEditor.prepare(base, TimelineCommand.Trim("A1", ClipEdge.START, 9)) as TimelinePreparation.Prepared).candidate
@@ -147,13 +212,16 @@ class ManualSourceRecoveryTest {
             if (index == 0) clip.copy(span = FrameSpan(0, count), sourceMap = map)
             else clip.copy(span = FrameSpan(count + (index - 1) * 60, count + index * 60))
         }, graph = base.shared.original.graph.copy(manualMontageState = null))
-        var project = base.shared.copy(original = original, current = original)
+        var project = base.shared.copy(original = original, current = original).withoutSourceBackings()
         repeat(41) {
-            project = HybridEditCommands.apply(project, ProjectCommand.CommitRevision(project.current.copy(
+            project = legacyCommit(project, project.current.copy(
                 clips = project.current.clips.map { clip ->
                     if (clip.id == "A1") clip.copy(sourceMap = SourceTimeMap(clip.sourceMap.points)) else clip },
-                style = project.current.style.copy(showAuthoredText = !project.current.style.showAuthoredText))))
+                style = project.current.style.copy(showAuthoredText = !project.current.style.showAuthoredText)))
         }
+        assertTrue((listOf(project.original, project.current) + project.undo + project.redo).all { it.sourceBackings.isEmpty() })
+        assertEquals(project.undo.last().clips.first().sourceMap, project.current.clips.first().sourceMap)
+        assertNotSame(project.undo.last().clips.first().sourceMap, project.current.clips.first().sourceMap)
         val adapter = base.copy(shared = project)
         val result = MontageTimelineEditor.prepare(adapter, TimelineCommand.Trim("A1", ClipEdge.END, count + 1L))
         assertTrue(result.toString(), result is TimelinePreparation.Rejected)

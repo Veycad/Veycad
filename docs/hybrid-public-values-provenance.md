@@ -73,6 +73,8 @@ ledger: distinguish newly orphaned files from targets retained by any valid
 selection, history or lease. Never blindly delete a deduplicated target on an
 inspection mismatch. No selection or CURRENT is published by that rejection.
 
-Manual payload/backing/shared maps (A2), staging/factory assembly (B/Task 6),
+For the A2a extension (physical v5, durable authored maps/backing and nullable
+measured video endpoints), see [the authored source-map contract](hybrid-authored-source-maps.md).
+Manual payload (A2b), staging/factory assembly (B/Task 6),
 runtime leases (C), rendering, UI and STT remain separate tasks. The renderer
 must handle headroom explicitly for gain above one.

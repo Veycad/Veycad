@@ -181,7 +181,7 @@ class MontageTimelineEditorTest {
         val rejected = MontageTimelineEditor.prepare(complete, TimelineCommand.Trim("A1", ClipEdge.END, 69))
         assertTrue(rejected.toString(), rejected is TimelinePreparation.Rejected)
         // A rewritten full window proves its recorded points, not its unseen continuation.
-        val original = complete.shared.current.copy(id = 1, parentId = null)
+        val original = complete.shared.current.copy(id = 1, parentId = null, sourceBackings = emptyMap())
         val proven = complete.copy(shared = complete.shared.copy(original = original, current = original,
             undo = emptyList(), redo = emptyList()))
         val extended = prepare(proven, TimelineCommand.Trim("A1", ClipEdge.END, 69)).candidate
@@ -233,8 +233,12 @@ class MontageTimelineEditorTest {
             SourceTimeMap.Point(it, 1_000_000L + it.toLong() * it * 100)
         })))
         val trimmed = fixtureCommit(external, prepare(external, TimelineCommand.Trim("A1", ClipEdge.START, 9)).candidate)
-        val missingHistory = trimmed.copy(shared = trimmed.shared.copy(undo = listOf(base.shared.original)))
-        assertTrue(MontageTimelineEditor.prepare(missingHistory, TimelineCommand.Trim("A1", ClipEdge.START, 0)) is TimelinePreparation.Rejected)
+        val missingHistory = trimmed.copy(shared = trimmed.shared.copy(undo = listOf(base.shared.original)).withoutSourceBackings())
+        assertTrue((listOf(missingHistory.shared.original, missingHistory.shared.current) + missingHistory.shared.undo +
+            missingHistory.shared.redo).all { it.sourceBackings.isEmpty() })
+        val rejected = MontageTimelineEditor.prepare(missingHistory, TimelineCommand.Trim("A1", ClipEdge.START, 0))
+        assertTrue(rejected.toString(), rejected is TimelinePreparation.Rejected)
+        assertTrue((rejected as TimelinePreparation.Rejected).reason, rejected.reason.contains("скрытых кадров"))
     }
 
     @Test fun preparedDescriptorsOwnTheirAuthoredKeyframeLists() {
