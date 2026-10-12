@@ -452,7 +452,8 @@ internal object RenderedVisualSampler {
                             subjectStageBackgroundLuma(current.pixels, mask)
                         }
                         val subjectStageBackgroundLoss = if (ReferenceMontageProfile.appliesTo(graph) &&
-                            expectedStageMask != null && scheduledFrame.layer.finalFadeOpacity < .01f) {
+                            expectedStageMask != null && scheduledFrame != null &&
+                            scheduledFrame.layer.finalFadeOpacity < .01f) {
                             sourceLumaAtCamera(sourceRetriever, scheduledFrame, framing, outputAspect)?.let { source ->
                                 SigmaComposition.backgroundLoss(current.pixels, source, expectedStageMask)
                             }
