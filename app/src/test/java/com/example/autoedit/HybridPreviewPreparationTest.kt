@@ -179,6 +179,59 @@ class HybridPreviewPreparationTest {
         assertEquals(0L, uniqueBudget.usedBytes)
     }
 
+    // Catches value-equal compiler no-op graphs whose original payload identity count is larger.
+    @Test fun valueEqualOriginalAndCurrentSharingTopologiesCannotUnderchargeTheFrozenGraph() {
+        val sharedMask = FrameAttachments.Plane(270, 480, FloatArray(270 * 480) { .5f }, .8f)
+        val sharedFlow = FrameAttachments.FlowPlane(1, 1, arrayListOf(.1f, .2f), .7f)
+        val currentFrames = List(8) { FrameAttachments(1_000_000L + it * 1000,
+            mask = sharedMask, flow = sharedFlow) }
+        val fixture = fixture { it.copy(frameAttachments = FrameAttachmentTimeline(currentFrames)) }
+        val originalFrames = currentFrames.map { it.copy(
+            mask = FrameAttachments.Plane(270, 480, sharedMask.values.copyOf(), .8f),
+            flow = FrameAttachments.FlowPlane(1, 1, arrayListOf(.1f, .2f), .7f)) }
+        val original = fixture.project.original.copy(graph = fixture.project.original.graph.copy(
+            frameAttachments = FrameAttachmentTimeline(originalFrames)))
+        val project = fixture.project.copy(original = original)
+        assertEquals(project.original.graph, project.current.graph) // Values match; identities do not.
+
+        val measurement = PreviewMemoryBudget()
+        val currentOnly = HybridPreviewPreparation.prepare(fixture.project, fixture.export, fixture.store, measurement)
+        val affordableCurrentBytes = measurement.usedBytes
+        currentOnly.close()
+        val limited = PreviewMemoryBudget(affordableCurrentBytes + 1024)
+        var foreignDisposed = false
+        assertTrue(limited.reserve("active-texture", 1024) { foreignDisposed = true })
+        limited.pin("active-texture")
+        rejected("budget") { HybridPreviewPreparation.prepare(project, fixture.export, fixture.store, limited) }
+        assertEquals(1024L, limited.usedBytes)
+        assertFalse(foreignDisposed)
+        assertSame(originalFrames[0].mask, project.original.graph.frameAttachments.frames[0].mask)
+        assertSame(sharedMask, project.current.graph.frameAttachments.frames[0].mask)
+        assertEquals(.5f, originalFrames[0].mask!![0], 0f)
+        limited.release("active-texture")
+
+        val generous = PreviewMemoryBudget(16L * 1024 * 1024)
+        val prepared = HybridPreviewPreparation.prepare(project, fixture.export, fixture.store, generous)
+        val distinctFlowCharge = generous.usedBytes
+        assertTrue(distinctFlowCharge >= 8L * (270 * 480 * 4 + 32))
+        val frozen = prepared.graph.frameAttachments.frames
+        assertNotSame(frozen[0].mask, frozen[1].mask)
+        assertNotSame(frozen[0].flow!!.vectors, frozen[1].flow!!.vectors)
+        assertEquals(1_007_000L, frozen.last().sourceTimeUs)
+        assertEquals(.7f, frozen.last().flow!!.confidence, 0f)
+        prepared.close()
+        assertEquals(0L, generous.usedBytes)
+
+        // Holding every plane identity/metadata fixed isolates union vector-container accounting.
+        val sharedVectorsOriginal = original.copy(graph = original.graph.copy(frameAttachments =
+            FrameAttachmentTimeline(originalFrames.map { it.copy(flow = sharedFlow) })))
+        val vectorShared = HybridPreviewPreparation.prepare(project.copy(original = sharedVectorsOriginal),
+            fixture.export, fixture.store, generous)
+        assertEquals(8L * (96 + 2 * 24), distinctFlowCharge - generous.usedBytes)
+        vectorShared.close()
+        assertEquals(0L, generous.usedBytes)
+    }
+
     // Catches uncharging live borrowed planes, failed-prepare leaks and loss of thread ownership.
     @Test fun sharedBudgetFailureAndCloseReleaseStorageAtomically() {
         val fixture = fixture { it.copy(frameAttachments = FrameAttachmentTimeline(listOf(attachment()))) }
@@ -283,6 +336,12 @@ class HybridPreviewPreparationTest {
         assertFalse(foreignDisposed)
         assertEquals(1025, fixture.project.current.graph.frameAttachments.frames.size)
         assertEquals(.5f, plane[0], 0f)
+        val smallCurrent = fixture.project.current.copy(graph = fixture.project.current.graph.copy(
+            frameAttachments = FrameAttachmentTimeline(listOf(frames.first()))))
+        rejected("too large") { HybridPreviewPreparation.prepare(fixture.project.copy(current = smallCurrent),
+            fixture.export, fixture.store, budget) }
+        assertEquals(1024L, budget.usedBytes)
+        assertFalse(foreignDisposed)
         budget.release("active-preview")
     }
 
