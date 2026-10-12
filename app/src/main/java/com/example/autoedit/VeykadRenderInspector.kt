@@ -92,7 +92,10 @@ object VeykadRenderInspector {
         val maskSourceTimeUs: Long? = null,
         val defocus: Float = 0f,
         val faceRegion: FrameAttachments.FaceRegion? = null,
-        val effectiveSourceSpeed: Float? = null
+        val effectiveSourceSpeed: Float? = null,
+        val sourceIndex: Int = 0,
+        val secondarySourceIndex: Int? = null,
+        val rotationDegrees: Float = 0f
     )
 
     data class Summary(
@@ -120,8 +123,15 @@ object VeykadRenderInspector {
         val accepted: Boolean get() = issues.isEmpty()
     }
 
-    class Collector(private val graph: MontageGraph, private val plannedFrames: Int) {
+    class Collector(private val graph: MontageGraph, private val plannedFrames: Int,
+        private val expectedDrawFrames: List<HighQualityFramePlan.Frame>? = null) {
         private val frames = ArrayList<FrameEvidence>(plannedFrames)
+
+        /** Adapts shared compositor values without coupling GLES ownership to this collector. */
+        internal fun record(evidence: GlesFrameCompositor.DrawEvidence) = record(
+            evidence.frame, evidence.blend, evidence.dualDecoder, evidence.secondarySourceTimeUs,
+            evidence.decodedSourceTimeUs, evidence.decodedSecondarySourceTimeUs, evidence.secondarySourceIndex
+        )
 
         fun record(
             frame: HighQualityFramePlan.Frame,
@@ -129,7 +139,8 @@ object VeykadRenderInspector {
             dualDecoder: Boolean,
             secondarySourceTimeUs: Long? = null,
             decodedSourceTimeUs: Long? = null,
-            decodedSecondarySourceTimeUs: Long? = null
+            decodedSecondarySourceTimeUs: Long? = null,
+            secondarySourceIndex: Int? = null
         ) {
             val clip = graph.clips[frame.clipIndex]
             val speedTrack = graph.parameterTracks.firstOrNull {
@@ -146,6 +157,8 @@ object VeykadRenderInspector {
             frames += FrameEvidence(
                 outputTimeUs = frame.outputTimeUs,
                 sourceTimeUs = frame.sourceTimeUs,
+                sourceIndex = frame.sourceIndex,
+                secondarySourceIndex = secondarySourceIndex,
                 clipIndex = frame.clipIndex,
                 transition = frame.transitionIn,
                 dualDecoder = dualDecoder,
@@ -154,6 +167,7 @@ object VeykadRenderInspector {
                 scale = frame.transform.scale,
                 translateX = frame.transform.translateX,
                 translateY = frame.transform.translateY,
+                rotationDegrees = frame.transform.rotationDegrees,
                 blur = blend?.directionalBlur ?: 0f,
                 blackout = maxOf(
                     blend?.blackout ?: 0f,
@@ -182,7 +196,7 @@ object VeykadRenderInspector {
 
         fun evidence(): List<FrameEvidence> = frames.toList()
 
-        fun summary(): Summary = evaluate(graph, plannedFrames, frames)
+        fun summary(): Summary = evaluate(graph, plannedFrames, frames, expectedDrawFrames)
     }
 
     data class Artifacts(
@@ -210,22 +224,50 @@ object VeykadRenderInspector {
         val videoLastPtsUs: Long,
         val audioLastPtsUs: Long,
         val avDeltaUs: Long,
-        val issues: List<String>
-    )
+        val issues: List<String>,
+        val videoFps: Int? = null,
+        val durationMs: Long = 0L
+    ) {
+        fun toExportProbe() = ExportContract.Probe(width, height, rotation, durationMs,
+            audioMime, videoMime, videoFps)
+    }
 
     internal fun evaluate(
         graph: MontageGraph,
         plannedFrames: Int,
-        frames: List<FrameEvidence>
+        frames: List<FrameEvidence>,
+        expectedDrawFrames: List<HighQualityFramePlan.Frame>? = null
     ): Summary {
         val temporalLayerKinds = if (ReferenceMontageProfile.appliesTo(graph))
             emptySet() else temporalLayerKinds
-        val authored = graph.clips.mapIndexedNotNull { index, clip ->
-            (index to clip).takeIf { clip.transitionIn in visibleTransitions }
+        val clips = graph.clips.map { it.copy(transitionIn = graph.renderTransition(it)) }
+        val overlays = graph.renderOverlays()
+        // The renderer supplies its exact FPS/window/hold-adapted plan. Legacy diagnostic
+        // callers keep descriptor expectations; never rebuild a different plan here.
+        val expectedBlends = expectedDrawFrames?.mapNotNull { frame ->
+            TransitionTimeline.blendFor(frame)?.takeIf {
+                maxOf(it.directionalBlur, it.blackout, it.occlusionMask, it.foregroundReentry) > .0001f
+            }?.let { frame to it }
         }
-        val hasCameraIntent = graph.clips.any { it.motion != MontageGraph.Motion.HOLD ||
-            it.transform != MontageGraph.ClipTransform.hold() }
-        val configuredTemporalSeparationUs = graph.overlays.asSequence()
+        val activeClips = expectedBlends?.map { it.first.clipIndex }?.toSet()
+        val authored = clips.mapIndexedNotNull { index, clip ->
+            (index to clip).takeIf { clip.transitionIn in visibleTransitions && (activeClips == null || index in activeClips) }
+        }
+        val expectedByTime = expectedDrawFrames?.associateBy { it.outputTimeUs }
+        // Source indices name ordered selections, not physical uniqueness or visual quality.
+        // Unknown secondary identity retains the legacy same-source threshold.
+        fun differentSourceRoles(frame: FrameEvidence): Boolean =
+            frame.secondarySourceIndex != null && frame.secondarySourceIndex != frame.sourceIndex
+        fun visibleCamera(scale: Float, x: Float, y: Float, rotation: Float): Boolean =
+            abs(scale - 1f) >= .025f || abs(x) + abs(y) >= .018f || abs(rotation) >= 1f
+        val expectedCameraFrames = expectedDrawFrames?.count {
+            visibleCamera(it.transform.scale, it.transform.translateX, it.transform.translateY, it.transform.rotationDegrees)
+        }
+        val hasCameraIntent = expectedCameraFrames?.let { it > 0 } ?: graph.clips.any {
+            it.motion != MontageGraph.Motion.HOLD || it.transform != MontageGraph.ClipTransform.hold() }
+        val legacyCameraFrames = (plannedFrames * .15f).toInt().coerceAtLeast(1)
+        val requiredCameraFrames = expectedCameraFrames?.let { minOf(legacyCameraFrames, it) } ?: legacyCameraFrames
+        val configuredTemporalSeparationUs = overlays.asSequence()
             .filter { it.overlayKind in temporalLayerKinds }
             .mapNotNull { it.secondarySourceOffsetMs }
             .filter { it != 0L }
@@ -234,7 +276,11 @@ object VeykadRenderInspector {
             ?: MINIMUM_VISIBLE_TEMPORAL_SEPARATION_US
         val renderedFrames = frames.filter { it.transition in visibleTransitions &&
             (it.blur > .0001f || it.blackout > .0001f || it.occlusion > .0001f ||
-                it.foregroundReentry > .0001f || it.dualDecoder) }
+                it.foregroundReentry > .0001f || it.dualDecoder) &&
+            (expectedByTime == null || expectedByTime[it.outputTimeUs]?.let { expected ->
+                expected.clipIndex == it.clipIndex && expected.transitionIn == it.transition &&
+                    TransitionTimeline.blendFor(expected) != null
+            } == true) }
         val renderedEvents = renderedFrames.map { it.clipIndex }.distinct()
         val missing = authored.mapNotNull { (clipIndex, clip) ->
             clip.id.takeIf { clipIndex !in renderedEvents }
@@ -242,7 +288,7 @@ object VeykadRenderInspector {
         val byType = visibleTransitions.associateWith { type -> renderedFrames.count { it.transition == type } }
         val speedFrames = frames.count { abs(it.speed - 1f) >= .08f }
         val cameraFrames = frames.count {
-            abs(it.scale - 1f) >= .025f || abs(it.translateX) + abs(it.translateY) >= .018f
+            visibleCamera(it.scale, it.translateX, it.translateY, it.rotationDegrees)
         }
         val blackoutFrames = frames.count { it.blackout >= .05f }
         val foregroundReentrySourcePts = frames.asSequence()
@@ -267,34 +313,43 @@ object VeykadRenderInspector {
             if (liveOverlapFrames.any { !it.dualDecoder }) {
                 add("transition_without_two_live_decoders")
             }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.BLACKOUT } && blackoutFrames == 0) {
-                add("authored_blackout_not_rendered")
-            }
             val authoredSpeedRamp = graph.clips.any { clip ->
                 val speeds = clip.speedRamp.keyframes.map { it.speed }
                 (speeds.maxOrNull() ?: 1f) - (speeds.minOrNull() ?: 1f) >= .08f
             }
             if (authoredSpeedRamp && speedFrames < (plannedFrames * .02f).toInt().coerceAtLeast(1)) add("authored_speed_ramp_not_visible")
-            if (hasCameraIntent && cameraFrames < (plannedFrames * .15f).toInt().coerceAtLeast(1))
+            if (hasCameraIntent && cameraFrames < requiredCameraFrames)
                 add("virtual_camera_not_visible")
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.WHIP } && (frames.maxOfOrNull { it.blur } ?: 0f) < .015f) {
-                add("whip_blur_below_visible_threshold")
+            // Each retained event needs its own evidence. A removed peak or removed live
+            // source sample cannot be required, and another clip's peak cannot satisfy it.
+            authored.forEach { (clipIndex, clip) ->
+                val actual = if (expectedBlends == null) frames else renderedFrames.filter { it.clipIndex == clipIndex }
+                val expected = expectedBlends?.filter { it.first.clipIndex == clipIndex }
+                fun required(legacy: Float, value: (GpuTransitionModel.FrameBlend) -> Float): Float =
+                    expected?.maxOfOrNull { value(it.second) }?.let { minOf(legacy, it) } ?: legacy
+                when (clip.transitionIn) {
+                    MontageGraph.Transition.WHIP -> if ((actual.maxOfOrNull { it.blur } ?: 0f) <
+                        required(.015f) { it.directionalBlur }) add("whip_blur_below_visible_threshold")
+                    MontageGraph.Transition.OCCLUSION -> if ((actual.maxOfOrNull { it.occlusion } ?: 0f) <
+                        required(.35f) { it.occlusionMask }) add("occlusion_below_visible_threshold")
+                    MontageGraph.Transition.FOREGROUND_REENTRY -> {
+                        if ((actual.maxOfOrNull { it.foregroundReentry } ?: 0f) <
+                            required(.65f) { it.foregroundReentry }) add("foreground_reentry_below_visible_threshold")
+                        val requiredPts = expected?.filter { it.second.foregroundReentry > .001f }
+                            ?.map { it.first.sourceTimeUs }?.distinct()?.size
+                            ?.coerceAtMost(MINIMUM_LIVE_FOREGROUND_SOURCE_PTS) ?: MINIMUM_LIVE_FOREGROUND_SOURCE_PTS
+                        if (actual.filter { it.transition == MontageGraph.Transition.FOREGROUND_REENTRY && it.foregroundReentry > .001f }.map { it.sourceTimeUs }.distinct().size < requiredPts)
+                            add("foreground_reentry_source_frozen")
+                    }
+                    MontageGraph.Transition.BLACKOUT -> {
+                        val peak = actual.maxOfOrNull { it.blackout } ?: 0f
+                        if (peak < required(.05f) { it.blackout }) add("authored_blackout_not_rendered")
+                        if (peak < required(.55f) { it.blackout }) add("blackout_below_visible_threshold")
+                    }
+                    else -> Unit
+                }
             }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.OCCLUSION } && (frames.maxOfOrNull { it.occlusion } ?: 0f) < .35f) {
-                add("occlusion_below_visible_threshold")
-            }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY } &&
-                (frames.maxOfOrNull { it.foregroundReentry } ?: 0f) < .65f) {
-                add("foreground_reentry_below_visible_threshold")
-            }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY } &&
-                foregroundReentrySourcePts < MINIMUM_LIVE_FOREGROUND_SOURCE_PTS) {
-                add("foreground_reentry_source_frozen")
-            }
-            if (authored.any { it.second.transitionIn == MontageGraph.Transition.BLACKOUT } && (frames.maxOfOrNull { it.blackout } ?: 0f) < .55f) {
-                add("blackout_below_visible_threshold")
-            }
-            if (graph.overlays.any {
+            if (overlays.any {
                     it.overlayKind in setOf(
                         MontageGraph.OverlayKind.DOUBLE_EXPOSURE,
                         MontageGraph.OverlayKind.MIRROR_SLICE,
@@ -304,19 +359,19 @@ object VeykadRenderInspector {
                 } && frames.none { it.layerOpacity > .01f }) {
                 add("authored_reference_layers_missing_from_shader")
             }
-            val authoredTemporalLayers = graph.overlays.any {
+            val authoredTemporalLayers = overlays.any {
                 it.overlayKind in temporalLayerKinds
             }
             if (authoredTemporalLayers && frames.none {
                     it.layerOpacity > .01f && it.secondarySourceTimeUs != null &&
-                        it.secondarySourceTimeUs != it.sourceTimeUs
+                        (differentSourceRoles(it) || it.secondarySourceTimeUs != it.sourceTimeUs)
                 }) {
                 add("authored_temporal_layer_missing_second_source_pts")
             }
             if (authoredTemporalLayers && frames.any {
                     it.layerKind in temporalLayerKinds && it.layerOpacity >= .25f &&
                         (it.secondarySourceTimeUs == null ||
-                            abs(it.secondarySourceTimeUs - it.sourceTimeUs) < configuredTemporalSeparationUs)
+                            (!differentSourceRoles(it) && abs(it.secondarySourceTimeUs - it.sourceTimeUs) < configuredTemporalSeparationUs))
                 }) {
                 add("temporal_layer_sources_too_close_to_read")
             }
@@ -335,22 +390,22 @@ object VeykadRenderInspector {
             if (visibleTemporalFrames.any {
                     it.decodedSourceTimeUs != null && it.decodedSourceTimeUs >= 0L &&
                         it.decodedSecondarySourceTimeUs != null && it.decodedSecondarySourceTimeUs >= 0L &&
-                        it.decodedSourceTimeUs == it.decodedSecondarySourceTimeUs
+                        !differentSourceRoles(it) && it.decodedSourceTimeUs == it.decodedSecondarySourceTimeUs
                 }) {
                 add("temporal_layer_identical_decoded_source_pts")
             }
             if (visibleTemporalFrames.any { !it.dualDecoder }) {
                 add("temporal_layer_without_two_live_decoders")
             }
-            if (graph.overlays.any { it.overlayKind == MontageGraph.OverlayKind.SUBJECT_STAGE } &&
+            if (overlays.any { it.overlayKind == MontageGraph.OverlayKind.SUBJECT_STAGE } &&
                 subjectStageSourcePts < MINIMUM_LIVE_SUBJECT_STAGE_SOURCE_PTS) {
                 add("subject_stage_source_frozen")
             }
-            if (graph.overlays.any { it.overlayKind == MontageGraph.OverlayKind.SUBJECT_STAGE } &&
+            if (overlays.any { it.overlayKind == MontageGraph.OverlayKind.SUBJECT_STAGE } &&
                 subjectStageFrames.none { it.maskConfidence >= .80f }) {
                 add("subject_stage_missing_live_mask")
             }
-        }
+        }.distinct()
         return Summary(
             plannedFrames = plannedFrames,
             shaderFrames = frames.size,
@@ -371,7 +426,7 @@ object VeykadRenderInspector {
             layerFrames = frames.count { it.layerOpacity > .01f },
             temporalLayerFrames = frames.count {
                 it.layerOpacity > .01f && it.secondarySourceTimeUs != null &&
-                    it.secondarySourceTimeUs != it.sourceTimeUs
+                    (differentSourceRoles(it) || it.secondarySourceTimeUs != it.sourceTimeUs)
             },
             foregroundReentrySourcePts = foregroundReentrySourcePts,
             subjectStageSourcePts = subjectStageSourcePts
@@ -438,6 +493,32 @@ object VeykadRenderInspector {
         }
     }
 
+    /** Existing rendered-frame witness, kept separate from persisted project timing contracts. */
+    data class DecodedFrameProvenance(
+        val sourceIndex: Int,
+        val clipIndex: Int,
+        /** Authored source target identifies the held planned frame; decoded PTS remains separate. */
+        val sourceTimeUs: Long,
+        val decodedSourceTimeUs: Long,
+        val transition: MontageGraph.Transition
+    )
+
+    fun decodedFrameProvenance(artifacts: Artifacts?): Map<Long, DecodedFrameProvenance> {
+        if (artifacts == null) return emptyMap()
+        val frames = JSONObject(artifacts.report.readText()).getJSONArray("frames")
+        return buildMap {
+            for (index in 0 until frames.length()) {
+                val frame = frames.getJSONObject(index)
+                // Older reports retain their time-only compatibility path; identity is never guessed.
+                if (!frame.isNull("decoded_source_us") && frame.has("source_index")) {
+                    put(frame.getLong("output_us"), DecodedFrameProvenance(frame.getInt("source_index"),
+                        frame.getInt("clip"), frame.getLong("source_us"), frame.getLong("decoded_source_us"),
+                        MontageGraph.Transition.valueOf(frame.getString("transition"))))
+                }
+            }
+        }
+    }
+
     fun latest(context: Context, expectedMp4: File? = null): Artifacts? {
         val directory = File(context.filesDir, "render-inspector")
         val report = directory.listFiles()?.filter { it.extension == "json" }?.maxByOrNull { it.lastModified() } ?: return null
@@ -477,7 +558,9 @@ object VeykadRenderInspector {
             audioFirstPtsUs = containerJson.optLong("audio_first_pts_us"),
             videoLastPtsUs = containerJson.optLong("video_last_pts_us"), audioLastPtsUs = containerJson.optLong("audio_last_pts_us"),
             avDeltaUs = containerJson.optLong("av_delta_us"),
-            issues = containerJson.optJSONArray("issues")?.let { array -> List(array.length()) { array.getString(it) } }.orEmpty()
+            issues = containerJson.optJSONArray("issues")?.let { array -> List(array.length()) { array.getString(it) } }.orEmpty(),
+            videoFps = containerJson.optInt("video_fps").takeIf { it > 0 },
+            durationMs = containerJson.optLong("duration_ms")
         ) else ContainerEvidence("", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             listOf("container_evidence_missing"))
         return Artifacts(
@@ -537,6 +620,8 @@ object VeykadRenderInspector {
         put("summary", summaryJson(summary))
         put("frames", JSONArray(evidence.map { frame -> JSONObject().apply {
             put("output_us", frame.outputTimeUs); put("source_us", frame.sourceTimeUs)
+            put("source_index", frame.sourceIndex)
+            put("secondary_source_index", frame.secondarySourceIndex ?: JSONObject.NULL)
             put("decoded_source_us", frame.decodedSourceTimeUs ?: JSONObject.NULL)
             put("mask_source_us", frame.maskSourceTimeUs ?: JSONObject.NULL)
             put("decoded_secondary_source_us", frame.decodedSecondarySourceTimeUs ?: JSONObject.NULL)
@@ -571,6 +656,7 @@ object VeykadRenderInspector {
         put("accepted", container.issues.isEmpty())
         put("video_mime", container.videoMime); put("audio_mime", container.audioMime)
         put("width", container.width); put("height", container.height); put("rotation", container.rotation)
+        put("video_fps", container.videoFps ?: JSONObject.NULL); put("duration_ms", container.durationMs)
         put("video_samples", container.videoSamples); put("audio_samples", container.audioSamples)
         put("video_first_pts_us", container.videoFirstPtsUs); put("audio_first_pts_us", container.audioFirstPtsUs)
         put("video_last_pts_us", container.videoLastPtsUs); put("audio_last_pts_us", container.audioLastPtsUs)
@@ -580,6 +666,13 @@ object VeykadRenderInspector {
 
     private data class TrackScan(val samples: Int, val firstPtsUs: Long, val lastPtsUs: Long)
 
+    /** New project path: use the frozen profile, never infer dimensions from the recipe. */
+    internal fun inspectContainer(mp4: File, profile: ExportProfile, targetDurationMs: Long): ContainerEvidence {
+        val evidence = inspectContainer(mp4, profile.size.width, profile.size.height)
+        val exact = ExportContract.validateExact(evidence.toExportProbe(), profile, targetDurationMs)
+        return evidence.copy(issues = (evidence.issues + exact.issues).distinct())
+    }
+
     internal fun inspectContainer(mp4: File, expectedWidth: Int = 0, expectedHeight: Int = 0): ContainerEvidence {
         val extractor = MediaExtractor()
         return try {
@@ -587,6 +680,7 @@ object VeykadRenderInspector {
             var videoIndex = -1; var audioIndex = -1
             var videoMime = ""; var audioMime = ""
             var width = 0; var height = 0; var rotation = 0
+            var videoFps: Int? = null; var durationMs = 0L
             for (index in 0 until extractor.trackCount) {
                 val format = extractor.getTrackFormat(index)
                 val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
@@ -596,6 +690,9 @@ object VeykadRenderInspector {
                         width = format.integerOrZero(MediaFormat.KEY_WIDTH)
                         height = format.integerOrZero(MediaFormat.KEY_HEIGHT)
                         rotation = format.integerOrZero(MediaFormat.KEY_ROTATION)
+                        videoFps = format.integerOrZero(MediaFormat.KEY_FRAME_RATE).takeIf { it > 0 }
+                        durationMs = if (format.containsKey(MediaFormat.KEY_DURATION))
+                            format.getLong(MediaFormat.KEY_DURATION) / 1_000L else 0L
                     }
                     mime.startsWith("audio/") && audioIndex < 0 -> { audioIndex = index; audioMime = mime }
                 }
@@ -607,7 +704,8 @@ object VeykadRenderInspector {
                 video.samples, audio.samples, video.firstPtsUs, delta,
                 audio.firstPtsUs, expectedWidth, expectedHeight)
             ContainerEvidence(videoMime, audioMime, width, height, rotation, video.samples, audio.samples,
-                video.firstPtsUs, audio.firstPtsUs, video.lastPtsUs, audio.lastPtsUs, delta, issues)
+                video.firstPtsUs, audio.firstPtsUs, video.lastPtsUs, audio.lastPtsUs, delta, issues,
+                videoFps, durationMs)
         } finally { extractor.release() }
     }
 

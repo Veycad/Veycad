@@ -11,10 +11,11 @@ object ManualMontageAcceptance {
         fps: Int): Report {
         val clock = ProjectClock(fps)
         val plan = HighQualityFramePlan.build(graph, fps)
-        val frameIndex = RenderQaFrameIndex(plan.frames)
+        val drawFrames = LiveDecoderTransitionPlan.drawFrames(plan.frames, ReferenceMontageProfile.appliesTo(graph))
+        val frameIndex = RenderQaFrameIndex(drawFrames)
         val toleranceUs = clock.timeUs(1) + 1L
-        val transitionWindows = RenderQaTransitionWindow.inPlan(plan.frames)
-        val activeTransitions = transitionWindows.map { plan.frames[it.first].clipIndex }.toSet()
+        val transitionWindows = RenderQaTransitionWindow.inPlan(drawFrames)
+        val activeTransitions = transitionWindows.map { drawFrames[it.first].clipIndex }.toSet()
         val windowByFrame = IntArray(plan.frames.size) { -1 }
         transitionWindows.forEachIndexed { windowId, window ->
             for (index in window.first..window.last) windowByFrame[index] = windowId
@@ -37,7 +38,7 @@ object ManualMontageAcceptance {
             val coveredClips = mutableSetOf<Int>()
             samples.forEach { sample ->
                 val scheduledIndex = frameIndex.nearest(sample.outputTimeUs)
-                val frame = plan.frames[scheduledIndex]
+                val frame = drawFrames[scheduledIndex]
                 if (sample.outputTimeUs >= plan.durationUs || abs(frame.outputTimeUs - sample.outputTimeUs) > toleranceUs)
                     add("video-sample-outside-revision")
                 if (sample.decodedSourceIndex == null || sample.decodedClipIndex == null) add("source-evidence-missing")
@@ -48,8 +49,8 @@ object ManualMontageAcceptance {
                     val windowId = windowByFrame[scheduledIndex]
                     if (windowId >= 0) {
                         val window = transitionWindows[windowId]
-                        val startUs = plan.frames[window.first].outputTimeUs
-                        val endUs = plan.frames.getOrNull(window.last + 1)?.outputTimeUs ?: plan.durationUs
+                        val startUs = drawFrames[window.first].outputTimeUs
+                        val endUs = drawFrames.getOrNull(window.last + 1)?.outputTimeUs ?: plan.durationUs
                         if (sample.outputTimeUs >= startUs - 1 && sample.outputTimeUs <= endUs) {
                             transitionWitnesses[windowId] = true
                             observedPeaks[windowId] = maxOf(observedPeaks[windowId], sample.transitionStrength)
@@ -59,14 +60,14 @@ object ManualMontageAcceptance {
             }
             if (graph.clips.indices.any { it !in coveredClips }) add("clip-decode-evidence-missing")
             transitionWindows.forEachIndexed { windowId, window ->
-                val frame = plan.frames[window.first]
+                val frame = drawFrames[window.first]
                 val clip = graph.clips[frame.clipIndex]
                 val phaseDurationUs = graph.editableTiming?.clips?.get(frame.clipIndex)?.transitionPhaseDurationUs
                     ?: ((clip.transitionDurationMs ?: TransitionTimeline.durationMs(frame.transitionIn)) * 1_000L)
-                val endUs = plan.frames.getOrNull(window.last + 1)?.outputTimeUs ?: plan.durationUs
+                val endUs = drawFrames.getOrNull(window.last + 1)?.outputTimeUs ?: plan.durationUs
                 val coverage = ((endUs - frame.outputTimeUs).toDouble() / phaseDurationUs).coerceIn(0.0, 1.0)
                 val envelope = (window.first..window.last).maxOf { index ->
-                    val phase = plan.frames[index].transitionProgress!!
+                    val phase = drawFrames[index].transitionProgress!!
                     (1f - abs(2f * phase - 1f)).coerceIn(0f, 1f)
                 }
                 // Empirical technical floor, scaled to the retained authored phase. A single

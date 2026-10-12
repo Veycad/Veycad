@@ -26,7 +26,7 @@ jobs:
           java-version: '25'
       - uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358 cmake;3.22.1'
       - uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
@@ -39,6 +39,28 @@ jobs:
         run: python -m pip install -r tools/requirements-test.txt
       - name: Verify baseline
         run: ./gradlew --no-daemon clean baselineVerify -PpythonExecutable=python
+      - name: Locate verified ARM64 debug APK
+        id: debug-apk
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          directory = Path('app/build/outputs/apk/debug')
+          metadata = json.loads((directory / 'output-metadata.json').read_text())
+          assert metadata['applicationId'] == 'com.veycad.app'
+          outputs = [entry for entry in metadata['elements'] if entry['filters'] == [{'filterType': 'ABI', 'value': 'arm64-v8a'}]]
+          assert len(outputs) == 1, 'Expected exactly one ARM64 debug APK'
+          apk = directory / outputs[0]['outputFile']
+          assert apk.is_file() and apk.suffix == '.apk' and apk.resolve().parent == directory.resolve()
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'apk={apk.as_posix()}\n')
+          PY
+      - name: Save ARM64 debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: veycad-arm64-debug-${{ github.sha }}
+          path: ${{ steps.debug-apk.outputs.apk }}
+          if-no-files-found: error
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4

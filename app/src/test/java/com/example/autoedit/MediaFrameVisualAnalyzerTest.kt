@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaFrameVisualAnalyzerTest {
+    @Test fun count_is_propagated_from_current_semantics_without_guessing_from_largest_face() {
+        for (count in listOf(0, 1, 2, null)) {
+            val current = semantics(faceSucceeded = count != null).copy(detectedFaceCount = count)
+            val observation = MediaFrameVisualAnalyzer.observationForFrame(0, estimate, current)
+            assertEquals(count, observation.detectedFaceCount)
+            assertEquals(count != null, observation.faceInferenceSucceeded)
+        }
+        assertNull(MediaFrameVisualAnalyzer.observationForFrame(0, estimate, null).detectedFaceCount)
+    }
     private val pixels = LumaMotionEstimator.Plane(12, 18, FloatArray(12 * 18) { .5f })
     private val estimate = LumaMotionEstimator.estimate(null, pixels)
     private fun semantics(face: VisualEventMap.Face? = VisualEventMap.Face(.9f, 24f),

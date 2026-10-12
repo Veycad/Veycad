@@ -13,11 +13,17 @@ import java.util.concurrent.Executors
 /** Process-owned jobs never retain an Activity. Published files and interruption markers are durable. */
 internal class EditSession internal constructor(
     context: Context,
-    private val renderEngine: RenderEngine = NativeRenderEngine
+    private val renderEngine: RenderEngine = NativeRenderEngine,
+    private val sourceInspector: SourceInspector = SourceInspector { id, file, name, checkCancelled ->
+        MediaInputInspector(checkCancelled).inspect(id, file, name)
+    }
 ) {
     internal interface Owner { val editSession: EditSession }
     internal fun interface RenderEngine {
         fun render(request: VeycadAutomaticEditor.Request): RenderSummary
+    }
+    internal fun interface SourceInspector {
+        fun inspect(id: String, file: File, name: String, checkCancelled: () -> Unit): MediaSource
     }
     internal data class RenderSummary(
         val clipCount: Int, val beatHitRate: Float,
@@ -158,6 +164,41 @@ internal class EditSession internal constructor(
         captureTakeOrdinal: Int? = null,
         captureAutoRecommendation: Boolean = false
     ) {
+        renderResolved({ checkCancelled ->
+            require(secondary == null || secondary.canonicalPath != source.canonicalPath)
+            MediaSourceSet(listOfNotNull(source, secondary).mapIndexed { index, file ->
+                sourceInspector.inspect("legacy-$index", file, file.name, checkCancelled)
+            })
+        }, music, style, width, height, bitrate, captureSessionId, continuingCapturePreparation,
+            captureTakeOrdinal, captureAutoRecommendation)
+    }
+
+    fun render(
+        sources: MediaSourceSet,
+        music: File,
+        style: MontageStyleCatalog.Style,
+        width: Int = 720,
+        height: Int = 1_280,
+        bitrate: Int = 5_000_000,
+        captureSessionId: String? = null,
+        continuingCapturePreparation: Boolean = false,
+        captureTakeOrdinal: Int? = null,
+        captureAutoRecommendation: Boolean = false
+    ) = renderResolved({ checkCancelled -> checkCancelled(); sources }, music, style, width, height,
+        bitrate, captureSessionId, continuingCapturePreparation, captureTakeOrdinal, captureAutoRecommendation)
+
+    private fun renderResolved(
+        resolveSources: (() -> Unit) -> MediaSourceSet,
+        music: File,
+        style: MontageStyleCatalog.Style,
+        width: Int,
+        height: Int,
+        bitrate: Int,
+        captureSessionId: String?,
+        continuingCapturePreparation: Boolean,
+        captureTakeOrdinal: Int?,
+        captureAutoRecommendation: Boolean
+    ) {
         require(captureSessionId == null || captureTakeOrdinal != null)
         if (state.value?.busy == true && !(continuingCapturePreparation && captureSessionId != null &&
             state.value?.operationDetail != null)) return
@@ -178,15 +219,17 @@ internal class EditSession internal constructor(
                 val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
                 wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "${app.packageName}:edit-session")
                     .apply { acquire(15 * 60 * 1000L) }
+                val checkCancelled = { check(!cancelled) { "Монтаж отменён" } }
+                val sources = resolveSources(checkCancelled)
                 val edit = renderEngine.render(VeycadAutomaticEditor.Request(
-                    context = app, sourceFile = source, secondarySourceFile = secondary,
+                    context = app, sources = sources,
                     musicFile = music, outputFile = output, style = style.directorStyle,
                     recipe = requireNotNull(style.recipe),
                     width = width,
                     height = height,
                     bitrate = bitrate,
                     jobLease = lease,
-                    checkCancelled = { check(!cancelled) { "Монтаж отменён" } },
+                    checkCancelled = checkCancelled,
                     onProgress = { progress ->
                         check(!cancelled) { "Монтаж отменён" }
                         main.post { mutableState.value = State(busy = true, entry = previous, progress = progress) }
