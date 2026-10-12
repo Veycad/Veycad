@@ -111,6 +111,69 @@ class AacSourceInputBlocksTest {
         assertThrows(IllegalStateException::class.java) { frames.append(PcmChunk(PcmFormat(48000,2),5_000_000,ShortArray(96_000))) }
     }
 
+    @Test fun diagnostic_decode_budget_expires_during_callbacks_without_a_returned_chunk() {
+        var now=9_000_000_000L
+        val budget=AacEncoderMuxer.SourceProbeDecodeBudget({},nanoTime={ now })
+        val decoderCallback: () -> Unit=budget
+        var completedIterations=0
+        // Model only calls at the existing cancellation seam during prime/read progress.
+        // No codec or PCM output is simulated, and progress must not renew this budget.
+        decoderCallback()
+        assertThrows(IllegalStateException::class.java) {
+            repeat(61) {
+                now+=1_000_000_000L
+                decoderCallback()
+                completedIterations++
+            }
+        }
+        assertEquals(59,completedIterations)
+        assertEquals(69_000_000_000L,now)
+        now=70_000_000_000L
+        assertThrows(IllegalStateException::class.java) { decoderCallback() }
+    }
+
+    @Test fun diagnostic_decode_budget_checks_after_read_before_accepting_eof() {
+        var now=3_000_000_000L
+        val budget=AacEncoderMuxer.SourceProbeDecodeBudget({},nanoTime={ now })
+        val chunk=PcmChunk(PcmFormat(48000,2),0,shortArrayOf(1,1))
+        var reads=0
+        val stream=object : PcmStream {
+            override val format=chunk.format
+            override fun read(): PcmChunk? {
+                reads++
+                now=if (reads==1) 62_999_999_999L else 63_000_000_000L
+                return if (reads==1) chunk else null
+            }
+            override fun close() {}
+        }
+        stream.use {
+            assertSame(chunk,budget.read(it)) // One nanosecond before the absolute deadline.
+            assertThrows(IllegalStateException::class.java) { budget.read(it) }
+            assertEquals(2,reads) // The second read returned EOF, which must still be rejected.
+            assertThrows(IllegalStateException::class.java) { budget.read(it) }
+            assertEquals(2,reads) // Expiry also stops entry to any later read.
+        }
+    }
+
+    @Test fun diagnostic_decode_budget_preserves_cancellation_before_consulting_deadline() {
+        val cause=IllegalStateException("original cancellation cause")
+        val cancellation=CancellationException("diagnostic cancelled").apply { initCause(cause) }
+        var now=11_000_000_000L
+        var clockReads=0
+        val budget=AacEncoderMuxer.SourceProbeDecodeBudget({ throw cancellation },nanoTime={
+            clockReads++
+            now
+        })
+        for (time in listOf(12_000_000_000L,71_000_000_000L)) {
+            now=time // Cancellation wins both before expiry and at the deadline.
+            val readsBeforeCancellation=clockReads
+            val thrown=assertThrows(CancellationException::class.java) { budget() }
+            assertSame(cancellation,thrown)
+            assertSame(cause,thrown.cause)
+            assertEquals(readsBeforeCancellation,clockReads)
+        }
+    }
+
     @Test fun failed_queue_preserves_cancellation_identity_and_close_releases_pending_ownership() {
         val cancellation=CancellationException("input queue cancelled")
         val blocks=AacEncoderMuxer.SourceInputBlocks { _,_,_,_ -> throw cancellation }

@@ -147,6 +147,22 @@ internal object AacEncoderMuxer {
         fun requireValid() { failure?.let { throw it } }
     }
 
+    /** One diagnostic decode deadline, including provider priming and reads that return EOF. */
+    internal class SourceProbeDecodeBudget(private val checkCancelled: () -> Unit,
+        private val nanoTime: () -> Long = System::nanoTime) : () -> Unit {
+        private val startedNs = nanoTime()
+        override fun invoke() {
+            checkCancelled()
+            check(nanoTime() - startedNs < 60_000_000_000L) { "AAC diagnostic decode time bound exceeded" }
+        }
+        fun read(stream: PcmStream): PcmChunk? {
+            invoke()
+            val chunk = stream.read()
+            invoke()
+            return chunk
+        }
+    }
+
     /** Observes two axes of the SAME PCM. It neither inserts gap samples nor rewrites raw PTS. */
     internal class SourceProbeSamples {
         val sequentialMarkers = LongArray(3) { -1 }
@@ -338,24 +354,27 @@ internal object AacEncoderMuxer {
         val containerPackets = logProbeContainer(file,"diagnostic-before-decode",checkCancelled,evidence::log,true)
         val observed = SourceProbeSamples()
         val metrics = MediaCodecAudioDecoder.StreamMetrics()
-        val started = System.nanoTime()
+        val budget = SourceProbeDecodeBudget(checkCancelled)
         var failure: Throwable? = null
         try {
-            MediaCodecAudioDecoder.sourceProvider(mapOf("probe" to file),metrics,checkCancelled).open("probe",0)!!.use { stream ->
+            budget()
+            MediaCodecAudioDecoder.sourceProvider(mapOf("probe" to file),metrics,budget).open("probe",0)!!.use { stream ->
+                budget()
                 check(stream.format == PcmFormat(48000,2))
                 while (true) {
-                    checkCancelled()
-                    check(System.nanoTime()-started < 60_000_000_000L) { "AAC diagnostic decode time bound exceeded" }
-                    val chunk = stream.read() ?: break
+                    val chunk = budget.read(stream) ?: break
                     evidence.log("ledger=${file.name} diagnosticChunk=${observed.chunks} sequentialStart=${observed.frames} pts=${chunk.startPtsUs} frames=${chunk.frames}")
                     observed.append(chunk)
+                    budget()
                 }
             }
+            budget()
             evidence.log("ledger=${file.name} diagnosticDecodeEos=true inputFrames=$inputFrames codedPackets=$codedPackets containerPackets=$containerPackets decodedFrames=${observed.frames} chunks=${observed.chunks} sequentialMarkers=${observed.sequentialMarkers.toList()} ptsMarkers=${observed.ptsMarkers.toList()} peaks=${observed.peaks.toList()} discontinuities=${observed.discontinuities} maximumGapFrames=${observed.maximumGapFrames} productionAccepted=false")
             check(containerPackets == codedPackets) { "AAC diagnostic mux lost packets" }
             check(observed.frames == codedPackets * 1024) { "AAC diagnostic decoded count differs from complete coded access units" }
             check(observed.peaks.all { it > .25 }) { "AAC diagnostic boundary marker missing" }
             check(metrics.openDecoders == 0 && metrics.retainedChunks == 0) { "AAC diagnostic decoder ownership not released" }
+            budget()
         } catch (caught: Throwable) { failure = caught; throw caught }
         finally {
             try { evidence.log("ledger=${file.name} diagnosticClosed=true openDecoders=${metrics.openDecoders} retainedChunks=${metrics.retainedChunks} decodedFrames=${observed.frames} chunks=${observed.chunks}") }

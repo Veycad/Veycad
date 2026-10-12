@@ -109,9 +109,13 @@ microseconds, and the five-file host acceptance gate remains unchanged.
 Diagnostic work is bounded to 48,000 or 51,200 input frames, 50 input works, 256 output events,
 256 packets/chunks, 262,144 decoded frames, 64 KiB per encoded packet and 2 MiB of encoded data
 or retained container. Encoder and diagnostic decode phases each have a 60-second limit in
-addition to existing stall/cancellation checks. The two probes are sequential; no whole PCM or
-AAC array is retained. In debug instrumentation's existing `source-audio-native-evidence` case
-directory only, `diagnostic-*` files retain the synthetic raw containers, streamed input/output/
+addition to existing stall/cancellation checks. The decode deadline starts before opening the
+source provider and follows its existing cancellation callback through priming and internal read
+iterations, without renewal on progress. The caller also checks it after each read, including EOF,
+and around sample observations. Each budget check calls the original cancellation callback first.
+The two probes are sequential; no whole PCM or AAC array is retained. In debug instrumentation's
+existing `source-audio-native-evidence` case directory only, `diagnostic-*` files retain the
+synthetic raw containers, streamed input/output/
 container/chunk ledgers, exact encoder/container CSD-0 hex (bounded to 256 bytes), and
 `.diagnostic-sha256.txt` hashes. These names are separate from accepted
 artifacts and cannot satisfy the five acceptance sidecars. Normal owned scratch files are still
