@@ -12,7 +12,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Explicit primitive format: v4 author DTOs; v5 authored map references/backing/timing. Schema stays 1. */
+/** Primitive format: v5 authored maps/source facts; v6 manual graph payload. Schema stays 1. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
     private val authoredMaps: AuthoredSourceMapStore = sidecars.authoredMaps()) {
     fun encode(project: HybridProject): ByteArray {
@@ -186,22 +186,81 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             out.writeFloat(exposureBias); out.writeFloat(redBias); out.writeFloat(greenBias); out.writeFloat(blueBias)
             out.writeFloat(flowStrength); nullableLong(transitionDurationMs); out.writeInt(sourceIndex)
         }
+        fun track(value: ParameterTrack) = with(value) {
+            string(id); string(target); enum(type)
+            list(keyframes) { out.writeLong(it.timeUs); list(it.value) { v -> out.writeFloat(v) }; enum(it.interpolation); curve(it.curveToNext) }
+        }
+        fun sampleWindow(value: EffectSampleWindow) = with(value) {
+            out.writeLong(startUs); out.writeLong(endUs); out.writeLong(offsetUs)
+            out.writeLong(authoredStartUs); out.writeLong(authoredEndUs)
+            nullableLong(frameShift); optional(fps) { out.writeInt(it) }
+        }
+        fun effectPhase(originId: String, start: Float, end: Float, window: EffectSampleWindow?) {
+            string(originId); out.writeFloat(start); out.writeFloat(end); optional(window) { sampleWindow(it) }
+        }
+        fun overlay(value: MontageGraph.Overlay) = with(value) {
+            string(id); out.writeLong(startMs); out.writeLong(endMs); string(kind); enum(blendMode); enum(overlayKind)
+            out.writeFloat(opacity); out.writeFloat(red); out.writeFloat(green); out.writeFloat(blue)
+            out.writeLong(secondarySourceOffsetMs); nullableLong(secondaryTimelineStartMs)
+            effectPhase(originId, phaseStart, phaseEnd, sampleWindow)
+        }
+        fun node(value: GpuEffectGraph.Node) = with(value) {
+            string(id); enum(kind); out.writeLong(startUs); out.writeLong(endUs); out.writeFloat(amount); out.writeFloat(secondary)
+            effectPhase(originId, phaseStart, phaseEnd, sampleWindow)
+        }
+        fun range(value: FrameRange) { out.writeLong(value.start); out.writeLong(value.endExclusive) }
+        fun phase(value: ClipPhase) { out.writeLong(value.firstFrame); out.writeLong(value.startUs); out.writeLong(value.durationUs) }
+        fun anchor(value: EffectAnchor) {
+            when (value) {
+                is EffectAnchor.Clip -> { string("clip"); string(value.clipId); out.writeLong(value.localStartUs); out.writeLong(value.localEndUs) }
+                is EffectAnchor.Boundary -> { string("boundary"); string(value.incomingClipId); out.writeLong(value.offsetUs); out.writeLong(value.durationUs) }
+                is EffectAnchor.Music -> { string("music"); out.writeLong(value.startUs); out.writeLong(value.endUs) }
+            }
+        }
+        fun manualState(value: ManualMontageState) = with(value) {
+            list(clips) {
+                string(it.clipId); range(it.visible); out.writeLong(it.originFrameCount)
+                list(it.localTracks) { track(it) }; optional(it.phase) { phase(it) }
+            }
+            list(effects) {
+                string(it.id); string(it.logicalId); string(it.originId); anchor(it.anchor); out.writeBoolean(it.enabled)
+                optional(it.originalOverlay) { overlay(it) }; optional(it.originalNode) { node(it) }
+                out.writeFloat(it.phaseStart); out.writeFloat(it.phaseEnd)
+            }
+        }
+        fun timeMapping(value: ClipTimeMapping) = with(value) {
+            // Dense compiler samples are exact; no interpolation/rebasing at persistence.
+            require(frameCount in 1 until MAX_SOURCE_POINTS.toLong())
+            out.writeInt(fps); out.writeLong(sourceDurationUs); out.writeLong(frameOrigin)
+            val samples = sourceUsByFrame
+            out.writeInt(samples.size); samples.forEach { out.writeLong(it) }
+        }
+        fun editableTiming(value: EditableFrameTiming) = with(value) {
+            out.writeInt(fps)
+            list(clips) {
+                string(it.clipId); timeMapping(it.timeMap); range(it.visible)
+                out.writeLong(it.startFrame); out.writeLong(it.endFrameExclusive); out.writeLong(it.originFrameCount)
+                optional(it.phase) { phase(it) }; list(it.localTracks) { track(it) }; nullableLong(it.transitionPhaseDurationUs)
+            }
+        }
+        fun timeline(value: FrameAttachmentTimeline) = with(value) {
+            list(frames) { frame(it) }; list(maskRefinements) { frame(it) }
+        }
         fun graph(value: MontageGraph) = with(value) {
             out.writeInt(version); out.writeLong(sourceDurationMs); out.writeLong(outputDurationMs); enum(profile)
             list(clips) { clip(it) }
             optional(audioTrack) { string(it.sourceId); out.writeFloat(it.gain) }
-            list(overlays) { with(it) {
-                string(id); out.writeLong(startMs); out.writeLong(endMs); string(kind); enum(blendMode); enum(overlayKind)
-                out.writeFloat(opacity); out.writeFloat(red); out.writeFloat(green); out.writeFloat(blue)
-                out.writeLong(secondarySourceOffsetMs); nullableLong(secondaryTimelineStartMs)
-            } }
+            list(overlays) { overlay(it) }
             with(metadata) { out.writeInt(schemaVersion); out.writeLong(revision); nullableLong(parentRevision); string(generator) }
-            list(parameterTracks) { track ->
-                string(track.id); string(track.target); enum(track.type)
-                list(track.keyframes) { out.writeLong(it.timeUs); list(it.value) { v -> out.writeFloat(v) }; enum(it.interpolation); curve(it.curveToNext) }
+            list(parameterTracks) { track(it) }
+            timeline(frameAttachments)
+            list(effectGraph.nodes) { node(it) }
+            optional(editableTiming) { editableTiming(it) }
+            optional(manualMontageState) { manualState(it) }
+            list(sourceAttachments) { out.writeInt(it.sourceIndex); timeline(it.timeline) }
+            optional(manualOverrides) {
+                list(it.disabledTransitionClipIds) { string(it) }; list(it.disabledEffectIds) { string(it) }
             }
-            list(frameAttachments.frames) { frame(it) }; list(frameAttachments.maskRefinements) { frame(it) }
-            list(effectGraph.nodes) { with(it) { string(id); enum(kind); out.writeLong(startUs); out.writeLong(endUs); out.writeFloat(amount); out.writeFloat(secondary) } }
         }
         fun floats(kind: String, values: FloatArray) {
             planes[values]?.let { string(it); return }
@@ -281,12 +340,12 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(it in 1..FORMAT_VERSION) { "Unsupported hybrid format $it" }
         }
         fun revision(format: Int): HybridRevision {
-            val id = input.readLong(); val parent = nullableLong(); val graph = graph()
+            val id = input.readLong(); val parent = nullableLong(); val graph = graph(format)
             val clips = list {
                 val clip = HybridClip(string(), string(), span(), sourceMap(format), clip())
                 when (format) {
                     1 -> clip
-                    2, 3, 4, 5 -> clip.copy(originalFrameOffset = input.readInt())
+                    2, 3, 4, 5, 6 -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -297,7 +356,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(locked.distinct().size == locked.size)
             val resetsSources = when (format) {
                 1, 2 -> false
-                3, 4, 5 -> input.readBoolean()
+                3, 4, 5, 6 -> input.readBoolean()
                 else -> error("Unsupported hybrid format")
             }
             val visuals = if (format >= 4) visuals() else ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false)
@@ -313,22 +372,67 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             MontageGraph.ClipTransform(list { MontageGraph.ClipTransform.Keyframe(input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat()) }),
             MontageGraph.SpeedRamp(list { MontageGraph.SpeedRamp.Keyframe(input.readFloat(), input.readFloat(), curve()) }),
             input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat(), nullableLong(), input.readInt())
-        fun graph(): MontageGraph {
+        fun track() = ParameterTrack(string(), string(), enum(), list {
+            ParameterTrack.Keyframe(input.readLong(), list { input.readFloat() }, enum(), curve()) })
+        fun sampleWindow() = EffectSampleWindow(input.readLong(), input.readLong(), input.readLong(),
+            input.readLong(), input.readLong(), nullableLong(), optional { input.readInt() })
+        fun overlay(format: Int): MontageGraph.Overlay {
+            val value = MontageGraph.Overlay(string(), input.readLong(), input.readLong(), string(), enum(), enum(),
+                input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat(), input.readLong(), nullableLong())
+            return if (format >= 6) value.copy(originId = string(), phaseStart = input.readFloat(), phaseEnd = input.readFloat(),
+                sampleWindow = optional { sampleWindow() }) else value
+        }
+        fun node(format: Int): GpuEffectGraph.Node {
+            val value = GpuEffectGraph.Node(string(), enum(), input.readLong(), input.readLong(), input.readFloat(), input.readFloat())
+            return if (format >= 6) value.copy(originId = string(), phaseStart = input.readFloat(), phaseEnd = input.readFloat(),
+                sampleWindow = optional { sampleWindow() }) else value
+        }
+        fun range() = FrameRange(input.readLong(), input.readLong())
+        fun phase() = ClipPhase(input.readLong(), input.readLong(), input.readLong())
+        fun anchor(): EffectAnchor = when (val kind = string()) {
+            "clip" -> EffectAnchor.Clip(string(), input.readLong(), input.readLong())
+            "boundary" -> EffectAnchor.Boundary(string(), input.readLong(), input.readLong())
+            "music" -> EffectAnchor.Music(input.readLong(), input.readLong())
+            else -> throw IllegalArgumentException("Unknown manual effect anchor $kind")
+        }
+        fun manualState() = ManualMontageState(
+            list { ManualClipState(string(), range(), input.readLong(), list { track() }, optional { phase() }) },
+            list { AnchoredMontageEffect(string(), string(), string(), anchor(), input.readBoolean(),
+                optional { overlay(6) }, optional { node(6) }, input.readFloat(), input.readFloat()) })
+        fun timeMapping(): ClipTimeMapping {
+            val fps = input.readInt(); val duration = input.readLong(); val origin = input.readLong()
+            val count = input.readInt()
+            // Inline fixed-width samples share the manifest's total byte bound, not the
+            // generic object-list budget. Check before either dense-array allocation.
+            require(count in 2..MAX_SOURCE_POINTS && count * 8L <= input.available())
+            return ClipTimeMapping(fps, duration, LongArray(count) { input.readLong() }, origin)
+        }
+        fun editableTiming() = EditableFrameTiming(input.readInt(), list {
+            EditableClipTiming(string(), timeMapping(), range(), input.readLong(), input.readLong(), input.readLong(),
+                optional { phase() }, list { track() }, nullableLong()) })
+        fun timeline(): FrameAttachmentTimeline {
+            val frames = list { frame() }.filterNotNull()
+            val refinements = list { frame() }.filterNotNull().filter { it.mask != null }
+            return FrameAttachmentTimeline(frames, refinements)
+        }
+        fun stringSet(): Set<String> = list { string() }.also { require(it.distinct().size == it.size) }.toSet()
+        fun graph(format: Int): MontageGraph {
             val version = input.readInt()
             require(version in 1..MontageGraph.CURRENT_VERSION)
             val source = input.readLong(); val duration = input.readLong(); val profile = enum<MontageGraph.Profile>()
             val clips = list { clip() }
             val audio = optional { MontageGraph.AudioTrack(string(), input.readFloat()) }
-            val overlays = list { MontageGraph.Overlay(string(), input.readLong(), input.readLong(), string(), enum(), enum(),
-                input.readFloat(), input.readFloat(), input.readFloat(), input.readFloat(), input.readLong(), nullableLong()) }
+            val overlays = list { overlay(format) }
             val metadata = NleProjectMetadata(input.readInt(), input.readLong(), nullableLong(), string())
-            val tracks = list { ParameterTrack(string(), string(), enum(), list {
-                ParameterTrack.Keyframe(input.readLong(), list { input.readFloat() }, enum(), curve()) }) }
-            val frames = list { frame() }.filterNotNull()
-            val refinements = list { frame() }.filterNotNull().filter { it.mask != null }
-            val effects = GpuEffectGraph(list { GpuEffectGraph.Node(string(), enum(), input.readLong(), input.readLong(), input.readFloat(), input.readFloat()) })
+            val tracks = list { track() }
+            val attachments = timeline()
+            val effects = GpuEffectGraph(list { node(format) })
+            val timing = if (format >= 6) optional { editableTiming() } else null
+            val manual = if (format >= 6) optional { manualState() } else null
+            val sources = if (format >= 6) list { SourceAttachments(input.readInt(), timeline()) } else emptyList()
+            val overrides = if (format >= 6) optional { ManualRenderOverrides(stringSet(), stringSet()) } else null
             return MontageGraph(source, duration, profile, clips, audio, overlays, metadata, tracks,
-                FrameAttachmentTimeline(frames, refinements), effects, version)
+                attachments, effects, version, timing, manual, sources, overrides)
         }
         fun floats(expected: Long): FloatArray? {
             require(expected in 1..(AnalysisSidecarStore.MAX_BYTES / 4).toLong())
@@ -375,7 +479,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 5
+        private const val FORMAT_VERSION = 6
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024
