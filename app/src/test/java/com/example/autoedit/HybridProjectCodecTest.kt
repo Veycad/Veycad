@@ -40,6 +40,16 @@ internal fun storageProject(assets: List<ProjectAsset> = listOf(
 
 class HybridProjectCodecTest {
     @get:Rule val temporary = TemporaryFolder()
+    @Test fun customMusicOffsetSurvivesProjectAndRevisionStorage() {
+        val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
+        val base = storageProject()
+        val revision = base.current.copy(graph = base.current.graph.copy(
+            audioTrack = MontageGraph.AudioTrack("music", .7f, 1_234_567L)),
+            music = base.current.music.copy(startUs = 1_234_567L))
+        val project = base.copy(original = revision, current = revision)
+        assertEquals(project, codec.decode(codec.encode(project)))
+        assertEquals(revision, codec.decodeRevision(codec.encodeRevisions(listOf(revision)).getValue(revision.id)))
+    }
     @Test fun version1ProjectLoadsWithZeroPhase() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val bytes = javaClass.getResourceAsStream("/hybrid-v1/project.bin")!!.use { it.readBytes() }
@@ -59,14 +69,14 @@ class HybridProjectCodecTest {
         assertEquals(revision, codec.decodeRevision(revisionBytes))
     }
 
-    @Test fun version6RoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
+    @Test fun currentVersionRoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val base = storageProject()
         val revision = base.current.copy(id = 1, parentId = 0,
             clips = base.current.clips.map { it.copy(originalFrameOffset = -2) })
         val project = base.copy(current = revision, nextRevisionId = 2, undo = listOf(base.original))
         val encoded = codec.encode(project)
-        assertEquals(6, ByteBuffer.wrap(encoded).getInt(4))
+        assertEquals(7, ByteBuffer.wrap(encoded).getInt(4))
         val loaded = codec.decode(encoded)
         assertEquals(project, loaded)
         assertEquals(-2, loaded.current.clips.single().originalFrameOffset)
@@ -124,7 +134,7 @@ class HybridProjectCodecTest {
         assertEquals(reset.current, store.loadRevision("project", reset.current.id))
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val resetBlob = codec.encodeRevisions(listOf(reset.current)).getValue(reset.current.id)
-        assertEquals(6, ByteBuffer.wrap(resetBlob).getInt(4))
+        assertEquals(7, ByteBuffer.wrap(resetBlob).getInt(4))
         assertEquals(reset.current, codec.decodeRevision(resetBlob))
         val edited = HybridEditCommands.slipClip(reset, "right", 123_456)
         assertFalse(edited.current.restoresAutomaticSources)

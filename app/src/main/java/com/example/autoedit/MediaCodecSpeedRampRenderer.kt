@@ -80,6 +80,9 @@ object MediaCodecSpeedRampRenderer {
         } ?: HighQualityFramePlan.build(graph, fps)
 
         init {
+            require(outputWindow == null || audioStartUs == 0L) {
+                "Ненулевое начало своей музыки поддерживается только при экспорте полного ролика"
+            }
             require(sourceFiles == null || (masterFile == null && secondaryFile == null)) {
                 "Supply the ordered source list or legacy files, not both"
             }

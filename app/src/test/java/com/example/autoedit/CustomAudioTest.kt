@@ -6,6 +6,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CustomAudioTest {
+    @Test fun graphAudioPlanRetainsSelectedMusicTail() {
+        val graph = MontageGraph(5_000, 5_000, audioTrack = MontageGraph.AudioTrack("custom", 1f, 1_000_000))
+        assertEquals(AudioExportPlan.loop(3_000_000, 5_000_000, 1_000_000),
+            AudioExportPlan.forGraph(3_000_000, graph))
+    }
+
+    @Test fun partialExportRejectsNonzeroMusicStartBeforeTouchingOutput() {
+        val output = java.io.File("preserved-custom-output.mp4")
+        try {
+            MediaCodecSpeedRampRenderer.Request(masterFile = java.io.File("source.mp4"),
+                graph = MontageGraph(5_000, 5_000, audioTrack = MontageGraph.AudioTrack("custom", 1f, 1_000_000)),
+                outputFile = output, width = 720, height = 1280, bitrate = 5_000_000,
+                outputWindow = MediaCodecSpeedRampRenderer.OutputWindow(1_000_000, 2_000_000))
+            fail("A partial export cannot restart custom music at its selected offset")
+        } catch (error: IllegalArgumentException) {
+            assertTrue(error.message.orEmpty().contains("полного ролика"))
+        }
+    }
+
     @Test fun loops_only_the_selected_tail_without_returning_to_the_intro() {
         assertEquals(listOf(
             AudioExportPlan.Segment(1_000_000, 3_000_000, 0),

@@ -46,7 +46,7 @@ object AudioExportPlan {
 
     /** Music always spans the graph's rendered duration, never the raw camera duration. */
     fun forGraph(trackDurationUs: Long, graph: MontageGraph): List<Segment> =
-        loop(trackDurationUs, graph.outputDurationMs * 1_000L)
+        loop(trackDurationUs, graph.outputDurationMs * 1_000L, graph.audioTrack?.sourceStartUs ?: 0L)
 
     /** AAC access units are timestamped from sample count, avoiding accumulated millisecond drift. */
     fun presentationTimeUs(encodedSamples: Long, sampleRate: Int): Long {
