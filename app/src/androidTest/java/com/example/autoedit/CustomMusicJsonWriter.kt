@@ -30,6 +30,24 @@ internal object CustomMusicJsonWriter {
             is InspectorDocument -> value.file.bufferedReader(Charsets.UTF_8, BUFFER_CHARS).use {
                 it.copyTo(writer, BUFFER_CHARS)
             }
+            is FrameAttachments.Plane -> {
+                // Serialize public pixel facts, not producer/prepared ownership internals.
+                writer.write("{\"confidence\":")
+                writeValue(writer, value.confidence)
+                writer.write(",\"height\":")
+                writeValue(writer, value.height)
+                writer.write(",\"values\":[")
+                repeat(value.size) { index ->
+                    if (index > 0) writer.write(",")
+                    writeValue(writer, value[index])
+                }
+                writer.write("],\"width\":")
+                writeValue(writer, value.width)
+                writer.write("}")
+            }
+            is FrameAttachments.FlowPlane -> writeValue(writer, linkedMapOf(
+                "confidence" to value.confidence, "height" to value.height,
+                "vectors" to value.vectors, "width" to value.width))
             is Map<*, *> -> {
                 writer.write("{")
                 var first = true
