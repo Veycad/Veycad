@@ -7,7 +7,7 @@ import org.junit.Test
 
 class CustomAudioTest {
     @Test fun graphAudioPlanRetainsSelectedMusicTail() {
-        val graph = MontageGraph(5_000, 5_000, audioTrack = MontageGraph.AudioTrack("custom", 1f, 1_000_000))
+        val graph = MontageGraph(5_000, 5_000, clips = listOf(MontageGraph.Clip("clip", 0, 5_000, 5_000, MontageGraph.ShotRole.ACTION, MontageGraph.Transition.HARD_CUT, MontageGraph.Motion.HOLD, 1f, 0)), audioTrack = MontageGraph.AudioTrack("custom", 1f, 1_000_000))
         assertEquals(AudioExportPlan.loop(3_000_000, 5_000_000, 1_000_000),
             AudioExportPlan.forGraph(3_000_000, graph))
     }
@@ -16,7 +16,7 @@ class CustomAudioTest {
         val output = java.io.File("preserved-custom-output.mp4")
         try {
             MediaCodecSpeedRampRenderer.Request(masterFile = java.io.File("source.mp4"),
-                graph = MontageGraph(5_000, 5_000, audioTrack = MontageGraph.AudioTrack("custom", 1f, 1_000_000)),
+                graph = MontageGraph(5_000, 5_000, clips = listOf(MontageGraph.Clip("clip", 0, 5_000, 5_000, MontageGraph.ShotRole.ACTION, MontageGraph.Transition.HARD_CUT, MontageGraph.Motion.HOLD, 1f, 0)), audioTrack = MontageGraph.AudioTrack("custom", 1f, 1_000_000)),
                 outputFile = output, width = 720, height = 1280, bitrate = 5_000_000,
                 outputWindow = MediaCodecSpeedRampRenderer.OutputWindow(1_000_000, 2_000_000))
             fail("A partial export cannot restart custom music at its selected offset")

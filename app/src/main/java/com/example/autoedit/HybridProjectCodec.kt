@@ -376,7 +376,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
                 val clip = HybridClip(string(), string(), span(), sourceMap(format), clip())
                 when (format) {
                     1 -> clip
-                    2, 3, 4, 5, 6 -> clip.copy(originalFrameOffset = input.readInt())
+                    2, 3, 4, 5, 6, 7 -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -387,7 +387,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(locked.distinct().size == locked.size)
             val resetsSources = when (format) {
                 1, 2 -> false
-                3, 4, 5, 6 -> input.readBoolean()
+                3, 4, 5, 6, 7 -> input.readBoolean()
                 else -> error("Unsupported hybrid format")
             }
             val visuals = if (format >= 4) visuals() else ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false)
