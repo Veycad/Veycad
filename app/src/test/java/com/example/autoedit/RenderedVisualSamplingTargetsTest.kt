@@ -13,7 +13,7 @@ class RenderedVisualSamplingTargetsTest {
         val rawTimes = List(15) { it * 73_000L }
         for (fps in listOf(30, 60)) {
             val plan = HighQualityFramePlan.build(graph, fps)
-            val targets = RenderedVisualSampler.samplingTargets(graph, plan, 73_000L)
+            val targets = RenderedVisualSampler.samplingTargets(graph, 73_000L, plan = plan)
             assertTrue("fps=$fps", targets.containsAll(rawTimes))
             assertTrue(targets.containsAll(RenderQaSampling.targets(graph, plan, 73_000L)))
             assertEquals(targets.distinct().sorted(), targets)
@@ -50,8 +50,7 @@ class RenderedVisualSamplingTargetsTest {
         assertAnchorsRetained(graph, listOf(633_333L, 650_000L, 666_667L,
             1_234_567L, 1_290_123L, 1_345_679L) + tailTimes)
         for (fps in listOf(30, 60)) {
-            val targets = RenderedVisualSampler.samplingTargets(graph,
-                HighQualityFramePlan.build(graph, fps), 100_000L)
+            val targets = RenderedVisualSampler.samplingTargets(graph, 100_000L, plan = HighQualityFramePlan.build(graph, fps))
             assertFalse(targets.contains(21_166_667L))
         }
     }
@@ -85,7 +84,7 @@ class RenderedVisualSamplingTargetsTest {
         val cuts = listOf(1_500_000L, 5_500_000L, 9_500_000L, 13_500_000L)
         for (fps in listOf(30, 60)) {
             val plan = HighQualityFramePlan.build(graph, fps)
-            val targets = RenderedVisualSampler.samplingTargets(graph, plan, 100_000L)
+            val targets = RenderedVisualSampler.samplingTargets(graph, 100_000L, plan = plan)
             val offsets = if (fps == 30) listOf(-33_333L, 0L, 33_333L, 66_667L, 100_000L, 133_333L)
                 else listOf(-16_667L, 0L, 16_667L, 33_333L, 50_000L, 66_667L, 83_333L, 100_000L, 116_667L)
             for (cut in cuts) assertTrue("fps=$fps cut=$cut", targets.containsAll(offsets.map { cut + it }))
@@ -96,11 +95,11 @@ class RenderedVisualSamplingTargetsTest {
             // would incorrectly bring them back through canonical selection.
             val excluded = if (fps == 30) 1_533_333L else 1_516_667L
             val supplied = plan.copy(frames = plan.frames.filter { it.outputTimeUs != excluded })
-            assertFalse(RenderedVisualSampler.samplingTargets(graph, supplied, 100_000L).contains(excluded))
+            assertFalse(RenderedVisualSampler.samplingTargets(graph, 100_000L, plan = supplied).contains(excluded))
             assertSame(audio, graph.audioTrack)
             assertEquals(1_234_567L, graph.audioTrack!!.sourceStartUs)
             assertEquals(1.4f, graph.audioTrack!!.gain, 0f)
-            assertEquals(targets, RenderedVisualSampler.samplingTargets(graph.copy(audioTrack = null), plan, 100_000L))
+            assertEquals(targets, RenderedVisualSampler.samplingTargets(graph.copy(audioTrack = null), 100_000L, plan = plan))
             assertEquals(plan, HighQualityFramePlan.build(graph.copy(audioTrack = audio.copy(sourceStartUs = 0)), fps))
         }
     }
@@ -108,8 +107,7 @@ class RenderedVisualSamplingTargetsTest {
     private fun assertAnchorsRetained(graph: MontageGraph, authoredTimes: List<Long>) {
         val raw = RenderedVisualSampler.samplingTargets(graph, 100_000L)
         for (fps in listOf(30, 60)) {
-            val targets = RenderedVisualSampler.samplingTargets(graph,
-                HighQualityFramePlan.build(graph, fps), 100_000L)
+            val targets = RenderedVisualSampler.samplingTargets(graph, 100_000L, plan = HighQualityFramePlan.build(graph, fps))
             assertTrue("authored anchors fps=$fps", targets.containsAll(authoredTimes))
             assertTrue("raw anchors fps=$fps", targets.containsAll(raw))
         }
