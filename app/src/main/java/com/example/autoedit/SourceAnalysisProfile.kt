@@ -40,6 +40,7 @@ internal enum class SourceAnalysisProfile(val cacheToken: String, val requestsCo
                 throw IllegalArgumentException("Gallery requires GallerySourceAnalyzer, not editorial semantic analysis")
             MontageStyleCatalog.Recipe.FEAR_STROBE -> EDITORIAL_WITH_CORRESPONDENCE
             MontageStyleCatalog.Recipe.SIGMA,
+            MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
             MontageStyleCatalog.Recipe.HEARTBEAT,
             MontageStyleCatalog.Recipe.DUALITY_LOOP -> EDITORIAL_SEMANTICS
         }

@@ -68,6 +68,7 @@ object MediaCodecSpeedRampRenderer {
         ),
         val onPassesExecuted: ((Map<RenderPassPlanner.PassKind, Int>) -> Unit)? = null,
         val checkCancelled: () -> Unit = {},
+        val audioStartUs: Long = graph.audioTrack?.sourceStartUs ?: 0L,
         val textProject: TextEditProject? = null,
         val onFrameProgress: ((Int) -> Unit)? = null,
         sourceFiles: List<File>? = null,
@@ -229,7 +230,8 @@ object MediaCodecSpeedRampRenderer {
                 videoOnlyFile,
                 request.outputFile,
                 request.outputWindow?.durationUs ?: request.audioDurationUs,
-                request.checkCancelled
+                request.checkCancelled,
+                startUs = request.audioStartUs
             )
             videoOnlyFile.delete()
         } else if (request.audioResourceId != 0 && request.context != null) {
@@ -592,7 +594,8 @@ object MediaCodecSpeedRampRenderer {
         private val sigmaProfile: Boolean = false,
         private val sourceCrops: List<SourceFraming.Crop> = listOf(SourceFraming.Crop(1f, 1f)),
         private val sourceAttachments: List<SourceAttachments> = emptyList(),
-        private val textProject: TextEditProject? = null,
+        private val audioStartUs: Long = graph.audioTrack?.sourceStartUs ?: 0L,
+        val textProject: TextEditProject? = null,
         private val onFrameProgress: ((Int) -> Unit)? = null,
         private val finishingText: Boolean = false
     ) {

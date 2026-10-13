@@ -15,7 +15,8 @@ data class AudioBeatMap(
     val durationSamples: Long,
     val estimatedTempoBpm: Float?,
     val beats: List<Beat>,
-    val onsets: List<Onset>
+    val onsets: List<Onset>,
+    val drops: List<Drop> = emptyList()
 ) {
     init {
         require(sampleRate > 0 && durationSamples >= 0L)
@@ -23,9 +24,16 @@ data class AudioBeatMap(
         require(onsets.zipWithNext().all { (left, right) -> right.sampleIndex > left.sampleIndex })
         require(beats.all { it.sampleIndex in 0 until max(1L, durationSamples) })
         require(onsets.all { it.sampleIndex in 0 until max(1L, durationSamples) })
+        require(drops.zipWithNext().all { (left, right) -> right.sampleIndex > left.sampleIndex })
+        require(drops.all { it.sampleIndex in 0 until max(1L, durationSamples) })
     }
 
     enum class FrequencyBand { LOW, MID, HIGH, BROADBAND }
+
+    /** Heuristic sustained bass/energy entrance, not a guaranteed semantic chorus label. */
+    data class Drop(val sampleIndex: Long, val strength: Float) {
+        init { require(sampleIndex >= 0L && strength in 0f..1f) }
+    }
 
     data class Beat(
         val sampleIndex: Long,
@@ -69,6 +77,8 @@ data class AudioBeatMap(
             repeat(beats, { it.sampleIndex }) { event, sample -> event.copy(sampleIndex = sample) }
                 .distinctBy { it.sampleIndex },
             repeat(onsets, { it.sampleIndex }) { event, sample -> event.copy(sampleIndex = sample) }
+                .distinctBy { it.sampleIndex },
+            repeat(drops, { it.sampleIndex }) { event, sample -> event.copy(sampleIndex = sample) }
                 .distinctBy { it.sampleIndex }
         )
     }
@@ -97,12 +107,36 @@ object AudioBeatMapAnalyzer {
         }
     }
 
-    fun analyze(monoPcm: FloatArray, sampleRate: Int, config: Config = Config()): AudioBeatMap {
+    /** A short selected tail repeats in export; measure that same waveform for enough beat intervals. */
+    fun analyzeLoopingFragment(monoPcm: FloatArray, sampleRate: Int, config: Config = Config(),
+        checkCancelled: () -> Unit = {}): AudioBeatMap {
+        require(sampleRate > 0)
+        if (monoPcm.isEmpty() || monoPcm.size.toLong() >= sampleRate * 8L)
+            return analyze(monoPcm, sampleRate, config, checkCancelled)
+        val repeats = ((sampleRate * 8L + monoPcm.size - 1) / monoPcm.size).toInt()
+        val repeated = FloatArray(Math.multiplyExact(monoPcm.size, repeats))
+        repeat(repeats) { index ->
+            checkCancelled()
+            monoPcm.copyInto(repeated, index * monoPcm.size)
+        }
+        val measured = analyze(repeated, sampleRate, config, checkCancelled)
+        // Repeated decay tails can produce tiny local flux peaks. They must not pull the
+        // beat grid away from the actual attacks when selecting the nearest onset.
+        val attacks = measured.onsets.filter { it.strength >= .08f }
+        val period = estimateBeatPeriod(attacks, sampleRate, config)
+        return measured.copy(onsets = attacks,
+            estimatedTempoBpm = period?.let { 60f * sampleRate / it },
+            beats = period?.let { buildBeatGrid(attacks, it, sampleRate, repeated.size.toLong()) }.orEmpty())
+    }
+
+    fun analyze(monoPcm: FloatArray, sampleRate: Int, config: Config = Config(),
+        checkCancelled: () -> Unit = {}): AudioBeatMap {
+        checkCancelled()
         require(sampleRate > 0)
         require(monoPcm.all { it.isFinite() })
         if (monoPcm.isEmpty()) return AudioBeatMap(sampleRate, 0L, null, emptyList(), emptyList())
 
-        val frames = spectra(monoPcm, sampleRate, config)
+        val frames = spectra(monoPcm, sampleRate, config, checkCancelled)
         val onsetFrames = pickOnsets(frames, sampleRate, config)
         val onsets = normalizeOnsets(onsetFrames, frames, monoPcm.size.toLong())
         val periodSamples = estimateBeatPeriod(onsets, sampleRate, config)
@@ -115,7 +149,8 @@ object AudioBeatMapAnalyzer {
             durationSamples = monoPcm.size.toLong(),
             estimatedTempoBpm = periodSamples?.let { 60f * sampleRate / it },
             beats = beats,
-            onsets = onsets
+            onsets = onsets,
+            drops = detectDrops(frames, onsetFrames, sampleRate, config)
         )
     }
 
@@ -124,7 +159,9 @@ object AudioBeatMapAnalyzer {
         val total: Float,
         val low: Float,
         val mid: Float,
-        val high: Float
+        val high: Float,
+        val energy: Double,
+        val bassEnergy: Double
     ) {
         fun dominantBand(): AudioBeatMap.FrequencyBand {
             val maximum = max(low, max(mid, high))
@@ -139,7 +176,8 @@ object AudioBeatMapAnalyzer {
         }
     }
 
-    private fun spectra(pcm: FloatArray, sampleRate: Int, config: Config): List<FluxFrame> {
+    private fun spectra(pcm: FloatArray, sampleRate: Int, config: Config,
+        checkCancelled: () -> Unit): List<FluxFrame> {
         val frameCount = if (pcm.size <= config.frameSize) 1
         else 1 + (pcm.size - config.frameSize + config.hopSize - 1) / config.hopSize
         val previous = FloatArray(config.frameSize / 2 + 1)
@@ -148,6 +186,7 @@ object AudioBeatMapAnalyzer {
         val imaginary = DoubleArray(config.frameSize)
 
         repeat(frameCount) { frameIndex ->
+            if (frameIndex % 64 == 0) checkCancelled()
             val start = frameIndex * config.hopSize
             for (index in 0 until config.frameSize) {
                 val window = .5 - .5 * cos(2.0 * PI * index / (config.frameSize - 1))
@@ -159,11 +198,16 @@ object AudioBeatMapAnalyzer {
             var low = 0f
             var mid = 0f
             var high = 0f
+            var energy = 0.0
+            var bassEnergy = 0.0
             for (bin in previous.indices) {
-                val magnitude = ln(1.0 + sqrt(real[bin] * real[bin] + imaginary[bin] * imaginary[bin])).toFloat()
+                val power = real[bin] * real[bin] + imaginary[bin] * imaginary[bin]
+                val magnitude = ln(1.0 + sqrt(power)).toFloat()
                 val positiveDelta = max(0f, magnitude - previous[bin])
                 previous[bin] = magnitude
                 val frequency = bin.toFloat() * sampleRate / config.frameSize
+                energy += power
+                if (frequency in 35f..250f) bassEnergy += power
                 when {
                     frequency < 250f -> low += positiveDelta
                     frequency < 2_500f -> mid += positiveDelta
@@ -175,8 +219,46 @@ object AudioBeatMapAnalyzer {
                 total = low + mid + high,
                 low = low,
                 mid = mid,
-                high = high
+                high = high,
+                energy = energy,
+                bassEnergy = bassEnergy
             )
+        }
+        return result
+    }
+
+    private fun detectDrops(frames: List<FluxFrame>, onsets: List<Int>, sampleRate: Int,
+        config: Config): List<AudioBeatMap.Drop> {
+        // Compare sustained energy, not one-frame flux: ordinary periodic kicks should not
+        // become drops. This remains a heuristic for bass entrances in electronic music.
+        val window = max(1, sampleRate / config.hopSize)
+        if (frames.size < window * 3) return emptyList()
+        val energy = DoubleArray(frames.size + 1)
+        val bass = DoubleArray(frames.size + 1)
+        frames.forEachIndexed { index, frame ->
+            energy[index + 1] = energy[index] + frame.energy
+            bass[index + 1] = bass[index] + frame.bassEnergy
+        }
+        fun average(prefix: DoubleArray, from: Int, to: Int): Double =
+            (prefix[to] - prefix[from]) / (to - from)
+        val candidates = onsets.mapNotNull { index ->
+            val before = index - window * 2
+            val after = index + window
+            if (before < 0 || after > frames.size) return@mapNotNull null
+            val previous = average(energy, before, index).coerceAtLeast(1e-6)
+            val next = average(energy, index, after)
+            val previousBass = average(bass, before, index).coerceAtLeast(1e-6)
+            val nextBass = average(bass, index, after)
+            if (next < 1.0 || next < previous * 2.5 || nextBass < previousBass * 3.0 ||
+                nextBass < next * .25 || frames[index].bassEnergy < previousBass * 3.0)
+                return@mapNotNull null
+            AudioBeatMap.Drop(frames[index].centerSample,
+                ((nextBass / previousBass - 3.0) / 10.0).toFloat().coerceIn(.3f, 1f))
+        }
+        val result = ArrayList<AudioBeatMap.Drop>()
+        for (drop in candidates) {
+            if (result.lastOrNull()?.let { drop.sampleIndex - it.sampleIndex < sampleRate * 2L } == true) continue
+            result += drop
         }
         return result
     }

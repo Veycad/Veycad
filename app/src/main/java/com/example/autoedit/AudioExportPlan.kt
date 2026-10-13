@@ -34,12 +34,12 @@ object AudioExportPlan {
 
     private const val MAX_WINDOW_SEGMENTS = 100_000L
 
-    fun loop(trackDurationUs: Long, outputDurationUs: Long): List<Segment> {
-        require(trackDurationUs > 0 && outputDurationUs > 0)
+    fun loop(trackDurationUs: Long, outputDurationUs: Long, sourceStartUs: Long = 0L): List<Segment> {
+        require(trackDurationUs > 0 && outputDurationUs > 0 && sourceStartUs in 0 until trackDurationUs)
         val result = mutableListOf<Segment>(); var output = 0L
         while (output < outputDurationUs) {
-            val size = minOf(trackDurationUs, outputDurationUs - output)
-            result += Segment(0L, size, output); output += size
+            val size = minOf(trackDurationUs - sourceStartUs, outputDurationUs - output)
+            result += Segment(sourceStartUs, sourceStartUs + size, output); output += size
         }
         return result
     }

@@ -32,7 +32,8 @@ class StylePickerSelectionTest {
             listOf(
                 MontageStyleCatalog.heartbeat,
                 MontageStyleCatalog.fearStrobe,
-                MontageStyleCatalog.dualityLoop
+                MontageStyleCatalog.dualityLoop,
+                MontageStyleCatalog.customMusic
             ),
             available
         )
@@ -51,7 +52,8 @@ class StylePickerSelectionTest {
         val nonFear = MontageStyleCatalog.available.filterNot { it == MontageStyleCatalog.fearStrobe }
         assertTrue(nonFear.all { it.recipe != MontageStyleCatalog.Recipe.FEAR_STROBE })
         assertTrue(nonFear.all {
-            BuiltInMusicCatalog.trackForStyle(it.id).id != FearStrobeProfile.AUTHOR_TRACK_ID
+            it == MontageStyleCatalog.customMusic ||
+                BuiltInMusicCatalog.trackForStyle(it.id).id != FearStrobeProfile.AUTHOR_TRACK_ID
         })
 
         val sigmaGraph = graph(ReferenceMontageProfile.ID)

@@ -88,11 +88,12 @@ class StylePickerScreenTest {
         ui.awaitDisplayed(R.id.directorContent)
     }
 
-    @Test fun all_available_styles_apply_their_own_source_requirements_and_bundled_music() {
+    @Test fun all_available_styles_apply_their_own_source_and_music_requirements() {
         ui.launch()
         val choices = listOf(Triple("FEAR", "Добавить видео", "122 BPM"),
             Triple("DUALITY", "Добавить 2 видео", "108 BPM"),
-            Triple("Heartbeat", "Добавить видео", "120 BPM"))
+            Triple("Heartbeat", "Добавить видео", "120 BPM"),
+            Triple("Под свою музыку", "Добавить видео", "Выберите трек"))
         for ((title, importLabel, tempo) in choices) {
             ui.selectStyle(title)
             ui.awaitText(R.id.musicSelection, tempo)

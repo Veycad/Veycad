@@ -2,7 +2,7 @@ package com.veycad.app
 
 /** Product styles are montage recipes, not colour filters or director alternatives. */
 internal object MontageStyleCatalog {
-    enum class Recipe { SIGMA, HEARTBEAT, FEAR_STROBE, DUALITY_LOOP, GALLERY_MONTAGE }
+    enum class Recipe { SIGMA, HEARTBEAT, FEAR_STROBE, DUALITY_LOOP, GALLERY_MONTAGE, CUSTOM_MUSIC }
 
     data class Style(val id: String, val title: String, val description: String,
         val directorStyle: EventMatchingDirector.Style?, val recipe: Recipe?, val sourceCount: Int = 1) {
@@ -36,8 +36,9 @@ internal object MontageStyleCatalog {
         Style("upcoming_rhythm", "Next Rhythm", "В разработке · следующий вариант", null, null),
         Style("upcoming_portrait", "Next Portrait", "В разработке · следующий вариант", null, null)
     )
+    val customMusic = Style("custom_music", "Под свою музыку", "Ваш трек · склейки по ритму · музыкальные акценты", EventMatchingDirector.Style.DYNAMIC, Recipe.CUSTOM_MUSIC)
     val all = (if (BuildConfig.GALLERY_MVP) listOf(galleryMontage) else emptyList()) +
-        listOf(sigma, heartbeat, fearStrobe, dualityLoop, upcoming) + comingSoon
+        listOf(sigma, heartbeat, fearStrobe, dualityLoop, customMusic, upcoming) + comingSoon
     val available = all.filter { it.available }
     val minimumStylesForScrollablePicker = 8
     val isScrollableCatalog: Boolean

@@ -107,6 +107,17 @@ android {
     }
     testBuildType = providers.gradleProperty("deviceTestBuildType").orNull ?: "uiTest"
 
+    // Saved-MP4 diagnostics are opt-in and absent from the ordinary UI test APK/inventory.
+    if (providers.gradleProperty("customMusicTargeted").orNull == "true") {
+        sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicDiagnostic/java"
+    }
+    // Remote diagnostic only: prebuilt JNI never enters an application source set.
+    if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
+        sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicSoftwareDiagnostic/kotlin"
+        // The remote runner populates this directory before Gradle; Android SourceSet accepts a File.
+        sourceSets.getByName("androidTest").jniLibs.srcDir(layout.buildDirectory.dir("customMusicSoftwareDiagnostic/jniLibs").get().asFile)
+    }
+
     buildFeatures {
         buildConfig = true
     }
@@ -150,6 +161,13 @@ android {
 }
 
 androidComponents {
+    if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
+        onVariants(selector().withBuildType("uiTest")) { variant ->
+            // Keep the reviewed binary byte-for-byte in the diagnostic test APK.
+            checkNotNull(variant.androidTest) { "Software audio diagnostic requires the uiTest AndroidTest variant" }
+                .packaging.jniLibs.keepDebugSymbols.add("**/libsoftware_aac_probe.so")
+        }
+    }
     beforeVariants(selector().all()) { variant ->
         (variant as com.android.build.api.variant.HasUnitTestBuilder).enableUnitTest =
             variant.buildType == "debug"

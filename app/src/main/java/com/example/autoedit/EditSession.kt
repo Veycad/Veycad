@@ -65,7 +65,7 @@ internal class EditSession internal constructor(
         val operationDetail: String? = null
     )
 
-    data class Draft(val files: List<File>, val names: List<String>, val music: BuiltInMusicCatalog.Selection)
+    data class Draft(val files: List<File>, val names: List<String>, val music: BuiltInMusicCatalog.Selection?)
 
     /** Capture selection and rendering use the same owned worker and durable result publication. */
     fun prepareCapture(id: String, requestedTake: Int? = null, width: Int = 720, height: Int = 1_280,
@@ -162,7 +162,7 @@ internal class EditSession internal constructor(
                     GalleryImportPolicy.validate(inspected)
                     require(inspected.items.all { it.isBaselineInput }) { "Выберите MP4 H.264 без HDR" }
                 }
-                val music = BuiltInMusicCatalog.select(app, style.id)
+                val music = if (style.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC) null else BuiltInMusicCatalog.select(app, style.id)
                 synchronized(cancelLock) { check(!cancelled) { "Импорт отменён" }; publishing = true }
                 app.getSharedPreferences("source_draft", Context.MODE_PRIVATE).edit()
                     .putString("display_name", names[0])
@@ -200,7 +200,8 @@ internal class EditSession internal constructor(
         captureSessionId: String? = null,
         continuingCapturePreparation: Boolean = false,
         captureTakeOrdinal: Int? = null,
-        captureAutoRecommendation: Boolean = false
+        captureAutoRecommendation: Boolean = false,
+        musicStartUs: Long = 0L
     ) {
         renderResolved({ checkCancelled ->
             require(secondary == null || secondary.canonicalPath != source.canonicalPath)
@@ -280,6 +281,7 @@ internal class EditSession internal constructor(
                     context = app, sources = sources,
                     musicFile = music, outputFile = output, style = style.directorStyle,
                     recipe = requireNotNull(style.recipe),
+                    musicStartUs = musicStartUs,
                     width = width,
                     height = height,
                     bitrate = bitrate,
