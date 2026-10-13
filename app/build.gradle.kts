@@ -76,6 +76,7 @@ android {
         versionCode = 17
         versionName = "0.1.16"
         buildConfigField("boolean", "GALLERY_MVP", "false")
+        buildConfigField("String", "SOURCE_SHA", "\"${providers.gradleProperty("sourceSha").orElse("local").get()}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild.cmake {
             arguments += listOf("-DFETCHCONTENT_BASE_DIR=" + File(System.getProperty("user.home"), ".cache/veycad-speech/cmake").path.replace('\\','/'))
