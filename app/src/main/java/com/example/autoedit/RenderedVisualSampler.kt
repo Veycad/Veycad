@@ -85,7 +85,6 @@ internal object RenderedVisualSampler {
         decodedSourceTimes: Map<Long, Long> = emptyMap(),
         renderFps: Int = HighQualityFramePlan.DEFAULT_FPS,
         secondarySourceVisualMap: VisualEventMap? = null,
-        checkCancelled: () -> Unit = {},
         sourceFiles: List<File?> = listOf(sourceFile),
         checkCancelled: () -> Unit = {},
         sourceVisualMaps: List<VisualEventMap?> = listOf(sourceVisualMap, secondarySourceVisualMap),
