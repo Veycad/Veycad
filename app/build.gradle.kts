@@ -93,7 +93,7 @@ android {
         }
         create("integrated") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".integrated"
+            applicationIdSuffix = ".integrated2"
             versionNameSuffix = "-integrated"
             buildConfigField("boolean", "GALLERY_MVP", "true")
             matchingFallbacks += "debug"
