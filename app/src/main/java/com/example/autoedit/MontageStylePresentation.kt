@@ -9,7 +9,9 @@ internal object MontageStylePresentation {
         val sourceCount: Int,
         val minimumSourceDurationMs: Long?,
         val unavailableLabel: String? = null,
-        val customMusic: Boolean = false
+        val customMusic: Boolean = false,
+        val profileName: String = title,
+        val tags: List<String> = emptyList()
     ) {
         val selectorLabel: String get() = "$symbol   $title\n$subtitle"
         val addSourceLabel: String get() = when (sourceCount) {
@@ -57,17 +59,31 @@ internal object MontageStylePresentation {
         orderedSources.take(style.sourceCount)
 
     fun forStyle(style: MontageStyleCatalog.Style): Copy {
-        val (symbol, subtitle) = when (style.recipe) {
-            MontageStyleCatalog.Recipe.SIGMA -> "🔒" to style.unavailableLabel
-            MontageStyleCatalog.Recipe.HEARTBEAT -> "♥" to "Пульс · повтор фразы · чёрный финал"
-            MontageStyleCatalog.Recipe.FEAR_STROBE -> "⚡" to "Движение · склейки · строб-акценты"
-            MontageStyleCatalog.Recipe.DUALITY_LOOP -> "↔" to "Две связанные сцены · перекличка"
-            MontageStyleCatalog.Recipe.CUSTOM_MUSIC -> "♫" to "Ваш трек · склейки по ритму"
-            MontageStyleCatalog.Recipe.GALLERY_MONTAGE -> "▦" to style.description
-            null -> "○" to style.description
+        val tags = when (style.recipe) {
+            MontageStyleCatalog.Recipe.HEARTBEAT -> listOf("Ритмичный", "Эхо", "Повторы")
+            MontageStyleCatalog.Recipe.FEAR_STROBE -> listOf("Быстрые склейки", "Строб", "Экшен")
+            MontageStyleCatalog.Recipe.DUALITY_LOOP -> listOf("Спокойное начало", "Контраст", "2 видео")
+            else -> emptyList()
         }
+        val title = when (style.recipe) {
+            MontageStyleCatalog.Recipe.HEARTBEAT -> "Пульс под музыку"
+            MontageStyleCatalog.Recipe.FEAR_STROBE -> "Динамичный бит"
+            MontageStyleCatalog.Recipe.DUALITY_LOOP -> "Диалог двух сцен"
+            else -> style.title
+        }
+        val symbol = when (style.recipe) {
+            MontageStyleCatalog.Recipe.SIGMA -> "🔒"
+            MontageStyleCatalog.Recipe.HEARTBEAT -> "♥"
+            MontageStyleCatalog.Recipe.FEAR_STROBE -> "⚡"
+            MontageStyleCatalog.Recipe.DUALITY_LOOP -> "↔"
+            MontageStyleCatalog.Recipe.CUSTOM_MUSIC -> "♫"
+            MontageStyleCatalog.Recipe.GALLERY_MONTAGE -> "▦"
+            null -> "○"
+        }
+        val subtitle = if (style.recipe == MontageStyleCatalog.Recipe.SIGMA) style.unavailableLabel
+            else tags.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: style.description
         return Copy(
-            symbol, style.title, subtitle, style.sourceCount,
+            symbol, title, subtitle, style.sourceCount,
             minimumSourceDurationMs = when {
                 !style.available -> null
                 style.recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP ->
@@ -75,7 +91,9 @@ internal object MontageStylePresentation {
                 else -> EditDurationPolicy.MINIMUM_MS
             },
             unavailableLabel = style.unavailableLabel.takeIf { !style.available },
-            customMusic = style.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC
+            customMusic = style.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
+            profileName = style.title,
+            tags = tags
         )
     }
 }
