@@ -493,6 +493,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.newEditButton).isEnabled = ready
         selectVideoButton.isEnabled = ready
         findViewById<Button>(R.id.selectStyleButton).isEnabled = ready
+        findViewById<View>(R.id.allStylesButton).isEnabled = ready
+        findViewById<View>(R.id.defaultStyleSetting).isEnabled = ready
         val sourcesReady = if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
             selectedSourceFiles.size in 1..20 && selectedSourceFiles.all(File::isFile)
         else sourceFile?.isFile == true && (montageStyle.sourceCount == 1 || secondarySourceFile?.isFile == true)
