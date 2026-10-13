@@ -81,6 +81,7 @@ internal object MontageStylePresentation {
             null -> "○"
         }
         val subtitle = if (style.recipe == MontageStyleCatalog.Recipe.SIGMA) style.unavailableLabel
+            else if (style.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC) "Ваш трек · склейки по ритму"
             else tags.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: style.description
         return Copy(
             symbol, title, subtitle, style.sourceCount,
