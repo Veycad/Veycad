@@ -336,9 +336,11 @@ class HybridPreviewPreparationTest {
         assertFalse(foreignDisposed)
         assertEquals(1025, fixture.project.current.graph.frameAttachments.frames.size)
         assertEquals(.5f, plane[0], 0f)
-        val smallCurrent = fixture.project.current.copy(graph = fixture.project.current.graph.copy(
-            frameAttachments = FrameAttachmentTimeline(listOf(frames.first()))))
-        rejected("too large") { HybridPreviewPreparation.prepare(fixture.project.copy(current = smallCurrent),
+        val smallCurrent = fixture.project.current.copy(id = fixture.project.nextRevisionId,
+            parentId = fixture.project.original.id, graph = fixture.project.current.graph.copy(
+                frameAttachments = FrameAttachmentTimeline(listOf(frames.first()))))
+        val originalOnlyOversized = fixture.project.copy(current = smallCurrent, nextRevisionId = smallCurrent.id + 1)
+        rejected("too large") { HybridPreviewPreparation.prepare(originalOnlyOversized,
             fixture.export, fixture.store, budget) }
         assertEquals(1024L, budget.usedBytes)
         assertFalse(foreignDisposed)
