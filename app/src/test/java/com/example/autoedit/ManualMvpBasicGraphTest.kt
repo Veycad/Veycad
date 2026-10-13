@@ -17,7 +17,10 @@ class ManualMvpBasicGraphTest {
         for (fps in listOf(30, 60)) {
             val plan = HighQualityFramePlan.build(graph, fps)
             assertEquals(6 * fps, plan.frames.size)
-            assertEquals(listOf(0, 1, 0), plan.frames.map { it.sourceIndex }.distinctUntilChanged())
+            val frameSources = plan.frames.map { it.sourceIndex }
+            assertEquals(listOf(0, 1, 0), frameSources.filterIndexed { index, source ->
+                index == 0 || source != frameSources[index - 1]
+            })
             val flash = MontageEffectBindings.bind(graph, fps).single { it.id == "flash-B" }
             assertEquals(EffectAnchor.Boundary("B", 0, 100_000), flash.anchor)
         }
