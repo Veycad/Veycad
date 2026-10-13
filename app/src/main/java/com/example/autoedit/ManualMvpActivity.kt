@@ -57,7 +57,7 @@ class ManualMvpActivity : AppCompatActivity() {
         clipId = savedInstanceState?.getString("clip") ?: prefs.getString("clip", null)
         newProjectFps = savedInstanceState?.getInt("newProjectFps") ?: prefs.getInt("newProjectFps", 30)
 
-        val scroll = ScrollView(this).apply { fillViewport = true }
+        val scroll = ScrollView(this).apply { setFillViewport(true) }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(32))
