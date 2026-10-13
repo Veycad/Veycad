@@ -59,7 +59,7 @@ jobs:
           PY
           {
             echo "checkout_sha=$(git rev-parse HEAD)"
-            echo "pull_head_sha=${{ github.event.pull_request.head.sha }}"
+            echo "pull_head_sha=${{ github.event.pull_request.head.sha || github.sha }}"
             sha256sum manual-mvp-artifact/Veycad-manual-MVP-universal.apk
           } > manual-mvp-artifact/provenance.txt
       - name: Upload manual MVP APK
