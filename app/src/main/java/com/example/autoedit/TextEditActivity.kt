@@ -78,6 +78,8 @@ class TextEditActivity:AppCompatActivity() {
         root.addView(button("‹  Назад") { finish() })
         root.addView(label(getString(R.string.text_editor_title),26f))
         root.addView(label(getString(R.string.text_source_help)))
+        if (BuildConfig.GALLERY_MVP) root.addView(label("В ролике из галереи звучит музыка. " +
+            "Для автосубтитров выберите отдельно исходное видео с речью. Проверьте распознанный текст."))
         choose=button(getString(R.string.text_choose),R.id.textChooseButton) { picker.launch(arrayOf("video/*")) }
         root.addView(choose)
         val preview=FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }

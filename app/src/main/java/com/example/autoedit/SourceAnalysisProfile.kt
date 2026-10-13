@@ -36,6 +36,8 @@ internal enum class SourceAnalysisProfile(val cacheToken: String, val requestsCo
     companion object {
         /** Product requirements own this mapping; add capabilities before adding a new consumer. */
         fun requiredFor(recipe: MontageStyleCatalog.Recipe): SourceAnalysisProfile = when (recipe) {
+            MontageStyleCatalog.Recipe.GALLERY_MONTAGE ->
+                throw IllegalArgumentException("Gallery requires GallerySourceAnalyzer, not editorial semantic analysis")
             MontageStyleCatalog.Recipe.FEAR_STROBE -> EDITORIAL_WITH_CORRESPONDENCE
             MontageStyleCatalog.Recipe.SIGMA,
             MontageStyleCatalog.Recipe.HEARTBEAT,

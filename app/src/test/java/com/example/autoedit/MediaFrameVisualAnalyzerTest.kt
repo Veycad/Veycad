@@ -45,7 +45,7 @@ class MediaFrameVisualAnalyzerTest {
         val observations = listOf(MediaFrameVisualAnalyzer.observationForFrame(0, estimate, semantics())) +
             (1..3).map { MediaFrameVisualAnalyzer.observationForFrame(it * 250_000L, estimate, null) }
         val visual = VisualEventMap(2_000_000L, emptyList(), observations)
-        for (recipe in MontageStyleCatalog.Recipe.values()) {
+        for (recipe in MontageStyleCatalog.Recipe.entries.filter { it != MontageStyleCatalog.Recipe.GALLERY_MONTAGE }) {
             val maps = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) listOf(visual, visual) else listOf(visual)
             val rejection = try {
                 MaterialSuitability.checkHumanEvidence(recipe, maps)

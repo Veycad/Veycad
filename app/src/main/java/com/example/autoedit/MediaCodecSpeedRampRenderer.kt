@@ -41,9 +41,12 @@ object MediaCodecSpeedRampRenderer {
         val durationUs: Long get() = endUs - startUs
     }
 
-    data class Request(
-        val masterFile: File,
-        val secondaryFile: File? = null,
+    /** Finished MP4s retain origin-relative decoding and the legacy grade/post bypass. */
+    enum class TextBehavior { FINISHED_VIDEO, MONTAGE_OVERLAY }
+
+    class Request(
+        masterFile: File? = null,
+        secondaryFile: File? = null,
         val graph: MontageGraph,
         val outputFile: File,
         val width: Int,
@@ -66,8 +69,26 @@ object MediaCodecSpeedRampRenderer {
         val onPassesExecuted: ((Map<RenderPassPlanner.PassKind, Int>) -> Unit)? = null,
         val checkCancelled: () -> Unit = {},
         val textProject: TextEditProject? = null,
-        val onFrameProgress: ((Int) -> Unit)? = null
-    )
+        val onFrameProgress: ((Int) -> Unit)? = null,
+        sourceFiles: List<File>? = null,
+        val textBehavior: TextBehavior = TextBehavior.FINISHED_VIDEO
+    ) {
+        internal val finishingText: Boolean = textProject != null && textBehavior == TextBehavior.FINISHED_VIDEO
+        val sourceFiles: List<File> = java.util.Collections.unmodifiableList(ArrayList(
+            sourceFiles ?: listOfNotNull(requireNotNull(masterFile), secondaryFile)))
+        val masterFile: File get() = this.sourceFiles.first()
+        val secondaryFile: File? get() = this.sourceFiles.getOrNull(1)
+
+        init {
+            require(sourceFiles == null || (masterFile == null && secondaryFile == null)) {
+                "Supply the ordered source list or legacy files, not both"
+            }
+            require(this.sourceFiles.size in 1..GalleryImportPolicy.MAX_FILES)
+            require(graph.clips.all { it.sourceIndex in this.sourceFiles.indices }) {
+                "Montage references a video source that was not supplied"
+            }
+        }
+    }
 
     sealed interface Outcome {
         data class Saved(val file: File, val frameCount: Int) : Outcome
@@ -86,8 +107,7 @@ object MediaCodecSpeedRampRenderer {
     /** Synchronous by design; callers must use [renderAsync] or a background executor. */
     fun render(request: Request): Int {
         require(Build.VERSION.SDK_INT >= 26) { "MediaCodec GPU renderer requires Android 8+" }
-        require(request.masterFile.isFile)
-        val sourceFiles = listOfNotNull(request.masterFile, request.secondaryFile)
+        val sourceFiles = request.sourceFiles
         require(sourceFiles.all(File::isFile))
         require(request.graph.clips.all { it.sourceIndex in sourceFiles.indices }) {
             "Montage references a video source that was not supplied"
@@ -114,16 +134,19 @@ object MediaCodecSpeedRampRenderer {
                 FearStrobeProfile.appliesTo(request.graph),
                 request.graph.metadata.generator == DualityLoopProfile.ID,
                 ReferenceMontageProfile.appliesTo(request.graph),
-                sourceFiles.map { VideoDisplayOrientation.cropForFile(it, request.width, request.height) },
+                VideoDisplayOrientation.cropsForFiles(sourceFiles, request.width, request.height,
+                    request.checkCancelled),
                 sourceAttachments=request.graph.sourceAttachments,
-                textProject=request.textProject, onFrameProgress=request.onFrameProgress).also { glOwner = it }
+                textProject=request.textProject, onFrameProgress=request.onFrameProgress,
+                finishingText=request.finishingText).also { glOwner = it }
             val muxer = MediaMuxer(videoOnlyFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxerOwner = it }
             val muxerState = MuxerState()
             encoder.start()
-            decoders = DecoderSession(sourceFiles, gl.incomingDecodeSurface, gl.outgoingDecodeSurface, request.textProject != null)
+            decoders = DecoderSession(sourceFiles, gl.incomingDecodeSurface, gl.outgoingDecodeSurface,
+                request.checkCancelled, request.finishingText)
             request.context?.let { context ->
                 LocalDiagnostics.record(context, "video_decoder_pool", mapOf(
-                    "decoder_instances" to "2",
+                    "decoder_limit" to "2",
                     "source_files" to sourceFiles.size.toString(),
                     "clip_count" to request.graph.clips.size.toString(),
                     "session_reuse" to (sourceFiles.size == 1).toString()
@@ -387,54 +410,34 @@ object MediaCodecSpeedRampRenderer {
         }
     }
 
-    /** The renderer owns exactly two decoder/surface bindings for the whole export. Each new clip
-     * flushes and seeks an existing codec; transition and temporal paths borrow the second one. */
+    /** Two role-owned surface bindings. Sources are opened lazily and evicted before replacement. */
     private class DecoderSession(
         private val files: List<File>,
         private val incomingSurface: Surface,
         private val outgoingSurface: Surface,
+        checkCancelled: () -> Unit,
         private val normalizeTimestamps: Boolean = false
     ) {
-        private val sourceDurationsUs = files.map(::requestSourceDurationUs)
-        private var incomingIndex = 0
-        private var outgoingIndex = 0
-        var incoming = DecoderCursor(files[0], incomingSurface, normalizeTimestamps)
-            private set
-        var outgoing = try {
-            DecoderCursor(files[0], outgoingSurface, normalizeTimestamps)
-        } catch (error: Throwable) {
-            incoming.release()
-            throw error
+        private val sourceDurationsUs = files.map { file -> checkCancelled(); requestSourceDurationUs(file) }
+        private val slots = SourceDecoderSlots { index, role ->
+            require(index in files.indices)
+            DecoderCursor(files[index], if (role == DecoderRole.INCOMING) incomingSurface else outgoingSurface, normalizeTimestamps)
         }
-            private set
 
         fun sourceDurationUs(sourceIndex: Int): Long = sourceDurationsUs[sourceIndex]
 
-        fun selectIncoming(sourceIndex: Int): DecoderCursor {
-            if (sourceIndex != incomingIndex) {
-                incoming.release()
-                incoming = DecoderCursor(files[sourceIndex], incomingSurface, normalizeTimestamps)
-                incomingIndex = sourceIndex
-            }
-            return incoming
-        }
+        fun selectIncoming(sourceIndex: Int): DecoderCursor =
+            slots.acquire(sourceIndex, DecoderRole.INCOMING).decoder as DecoderCursor
 
-        fun selectOutgoing(sourceIndex: Int): DecoderCursor {
-            if (sourceIndex != outgoingIndex) {
-                outgoing.release()
-                outgoing = DecoderCursor(files[sourceIndex], outgoingSurface, normalizeTimestamps)
-                outgoingIndex = sourceIndex
-            }
-            return outgoing
-        }
+        fun selectOutgoing(sourceIndex: Int): DecoderCursor =
+            slots.acquire(sourceIndex, DecoderRole.OUTGOING).decoder as DecoderCursor
 
         fun release() {
-            runCatching { outgoing.release() }
-            runCatching { incoming.release() }
+            slots.releaseAll()
         }
     }
 
-    private class DecoderCursor(file: File, private val outputSurface: Surface, normalizeTimestamps: Boolean = false) {
+    private class DecoderCursor(file: File, private val outputSurface: Surface, normalizeTimestamps: Boolean = false) : AutoCloseable {
         private val extractor = MediaExtractor()
         private lateinit var decoder: MediaCodec
         private var released = false
@@ -525,6 +528,8 @@ object MediaCodecSpeedRampRenderer {
             return hasDecodedTexture
         }
 
+        override fun close() = release()
+
         fun release() {
             if (released) return
             released = true
@@ -588,7 +593,8 @@ object MediaCodecSpeedRampRenderer {
         private val sourceCrops: List<SourceFraming.Crop> = listOf(SourceFraming.Crop(1f, 1f)),
         private val sourceAttachments: List<SourceAttachments> = emptyList(),
         private val textProject: TextEditProject? = null,
-        private val onFrameProgress: ((Int) -> Unit)? = null
+        private val onFrameProgress: ((Int) -> Unit)? = null,
+        private val finishingText: Boolean = false
     ) {
         private var display: android.opengl.EGLDisplay = EGL14.EGL_NO_DISPLAY
         private var context: android.opengl.EGLContext = EGL14.EGL_NO_CONTEXT
@@ -791,7 +797,10 @@ object MediaCodecSpeedRampRenderer {
                 outgoingFrame != null,
                 outgoingFrame?.sourceTimeUs,
                 incomingInput.timestampUs(),
-                outgoingFrame?.let { secondarySamplerInput.timestampUs() }
+                outgoingFrame?.let { secondarySamplerInput.timestampUs() },
+                outgoingFrame?.let {
+                    if (debugTextureProbe && debugProbeIncomingOnBothUnits) incomingFrame.sourceIndex else it.sourceIndex
+                }
             )
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
@@ -834,7 +843,11 @@ object MediaCodecSpeedRampRenderer {
                 onFrameProgress?.invoke((incomingFrame.outputTimeUs * 100 / textProject.durationUs).toInt())
             }
             GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uUserText"), 6)
-            GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uTextOnly"), if(textProject != null) 1f else 0f)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uTextOnly"), if (finishingText) 1f else 0f)
+            // This quad follows the video's camera transform. Keep the legacy finishing
+            // mapping here; montage glyphs use a full-output quad after all video passes.
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uCompositeUserText"),
+                if (finishingText) 1f else 0f)
             val openingTitle = authoredTitle?.sampleAt?.invoke(incomingFrame.globalOutputTimeUs)
             GLES20.glUniform1f(
                 GLES20.glGetUniformLocation(program, "uOpeningTitle"),
@@ -965,7 +978,10 @@ object MediaCodecSpeedRampRenderer {
                 recordPass(RenderPassPlanner.PassKind.FOREGROUND_COMPOSITE)
             }
             sceneTarget?.let { renderPostPipeline(it, incomingFrame, blend, attachments) }
-                ?: recordPass(RenderPassPlanner.PassKind.ENCODER_SURFACE)
+                ?: run {
+                    if (textProject != null && !finishingText) drawDirectUserText()
+                    recordPass(RenderPassPlanner.PassKind.ENCODER_SURFACE)
+                }
             EGLExt.eglPresentationTimeANDROID(display, surface, incomingFrame.outputTimeUs * 1_000L)
             check(EGL14.eglSwapBuffers(display, surface)) { "Unable to submit GL frame" }
         }
@@ -1264,6 +1280,12 @@ object MediaCodecSpeedRampRenderer {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE3)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, depthTexture)
             GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uDepth"), 3)
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE6)
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, userTextTexture)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uUserText"), 6)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uCompositeUserText"),
+                if (textProject != null && !finishingText && output == null) 1f else 0f)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uMode"), mode)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uAmount"), amount)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uFlowConfidence"), flowConfidence)
@@ -1275,6 +1297,45 @@ object MediaCodecSpeedRampRenderer {
                 1f / input.height
             )
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        }
+
+        /** Covers the full encoder output, including pixels outside the transformed video quad. */
+        private fun drawDirectUserText() {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            GLES20.glViewport(0, 0, width, height)
+            // Retain the already rendered video: unlike drawPost, this draw must not clear it.
+            GLES20.glUseProgram(postProgram)
+            val position = GLES20.glGetAttribLocation(postProgram, "aPosition")
+            val tex = GLES20.glGetAttribLocation(postProgram, "aTexCoord")
+            positionBuffer.position(0)
+            texBuffer.position(0)
+            GLES20.glEnableVertexAttribArray(position)
+            GLES20.glVertexAttribPointer(position, 2, GLES20.GL_FLOAT, false, 0, positionBuffer)
+            GLES20.glEnableVertexAttribArray(tex)
+            GLES20.glVertexAttribPointer(tex, 2, GLES20.GL_FLOAT, false, 0, texBuffer)
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE6)
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, userTextTexture)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uUserText"), 6)
+            // All samplers reference the complete owned 2D texture in this standalone mode;
+            // no source FBO or framebuffer readback is needed to blend over the output.
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uInput"), 6)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uAuxiliary"), 6)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uFlow"), 6)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(postProgram, "uDepth"), 6)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uMode"), 6f)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(postProgram, "uCompositeUserText"), 0f)
+            GLES20.glBlendEquation(GLES20.GL_FUNC_ADD)
+            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+            GLES20.glEnable(GLES20.GL_BLEND)
+            try {
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+                recordPass(RenderPassPlanner.PassKind.FINAL_COMPOSITE)
+            } finally {
+                // The owned video/post pipeline renders with blending disabled.
+                GLES20.glDisable(GLES20.GL_BLEND)
+                GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ZERO)
+            }
         }
 
         private fun scaled(value: Int, scale: Float): Int = (value * scale).toInt().coerceAtLeast(1)
@@ -1336,14 +1397,20 @@ object MediaCodecSpeedRampRenderer {
     internal val POST_FRAGMENT_SHADER = """
         precision mediump float;
         varying vec2 vTexCoord;
-        uniform sampler2D uInput,uAuxiliary,uFlow,uDepth;
-        uniform float uMode,uAmount,uFlowConfidence,uDepthConfidence;
+        uniform sampler2D uInput,uAuxiliary,uFlow,uDepth,uUserText;
+        uniform float uMode,uAmount,uFlowConfidence,uDepthConfidence,uCompositeUserText;
         uniform vec2 uDirection,uTexel;
         vec3 screenBlend(vec3 base,vec3 glow){return 1.0-(1.0-base)*(1.0-glow);}
         void main(){
+            if(uMode>5.5){
+                // Standalone full-output overlay; fixed-function blending handles premultiplication.
+                gl_FragColor=texture2D(uUserText,vec2(vTexCoord.x,1.-vTexCoord.y));
+                return;
+            }
             vec4 source=texture2D(uInput,vTexCoord);
+            vec4 result;
             if(uMode<.5){
-                gl_FragColor=source;
+                result=source;
             }else if(uMode<1.5){
                 vec2 measured=texture2D(uFlow,vTexCoord).ra*2.0-1.0;
                 vec2 direction=normalize(mix(uDirection,measured,clamp(uFlowConfidence,0.,.72))+vec2(.0001,0.));
@@ -1355,11 +1422,11 @@ object MediaCodecSpeedRampRenderer {
                     texture2D(uInput,vTexCoord+stepUv)*.20+
                     texture2D(uInput,vTexCoord+stepUv*2.0)*.11+
                     texture2D(uInput,vTexCoord+stepUv*3.0)*.07;
-                gl_FragColor=blurred;
+                result=blurred;
             }else if(uMode<2.5){
                 float highlight=max(max(source.r,source.g),source.b);
                 float gate=smoothstep(.54,.91,highlight);
-                gl_FragColor=vec4(source.rgb*gate,1.0);
+                result=vec4(source.rgb*gate,1.0);
             }else if(uMode<3.5){
                 vec2 stepUv=uDirection*uTexel;
                 vec4 blurred=texture2D(uInput,vTexCoord-stepUv*4.0)*.05+
@@ -1369,10 +1436,10 @@ object MediaCodecSpeedRampRenderer {
                     texture2D(uInput,vTexCoord+stepUv)*.20+
                     texture2D(uInput,vTexCoord+stepUv*2.0)*.12+
                     texture2D(uInput,vTexCoord+stepUv*4.0)*.05;
-                gl_FragColor=blurred;
+                result=blurred;
             }else if(uMode<4.5){
                 vec3 glow=texture2D(uAuxiliary,vTexCoord).rgb*clamp(uAmount*2.2,0.,.72);
-                gl_FragColor=vec4(screenBlend(source.rgb,glow),source.a);
+                result=vec4(screenBlend(source.rgb,glow),source.a);
             }else{
                 float depth=texture2D(uDepth,vTexCoord).r;
                 vec2 direction=normalize(uDirection+vec2(.0001,0.));
@@ -1380,8 +1447,14 @@ object MediaCodecSpeedRampRenderer {
                 vec2 shifted=clamp(vTexCoord+direction*separation*.045,vec2(.002),vec2(.998));
                 vec4 parallax=texture2D(uInput,shifted);
                 float subject=smoothstep(.68,.22,depth)*clamp(uDepthConfidence,0.,1.);
-                gl_FragColor=mix(parallax,source,subject);
+                result=mix(parallax,source,subject);
             }
+            if(uCompositeUserText>.5){
+                vec4 text=texture2D(uUserText,vec2(vTexCoord.x,1.-vTexCoord.y));
+                // Same output coordinates and premultiplied Android bitmap as the direct path.
+                result.rgb=text.rgb+result.rgb*(1.-text.a);
+            }
+            gl_FragColor=result;
         }
     """.trimIndent()
     /** Both samplers are external OES textures backed directly by separate MediaCodec decoders.
@@ -1394,7 +1467,7 @@ object MediaCodecSpeedRampRenderer {
         uniform samplerExternalOES uIncoming;
         uniform samplerExternalOES uOutgoing;
         uniform sampler2D uMask,uDepth,uFlow,uOpeningTitleTexture,uUserText;
-        uniform float uTextOnly;
+        uniform float uTextOnly,uCompositeUserText;
         uniform highp mat4 uIncomingTexMatrix;
         uniform highp mat4 uOutgoingTexMatrix;
         uniform float uUseTransition,uIncomingAlpha,uOutgoingAlpha,uBlur,uBlackout,uOcclusion,uForegroundMode,uForegroundReentry,uOriginalBackgroundReveal,uOutlineStrength,uOpeningAccentPulse,uIncomingExposure,uOutgoingExposure;
@@ -1986,7 +2059,7 @@ object MediaCodecSpeedRampRenderer {
                 result.rgb=mix(result.rgb,vec3(.94),titleAlpha*uTitleBaseOpacity*uTitleOpacity);
             }
             result.rgb*=1.-uFinalFade;
-            if(uTextOnly>.5){
+            if(uCompositeUserText>.5){
                 vec4 text=texture2D(uUserText,vec2(vOutputTexCoord.x,1.-vOutputTexCoord.y));
                 // Android bitmaps contain premultiplied RGBA.
                 result.rgb=text.rgb+result.rgb*(1.-text.a);

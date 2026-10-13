@@ -92,7 +92,9 @@ object VeykadRenderInspector {
         val maskSourceTimeUs: Long? = null,
         val defocus: Float = 0f,
         val faceRegion: FrameAttachments.FaceRegion? = null,
-        val effectiveSourceSpeed: Float? = null
+        val effectiveSourceSpeed: Float? = null,
+        val sourceIndex: Int = 0,
+        val secondarySourceIndex: Int? = null
     )
 
     data class Summary(
@@ -129,7 +131,8 @@ object VeykadRenderInspector {
             dualDecoder: Boolean,
             secondarySourceTimeUs: Long? = null,
             decodedSourceTimeUs: Long? = null,
-            decodedSecondarySourceTimeUs: Long? = null
+            decodedSecondarySourceTimeUs: Long? = null,
+            secondarySourceIndex: Int? = null
         ) {
             val clip = graph.clips[frame.clipIndex]
             val speedTrack = graph.parameterTracks.firstOrNull {
@@ -146,6 +149,8 @@ object VeykadRenderInspector {
             frames += FrameEvidence(
                 outputTimeUs = frame.outputTimeUs,
                 sourceTimeUs = frame.sourceTimeUs,
+                sourceIndex = frame.sourceIndex,
+                secondarySourceIndex = secondarySourceIndex,
                 clipIndex = frame.clipIndex,
                 transition = frame.transitionIn,
                 dualDecoder = dualDecoder,
@@ -438,6 +443,32 @@ object VeykadRenderInspector {
         }
     }
 
+    /** Existing rendered-frame witness, kept separate from persisted project timing contracts. */
+    data class DecodedFrameProvenance(
+        val sourceIndex: Int,
+        val clipIndex: Int,
+        /** Authored source target identifies the held planned frame; decoded PTS remains separate. */
+        val sourceTimeUs: Long,
+        val decodedSourceTimeUs: Long,
+        val transition: MontageGraph.Transition
+    )
+
+    fun decodedFrameProvenance(artifacts: Artifacts?): Map<Long, DecodedFrameProvenance> {
+        if (artifacts == null) return emptyMap()
+        val frames = JSONObject(artifacts.report.readText()).getJSONArray("frames")
+        return buildMap {
+            for (index in 0 until frames.length()) {
+                val frame = frames.getJSONObject(index)
+                // Older reports retain their time-only compatibility path; identity is never guessed.
+                if (!frame.isNull("decoded_source_us") && frame.has("source_index")) {
+                    put(frame.getLong("output_us"), DecodedFrameProvenance(frame.getInt("source_index"),
+                        frame.getInt("clip"), frame.getLong("source_us"), frame.getLong("decoded_source_us"),
+                        MontageGraph.Transition.valueOf(frame.getString("transition"))))
+                }
+            }
+        }
+    }
+
     fun latest(context: Context, expectedMp4: File? = null): Artifacts? {
         val directory = File(context.filesDir, "render-inspector")
         val report = directory.listFiles()?.filter { it.extension == "json" }?.maxByOrNull { it.lastModified() } ?: return null
@@ -537,6 +568,8 @@ object VeykadRenderInspector {
         put("summary", summaryJson(summary))
         put("frames", JSONArray(evidence.map { frame -> JSONObject().apply {
             put("output_us", frame.outputTimeUs); put("source_us", frame.sourceTimeUs)
+            put("source_index", frame.sourceIndex)
+            put("secondary_source_index", frame.secondarySourceIndex ?: JSONObject.NULL)
             put("decoded_source_us", frame.decodedSourceTimeUs ?: JSONObject.NULL)
             put("mask_source_us", frame.maskSourceTimeUs ?: JSONObject.NULL)
             put("decoded_secondary_source_us", frame.decodedSecondarySourceTimeUs ?: JSONObject.NULL)
