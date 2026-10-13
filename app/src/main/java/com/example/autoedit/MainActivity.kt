@@ -89,7 +89,6 @@ class MainActivity : AppCompatActivity() {
                 montageStyle = MontageStyleCatalog.restore(capture.styleId)
                 getSharedPreferences("montage_style", MODE_PRIVATE).edit().putString("selected", montageStyle.id).apply()
                 showDirectorScreen()
-                customMusic.observe()
         updateStyleLabel()
                 refreshMusicForStyle()
                 val fullHd = settingsPreferences().getString(PREF_QUALITY, QUALITY_720) == QUALITY_1080
@@ -177,7 +176,6 @@ class MainActivity : AppCompatActivity() {
                 musicRequests.invalidate()
                 musicSelection = null
                 setCaptureMode(false)
-                customMusic.observe()
         updateStyleLabel()
             })
         findViewById<TextView>(R.id.appVersion).text =
@@ -185,8 +183,8 @@ class MainActivity : AppCompatActivity() {
         montageStyle = MontageStyleCatalog.restore(
             getSharedPreferences("montage_style", MODE_PRIVATE).getString("selected",
                 if (BuildConfig.GALLERY_MVP) MontageStyleCatalog.galleryMontage.id else null))
-        customMusic.observe()
         updateStyleLabel()
+        customMusic.observe()
         bindActions()
         captureMode = runCatching { CaptureMode.valueOf(savedInstanceState?.getString("capture_mode").orEmpty()) }
             .getOrDefault(CaptureMode.MUSIC)
@@ -446,7 +444,6 @@ class MainActivity : AppCompatActivity() {
             montageStyle = selected
             getSharedPreferences("montage_style", MODE_PRIVATE).edit()
                 .putString("selected", selected.id).apply()
-            customMusic.observe()
         updateStyleLabel()
             refreshMusicForStyle()
             if (fromSettings) updateSettingsValues()
@@ -573,7 +570,6 @@ class MainActivity : AppCompatActivity() {
             val styles = listOf(MontageStyleCatalog.fearStrobe, MontageStyleCatalog.heartbeat)
             AlertDialog.Builder(this).setTitle(R.string.capture_select_style).setItems(styles.map { it.title }.toTypedArray()) { _, index ->
                 montageStyle = styles[index]
-                customMusic.observe()
         updateStyleLabel()
                 refreshMusicForStyle()
                 openCapture()
