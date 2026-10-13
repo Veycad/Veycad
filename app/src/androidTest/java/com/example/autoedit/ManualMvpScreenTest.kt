@@ -36,8 +36,24 @@ class ManualMvpScreenTest {
         fixture.launch()
         fixture.click(R.id.manualMvpButton)
         onView(withText("Выбрать видео для базового монтажа")).perform(scrollTo(), click())
-        fixture.waitUntil("basic project created", 30_000) {
-            HybridProjectStore(fixture.context.filesDir).list().size == 1
+        try {
+            fixture.waitUntil("basic project created", 30_000) {
+                HybridProjectStore(fixture.context.filesDir).list().size == 1
+            }
+        } catch (failure: AssertionError) {
+            var visible = "Manual activity is not resumed"
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                currentManual()?.let { activity ->
+                    val labels = mutableListOf<String>()
+                    fun collect(view: View) {
+                        if (view is TextView && view.isShown) labels += view.text.toString()
+                        if (view is ViewGroup) repeat(view.childCount) { collect(view.getChildAt(it)) }
+                    }
+                    collect(activity.window.decorView)
+                    visible = labels.joinToString(" | ")
+                }
+            }
+            throw AssertionError("${failure.message}; visible manual screen: $visible", failure)
         }
         val store = HybridProjectStore(fixture.context.filesDir)
         val id = store.list().single().id
