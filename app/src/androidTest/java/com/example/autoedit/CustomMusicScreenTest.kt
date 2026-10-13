@@ -58,7 +58,7 @@ class CustomMusicScreenTest {
         intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(
             android.app.Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null))
         ui.click(R.id.importMusicButton)
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Heartbeat")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Пульс под музыку")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
         assertNull(CustomMusicStore(ui.context).restore())
     }

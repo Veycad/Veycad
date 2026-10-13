@@ -32,7 +32,7 @@ class StylePickerScreenTest {
         assertEquals(null, ui.context.getSharedPreferences("montage_style", Context.MODE_PRIVATE)
             .getString("selected", null))
         onView(withText("Отмена")).perform(click())
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Heartbeat")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Пульс под музыку")))
         assertEquals(null, ui.context.getSharedPreferences("montage_style", Context.MODE_PRIVATE)
             .getString("selected", null))
     }
@@ -43,7 +43,7 @@ class StylePickerScreenTest {
         ui.click(R.id.selectStyleButton)
         pickPending("DUALITY")
         pressBack()
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Heartbeat")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Пульс под музыку")))
         onView(withId(R.id.videoSelection)).check(matches(withText("portrait.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
     }
@@ -51,12 +51,12 @@ class StylePickerScreenTest {
     @Test fun apply_persists_the_chosen_style_and_recreation_restores_it() {
         ui.launch()
         ui.selectStyle("FEAR")
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("FEAR")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Динамичный бит")))
         assertEquals("fear_strobe", ui.context.getSharedPreferences("montage_style", Context.MODE_PRIVATE)
             .getString("selected", null))
         ui.recreate()
         ui.awaitDisplayed(R.id.directorContent)
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("FEAR")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Динамичный бит")))
         onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · от 15 секунд")))
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
     }
@@ -73,7 +73,7 @@ class StylePickerScreenTest {
             onView(row).check(matches(not(isSelected())))
         }
         onView(withText("Применить")).perform(click())
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Heartbeat")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Пульс под музыку")))
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
     }
 
@@ -95,9 +95,15 @@ class StylePickerScreenTest {
             Triple("Heartbeat", "Добавить видео", "120 BPM"),
             Triple("Под свою музыку", "Добавить видео", "Выберите трек"))
         for ((title, importLabel, tempo) in choices) {
+            val selectedTitle = when (title) {
+                "FEAR" -> "Динамичный бит"
+                "DUALITY" -> "Диалог двух сцен"
+                "Heartbeat" -> "Пульс под музыку"
+                else -> title
+            }
             ui.selectStyle(title)
             ui.awaitText(R.id.musicSelection, tempo)
-            onView(withId(R.id.selectStyleButton)).check(matches(withSubstring(title)))
+            onView(withId(R.id.selectStyleButton)).check(matches(withSubstring(selectedTitle)))
             onView(withId(R.id.selectVideoButton)).check(matches(withText(importLabel)))
             onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
         }
