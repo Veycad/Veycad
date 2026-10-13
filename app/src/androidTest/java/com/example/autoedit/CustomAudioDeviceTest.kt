@@ -141,7 +141,8 @@ class CustomAudioDeviceTest {
         val output = File(directory, "native-editor.mp4")
         val evidenceFile = File(directory, "native-editor-evidence.json")
         evidenceFile.delete() // A failed rerun must not leave a previous report beside a new MP4.
-        val result = VeycadAutomaticEditor.render(VeycadAutomaticEditor.Request(context, video,
+        val inspected = MediaSourceSet(listOf(MediaInputInspector().inspect("custom-source", video, video.name)))
+        val result = VeycadAutomaticEditor.render(VeycadAutomaticEditor.Request(context, inspected,
             musicFile = audio, outputFile = output, style = EventMatchingDirector.Style.DYNAMIC,
             recipe = MontageStyleCatalog.Recipe.CUSTOM_MUSIC, width = 160, height = 240,
             bitrate = 200_000, musicStartUs = 15_000_000))

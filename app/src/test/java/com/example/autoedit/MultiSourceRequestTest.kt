@@ -209,7 +209,8 @@ class MultiSourceRequestTest {
         assertEquals(1, actual.clipIndex)
         assertEquals(250_000L, actual.sourceTimeUs)
         assertEquals(800_000L, actual.outputTimeUs)
-        assertEquals(outgoing.globalOutputTimeUs, actual.globalOutputTimeUs)
+        // The held image retains the previous scene while project cues advance on the output clock.
+        assertEquals(800_000L, actual.globalOutputTimeUs)
         assertEquals(outgoing.transform, actual.transform)
         assertNotEquals(incoming.transform, actual.transform)
         assertEquals(outgoing.effects, actual.effects)
@@ -255,11 +256,13 @@ class MultiSourceRequestTest {
     // case is necessary to catch loss of refreshAllTransitions independently of sources.
     @Test fun manualRefreshUpdatesLaterClipWithAndWithoutProvenanceWhenSourceTimelinesAreAbsent() {
         val graph = boundaryGraph()
-        val plan = HighQualityFramePlan.build(graph).frames
+        val rawPlan = HighQualityFramePlan.build(graph).frames
         val stale = attachmentWitness(0, .1f)
         val decodedWitness = attachmentWitness(125_000, .6f)
-        val scheduled = plan.single { it.outputTimeUs == 400_000L }.copy(
+        // The first overlap slot holds the outgoing source; test a retained incoming slot.
+        val scheduled = rawPlan.single { it.outputTimeUs == 433_333L }.copy(
             transitionIn = MontageGraph.Transition.FOREGROUND_REENTRY, attachments = stale)
+        val plan = rawPlan.map { if (it.outputTimeUs == scheduled.outputTimeUs) scheduled else it }
         val timeline = FrameAttachmentTimeline(listOf(decodedWitness))
         val provenance = VeykadRenderInspector.DecodedFrameProvenance(7, 1,
             scheduled.sourceTimeUs, 125_000, scheduled.transitionIn)

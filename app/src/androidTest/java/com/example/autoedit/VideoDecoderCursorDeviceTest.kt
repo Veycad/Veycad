@@ -135,7 +135,8 @@ class VideoDecoderCursorDeviceTest {
                 var checks = 0
                 val cancelled = CancellationException("cancel initialization at $cancelAt")
                 assertSame(cancelled, assertThrows(CancellationException::class.java) {
-                    VideoDecoderCursor(file, display.inputSurface) { if (++checks == cancelAt) throw cancelled }
+                    VideoDecoderCursor(file, display.inputSurface,
+                        checkCancelled = { if (++checks == cancelAt) throw cancelled })
                 })
                 assertSurfaceReusable(file, display)
             }
