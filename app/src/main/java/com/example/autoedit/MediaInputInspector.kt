@@ -14,9 +14,17 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
     fun inspect(id: String, file: File, name: String): MediaSource =
         inspect(id, file, name, fingerprint = null, checkCancelled = checkCancelled)
 
+    /** Project imports require AVC/SDR, proven raw timing and encoded geometry from this inspection. */
+    fun inspectForProject(id: String, file: File, name: String): Pair<MediaSource, VideoSourceMetadata> =
+        inspectMetadata(id, file, name, fingerprint = null, checkCancelled = checkCancelled, forProject = true)
+
     /** Import can supply the SHA-256 accumulated while copying, avoiding a second file read. */
     internal fun inspect(id: String, file: File, name: String, fingerprint: String?,
-        checkCancelled: () -> Unit): MediaSource {
+        checkCancelled: () -> Unit): MediaSource =
+        inspectMetadata(id, file, name, fingerprint, checkCancelled, forProject = false).first
+
+    private fun inspectMetadata(id: String, file: File, name: String, fingerprint: String?,
+        checkCancelled: () -> Unit, forProject: Boolean): Pair<MediaSource, VideoSourceMetadata> {
         var cancellation: Throwable? = null
         val check = {
             try { checkCancelled() } catch (failure: Throwable) {
@@ -50,6 +58,17 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
             require(width > 0 && height > 0) { "Некорректные размеры видеодорожки" }
             val rotation = format.optionalInt(MediaFormat.KEY_ROTATION) ?: 0
             require(rotation in setOf(0, 90, 180, 270)) { "Некорректный поворот видеодорожки" }
+            val pixelAspectRatio = if (forProject) {
+                val sarWidth = format.optionalInt("sar-width")
+                val sarHeight = format.optionalInt("sar-height")
+                require((sarWidth == null) == (sarHeight == null)) { "Неполные данные SAR видеодорожки" }
+                if (sarWidth == null && sarHeight == null) 1f else {
+                    require(sarWidth != null && sarWidth > 0 && sarHeight != null && sarHeight > 0) {
+                        "Некорректный SAR видеодорожки"
+                    }
+                    sarWidth.toFloat() / sarHeight
+                }
+            } else 1f
             extractor.selectTrack(videoTrack)
             val samples = scanSamples(extractor, check)
             val durationUs = samples.durationUs(format)
@@ -59,9 +78,16 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
             val digest = fingerprint ?: hash(file, check)
             check()
             require(file.length() == initialSize) { "Файл изменился во время проверки" }
-            return MediaSource(id, file, name, durationUs, initialSize, rotation, width, height,
+            val source = MediaSource(id, file, name, durationUs, initialSize, rotation, width, height,
                 requireNotNull(format.getString(MediaFormat.KEY_MIME)), transfer, hasAudio, digest,
-                firstVideoPtsUs = samples.firstPtsUs, videoEndPtsUs = presentationBounds.endPtsUs, videoPresentationBounds = presentationBounds)
+                firstVideoPtsUs = samples.firstPtsUs, videoEndPtsUs = presentationBounds?.endPtsUs)
+            if (forProject) {
+                require(source.isBaselineInput) { "Для проекта пока поддерживается только AVC/SDR" }
+                require(source.firstVideoPtsUs != null && source.videoEndPtsUs != null) {
+                    "Границы времени этой видеодорожки пока не поддерживаются"
+                }
+            }
+            return source to VideoSourceMetadata.fromInspected(source, pixelAspectRatio)
         } catch (failure: Exception) {
             cancellation?.let { throw it }
             throw IllegalArgumentException("$name: ${failure.message ?: "не удалось проверить видео"}", failure)

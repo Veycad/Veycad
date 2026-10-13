@@ -209,7 +209,7 @@ internal class EditSession internal constructor(
                 sourceInspector.inspect("legacy-$index", file, file.name, checkCancelled)
             })
         }, music, style, width, height, bitrate, captureSessionId, continuingCapturePreparation,
-            captureTakeOrdinal, captureAutoRecommendation)
+            captureTakeOrdinal, captureAutoRecommendation, musicStartUs)
     }
 
     fun render(
@@ -252,7 +252,8 @@ internal class EditSession internal constructor(
         captureSessionId: String?,
         continuingCapturePreparation: Boolean,
         captureTakeOrdinal: Int?,
-        captureAutoRecommendation: Boolean
+        captureAutoRecommendation: Boolean,
+        musicStartUs: Long = 0L
     ) {
         require(captureSessionId == null || captureTakeOrdinal != null)
         if (state.value?.busy == true && !(continuingCapturePreparation && captureSessionId != null &&

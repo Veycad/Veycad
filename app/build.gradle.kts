@@ -84,6 +84,19 @@ android {
     }
 
     buildTypes {
+        create("manualMvp") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".manualmvp"
+            versionNameSuffix = "-manual-mvp"
+            matchingFallbacks += "debug"
+        }
+        create("integrated") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".integrated"
+            versionNameSuffix = "-integrated"
+            buildConfigField("boolean", "GALLERY_MVP", "true")
+            matchingFallbacks += "debug"
+        }
         create("mvp") {
             initWith(getByName("debug"))
             isDebuggable = true

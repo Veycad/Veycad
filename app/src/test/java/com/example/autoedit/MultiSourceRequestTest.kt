@@ -170,7 +170,7 @@ class MultiSourceRequestTest {
     @Test fun regularProvenanceKeepsScheduledStateAndInconsistentEvidenceFailsClosed() {
         val graph = boundaryGraph()
         val plan = HighQualityFramePlan.build(graph).frames
-        val incoming = plan.single { it.outputTimeUs == 400_000L }
+        val incoming = plan.first { it.outputTimeUs > 400_000L }
         val provenance = VeykadRenderInspector.DecodedFrameProvenance(7, 1,
             incoming.sourceTimeUs, 33_333, incoming.transitionIn)
         val actual = RenderedVisualSampler.withDecodedFrameProvenance(incoming, plan,

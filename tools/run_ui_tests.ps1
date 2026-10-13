@@ -248,7 +248,7 @@ try {
         throw 'Expected two permission tests and a nonempty ordinary UI suite.'
     }
     $uiBuild = Invoke-UiNative -Executable $uiWrapper -EchoOutput -Arguments @(
-        '--no-daemon', '--console=plain', ':app:assembleUiTest', ':app:assembleUiTestAndroidTest'
+        '--no-daemon', '--console=plain', '-PpreviewNativeCi=true', ':app:assembleUiTest', ':app:assembleUiTestAndroidTest'
     )
     if ($uiBuild.ExitCode -ne 0) { throw 'Could not assemble isolated UI APKs.' }
     Assert-UiApk -MetadataPath (Join-Path $uiProjectRoot 'app/build/outputs/apk/uiTest/output-metadata.json') -ExpectedPackage $uiPackage

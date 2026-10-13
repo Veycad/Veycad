@@ -85,6 +85,7 @@ internal object RenderedVisualSampler {
         decodedSourceTimes: Map<Long, Long> = emptyMap(),
         renderFps: Int = HighQualityFramePlan.DEFAULT_FPS,
         secondarySourceVisualMap: VisualEventMap? = null,
+        checkCancelled: () -> Unit = {},
         sourceFiles: List<File?> = listOf(sourceFile),
         checkCancelled: () -> Unit = {},
         sourceVisualMaps: List<VisualEventMap?> = listOf(sourceVisualMap, secondarySourceVisualMap),
@@ -162,7 +163,7 @@ internal object RenderedVisualSampler {
     ): HighQualityFramePlan.Frame {
         if (decodedUs == null) return frame
         require(decodedUs >= 0L)
-        val attachments = if (((frame.clipIndex == 0 || sources.isNotEmpty() || refreshAllTransitions) &&
+        val attachments = if (sources.isNotEmpty() || ((frame.clipIndex == 0 || refreshAllTransitions) &&
             frame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY) ||
             frame.layer.kind == MontageGraph.OverlayKind.SUBJECT_STAGE ||
             frame.layer.kind == MontageGraph.OverlayKind.MIRROR_SLICE) {
@@ -178,21 +179,19 @@ internal object RenderedVisualSampler {
         decodedUs: Long?,
         provenance: VeykadRenderInspector.DecodedFrameProvenance?,
         sources: List<SourceAttachments> = emptyList(),
-        refreshAllTransitions: Boolean = false
+        refreshAllTransitions: Boolean = false,
+        sigmaProfile: Boolean = false,
+        expectedDrawFrames: List<HighQualityFramePlan.Frame> = LiveDecoderTransitionPlan.drawFrames(plan, sigmaProfile)
     ): HighQualityFramePlan.Frame {
         if (provenance == null) return withDecodedSourceTime(frame, timeline, decodedUs, sources, refreshAllTransitions)
-        val held = provenance.clipIndex != frame.clipIndex || provenance.sourceIndex != frame.sourceIndex
-        val reference = if (held) {
-            // Mirror the renderer's first-overlap hold of the previous clip's final planned frame.
-            requireNotNull(plan.lastOrNull {
-                it.clipIndex == provenance.clipIndex && it.sourceIndex == provenance.sourceIndex &&
-                    it.outputTimeUs < frame.outputTimeUs
-            }) { "Rendered frame source/clip is absent from the supplied plan" }.also {
-                require(it.sourceTimeUs == provenance.sourceTimeUs) { "Rendered hold does not match its source frame" }
-            }.copy(outputTimeUs = frame.outputTimeUs, transitionIn = provenance.transition,
-                transitionProgress = -1f)
-        } else frame
-        return withDecodedSourceTime(reference, timeline, provenance.decodedSourceTimeUs, sources, refreshAllTransitions)
+        val reference = expectedDrawFrames[RenderQaFrameIndex(expectedDrawFrames).nearest(frame.outputTimeUs)]
+        require(reference.outputTimeUs == frame.outputTimeUs) { "Frame is absent from the supplied draw schedule" }
+        require(provenance.clipIndex == reference.clipIndex && provenance.sourceIndex == reference.sourceIndex &&
+            provenance.sourceTimeUs == reference.sourceTimeUs && provenance.transition == reference.transitionIn) {
+            "Rendered provenance does not match the expected draw schedule"
+        }
+        return withDecodedSourceTime(reference, timeline, provenance.decodedSourceTimeUs,
+            sources, refreshAllTransitions)
     }
 
     /** A rounded 60 fps target can be 1 us above a decoder's truncated PTS. */
@@ -254,6 +253,7 @@ internal object RenderedVisualSampler {
         var previousMaskSource: Int? = null
         val framePlan = plan.frames
         val frameIndex = RenderQaFrameIndex(framePlan)
+        val expectedDrawFrames = LiveDecoderTransitionPlan.drawFrames(framePlan, ReferenceMontageProfile.appliesTo(graph))
         var idleIterations = 0
         while (!outputEnded) {
             checkCancelled()
@@ -290,22 +290,19 @@ internal object RenderedVisualSampler {
                         val image = decoder.getOutputImage(outputIndex)
                             ?: error("Decoder did not expose a YUV image at $ptsUs us")
                         val plannedFrame = framePlan[frameIndex.nearest(ptsUs)]
-                        val provenance = plannedFrame?.let { decodedFrameProvenance[it.outputTimeUs] }
-                        val scheduledFrame = plannedFrame?.let {
-                            withDecodedFrameProvenance(it, framePlan, graph.frameAttachments,
-                                decodedSourceTimes[it.outputTimeUs], provenance, graph.sourceAttachments,
-                                refreshAllTransitions = graph.manualOverrides != null)
-                        }
-                        val sourceRetriever = sourceReference.retriever(scheduledFrame?.sourceIndex)
-                        val framing = sourceReference.crop(scheduledFrame?.sourceIndex)
-                        val authoredTransition = if (provenance != null &&
-                            scheduledFrame?.clipIndex != plannedFrame?.clipIndex) provenance.transition
-                            else transitionAt(scheduledFrame)
-                        if (previousMaskSource != scheduledFrame?.sourceIndex) {
+                        val provenance = decodedFrameProvenance[plannedFrame.outputTimeUs]
+                        val scheduledFrame = withDecodedFrameProvenance(plannedFrame, framePlan,
+                            graph.frameAttachments, decodedSourceTimes[plannedFrame.outputTimeUs], provenance,
+                            graph.sourceAttachments, refreshAllTransitions = graph.manualOverrides != null,
+                            expectedDrawFrames = expectedDrawFrames)
+                        val sourceRetriever = sourceReference.retriever(scheduledFrame.sourceIndex)
+                        val framing = sourceReference.crop(scheduledFrame.sourceIndex)
+                        val authoredTransition = transitionAt(scheduledFrame)
+                        if (previousMaskSource != scheduledFrame.sourceIndex) {
                             previousOutputMask = null
                             previousEntranceTravel = null
                         }
-                        previousMaskSource = scheduledFrame?.sourceIndex
+                        previousMaskSource = scheduledFrame.sourceIndex
                         val reentryProgress = scheduledFrame?.transitionProgress ?: -1f
                         val incomingMask = scheduledFrame?.attachments?.mask?.takeIf {
                             authoredTransition == MontageGraph.Transition.FOREGROUND_REENTRY &&

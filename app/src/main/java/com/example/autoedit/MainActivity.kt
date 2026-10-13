@@ -341,6 +341,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
+        findViewById<Button>(R.id.manualMvpButton).setOnClickListener { stopPreviewPlayback(); startActivity(Intent(this, ManualMvpActivity::class.java)) }
         findViewById<Button>(R.id.importMusicButton).setOnClickListener {
             if (!rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null) musicPicker.launch(arrayOf("audio/*", "application/ogg"))
         }
