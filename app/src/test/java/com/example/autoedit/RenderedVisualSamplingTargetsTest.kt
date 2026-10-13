@@ -105,11 +105,13 @@ class RenderedVisualSamplingTargetsTest {
     }
 
     private fun assertAnchorsRetained(graph: MontageGraph, authoredTimes: List<Long>) {
-        val raw = RenderedVisualSampler.samplingTargets(graph, 100_000L)
+        // Canonical witnesses depend on the supplied FPS; only raw cadence and authored anchors
+        // belong to both plans. A default 30 FPS witness is not a raw anchor for a 60 FPS plan.
+        val rawCadence = (0L..(graph.outputDurationMs * 1_000L / 100_000L)).map { it * 100_000L }
         for (fps in listOf(30, 60)) {
             val targets = RenderedVisualSampler.samplingTargets(graph, 100_000L, plan = HighQualityFramePlan.build(graph, fps))
             assertTrue("authored anchors fps=$fps", targets.containsAll(authoredTimes))
-            assertTrue("raw anchors fps=$fps", targets.containsAll(raw))
+            assertTrue("raw cadence fps=$fps", targets.containsAll(rawCadence))
         }
     }
 
