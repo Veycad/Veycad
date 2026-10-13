@@ -44,6 +44,7 @@ jobs:
           printf 'checkout_sha=%s\npull_head_sha=%s\n' "$checkout_sha" "$PULL_HEAD_SHA" > build/reports/integrated/provenance.txt
           cd build/reports/integrated
           sha256sum Veycad-integrated-universal.apk > sha256.txt
+          cat sha256.txt >> provenance.txt
       - uses: actions/upload-artifact@v4
         with:
           name: integrated-universal-apk
