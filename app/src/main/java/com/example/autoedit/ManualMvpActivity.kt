@@ -528,6 +528,7 @@ class ManualMvpActivity : AppCompatActivity() {
     /** The inspector supplies physical facts; this only publishes through existing asset/import APIs. */
     private fun createBasicProject(inspected: List<Pair<MediaSource, Float>>, fps: Int): String {
         require(inspected.size in 1..2)
+        ManualMvpBasicGraph.validateSources(inspected.map { it.first })
         val id = "basic-${UUID.randomUUID()}"
         val assets = ProjectAssetStore(store.directory(id))
         val sources = inspected.map { (source, aspect) ->

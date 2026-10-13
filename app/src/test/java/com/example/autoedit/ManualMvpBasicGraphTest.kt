@@ -29,7 +29,18 @@ class ManualMvpBasicGraphTest {
         }
     }
 
-    private fun source(id: String, firstUs: Long, endUs: Long?) = MediaSource(
-        id, File("$id.mp4"), id, 4_000_000, 1024, 0, 1920, 1080,
+    @Test fun roundedWindowBeyondDeclaredDurationIsRejectedBeforeImport() {
+        val source = source("offset", 4_000_250, 8_000_250, durationUs = 4_000_000)
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            ManualMvpBasicGraph.validateSources(listOf(source))
+        }
+        assertEquals(true, failure.message?.contains("Временная шкала этого видео пока не поддерживается MVP"))
+        assertThrows(IllegalArgumentException::class.java) {
+            ManualMvpBasicGraph.create(listOf(source), "music")
+        }
+    }
+
+    private fun source(id: String, firstUs: Long, endUs: Long?, durationUs: Long = 8_000_000) = MediaSource(
+        id, File("$id.mp4"), id, durationUs, 1024, 0, 1920, 1080,
         "video/avc", 3, true, "a".repeat(64), firstUs, endUs)
 }
