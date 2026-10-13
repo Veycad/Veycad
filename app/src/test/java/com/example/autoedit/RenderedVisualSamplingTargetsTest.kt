@@ -108,10 +108,18 @@ class RenderedVisualSamplingTargetsTest {
         // Canonical witnesses depend on the supplied FPS; only raw cadence and authored anchors
         // belong to both plans. A default 30 FPS witness is not a raw anchor for a 60 FPS plan.
         val rawCadence = (0L..(graph.outputDurationMs * 1_000L / 100_000L)).map { it * 100_000L }
+        val heartbeatPulseAnchors = if (HeartbeatMontageProfile.appliesTo(graph)) {
+            HeartbeatMontageProfile.pulses.flatMap { pulse ->
+                listOf((pulse.startUs - 16_667L).coerceAtLeast(0), pulse.startUs, pulse.endUs)
+            }.filter { it <= graph.outputDurationMs * 1_000L }
+        } else emptyList()
         for (fps in listOf(30, 60)) {
-            val targets = RenderedVisualSampler.samplingTargets(graph, 100_000L, plan = HighQualityFramePlan.build(graph, fps))
+            val plan = HighQualityFramePlan.build(graph, fps)
+            val targets = RenderedVisualSampler.samplingTargets(graph, 100_000L, plan = plan)
             assertTrue("authored anchors fps=$fps", targets.containsAll(authoredTimes))
             assertTrue("raw cadence fps=$fps", targets.containsAll(rawCadence))
+            assertTrue("all raw pulse anchors fps=$fps", targets.containsAll(heartbeatPulseAnchors))
+            assertTrue("canonical witnesses fps=$fps", targets.containsAll(RenderQaSampling.targets(graph, plan, 100_000L)))
         }
     }
 
