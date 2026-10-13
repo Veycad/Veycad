@@ -11,7 +11,7 @@ class CustomAudioTest {
         val winner = ManualMontageFixtures.generatedGraph().copy(
             audioTrack = MontageGraph.AudioTrack("score", .8f, 1_234_567))
         val imported = EditableMontageImporter.create("custom-offset", winner,
-            MontageStyleCatalog.Recipe.CUSTOM_MUSIC, base.exportSettings,
+            MontageStyleCatalog.Recipe.CUSTOM_MUSIC, base.export,
             base.shared.assets.filter { it.kind == ProjectAsset.Kind.VIDEO },
             base.shared.assets.single { it.kind == ProjectAsset.Kind.AUDIO }, null)
         assertEquals(1_234_567L, imported.shared.current.music.startUs)
