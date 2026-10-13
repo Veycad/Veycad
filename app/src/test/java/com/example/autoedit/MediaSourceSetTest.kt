@@ -58,9 +58,10 @@ class MediaSourceSetTest {
         assertEquals(Long.MAX_VALUE, mediaSource(durationUs = 500_000,
             firstVideoPtsUs = Long.MAX_VALUE - 500_000).videoEndPtsUs)
         GalleryImportPolicy.validate(MediaSourceSet(listOf(source)))
-        assertThrows(IllegalArgumentException::class.java) {
-            source.copy(videoPresentationBounds = VideoPresentationBounds(5_000, 620_000))
-        }
+        val shifted = source.copy(firstVideoPtsUs = 5_000)
+        assertEquals(VideoPresentationBounds(5_000, 620_000), shifted.videoPresentationBounds)
+        assertEquals(shifted.videoPresentationBounds!!.endPtsUs, shifted.timeBounds.measuredRawEndUs)
+        assertThrows(IllegalArgumentException::class.java) { source.copy(videoEndPtsUs = 120_000) }
         assertThrows(IllegalArgumentException::class.java) { VideoPresentationBounds(1, 1) }
         assertThrows(IllegalArgumentException::class.java) { VideoPresentationBounds(1, 2, 2) }
         // Constructor compatibility never turns a legacy duration into timing proof.
