@@ -29,11 +29,11 @@ class ManualMvpScreenTest {
     @get:Rule val fixture = UiTestFixtureRule()
 
     @Test fun pickerTrimReorderUndoAndRecreateKeepSavedSelection() {
+        fixture.launch()
         val file = SyntheticVideo.create(File(fixture.context.filesDir, "pending-renders/manual-input.mp4"))
         val uri = FileProvider.getUriForFile(fixture.context, "${fixture.context.packageName}.files", file)
         intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(
             Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().apply { data = uri }))
-        fixture.launch()
         fixture.click(R.id.manualMvpButton)
         onView(withText("Выбрать видео для базового монтажа")).perform(scrollTo(), click())
         try {
