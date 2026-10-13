@@ -6,6 +6,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CustomAudioTest {
+    @Test fun automaticWinnerImportRetainsMusicStartInSharedProject() {
+        val base = ManualMontageFixtures.linearProject()
+        val winner = ManualMontageFixtures.generatedGraph().copy(
+            audioTrack = MontageGraph.AudioTrack("score", .8f, 1_234_567))
+        val imported = EditableMontageImporter.create("custom-offset", winner,
+            MontageStyleCatalog.Recipe.CUSTOM_MUSIC, base.exportSettings,
+            base.shared.assets.filter { it.kind == ProjectAsset.Kind.VIDEO },
+            base.shared.assets.single { it.kind == ProjectAsset.Kind.AUDIO }, null)
+        assertEquals(1_234_567L, imported.shared.current.music.startUs)
+        assertEquals(1_234_567L, imported.shared.current.graph.audioTrack!!.sourceStartUs)
+        assertEquals(.8f, imported.shared.current.music.gain, 0f)
+    }
+
     @Test fun graphAudioPlanRetainsSelectedMusicTail() {
         val graph = MontageGraph(5_000, 5_000, clips = listOf(MontageGraph.Clip("clip", 0, 5_000, 5_000, MontageGraph.ShotRole.ACTION, MontageGraph.Transition.HARD_CUT, MontageGraph.Motion.HOLD, 1f, 0)), audioTrack = MontageGraph.AudioTrack("custom", 1f, 1_000_000))
         assertEquals(AudioExportPlan.loop(3_000_000, 5_000_000, 1_000_000),
