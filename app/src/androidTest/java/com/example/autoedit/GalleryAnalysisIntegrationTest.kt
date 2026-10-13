@@ -24,7 +24,7 @@ class GalleryAnalysisIntegrationTest {
         val moments = GallerySourceAnalyzer().analyze(source) {}
         assertTrue(moments.isNotEmpty())
         assertFalse(source.hasAudio)
-        assertTrue(moments.all { it.features.faceConfidence == null && it.endUs <= source.videoEndPtsUs })
+        assertTrue(moments.all { it.features.faceConfidence == null && it.endUs <= source.requiredVideoEndPtsUs })
         val actual = videoPts(file)
         assertTrue(moments.all { it.features.timeUs in actual })
     }
@@ -39,15 +39,15 @@ class GalleryAnalysisIntegrationTest {
             val validatedEndUs = source.videoPresentationBounds?.endPtsUs
             Log.i("GalleryPtsFixture", "actualFirstUs=${pts.first()} actualLastUs=${pts.last()} " +
                 "trackDurationUs=${timing.declaredDurationUs} explicitVideoEosUs=$explicitVideoEosUs " +
-                "sourceDurationUs=${source.durationUs} sourceOriginUs=${source.firstVideoPtsUs} " +
+                "sourceDurationUs=${source.durationUs} sourceOriginUs=${source.requiredFirstVideoPtsUs} " +
                 "sourceEndUs=$validatedEndUs sourceEndMinusExplicitEosUs=${validatedEndUs?.minus(explicitVideoEosUs)} " +
                 "lastSampleFlags=${timing.lastSampleFlags}")
             assertTrue(pts.first() > 0)
             assertTrue(source.hasAudio)
-            assertEquals(pts.first(), source.firstVideoPtsUs)
+            assertEquals(pts.first(), source.requiredFirstVideoPtsUs)
             assertNotNull(source.videoPresentationBounds)
             assertTrue(source.videoContentDurationUs >= 500_000)
-            assertTrue("Inspected endpoint exceeds independently authored EOS", source.videoEndPtsUs <= explicitVideoEosUs)
+            assertTrue("Inspected endpoint exceeds independently authored EOS", source.requiredVideoEndPtsUs <= explicitVideoEosUs)
             assertTrue(pts.zipWithNext().map { it.second - it.first }.distinct().size > 1)
             val observed = mutableListOf<Long>()
             val requested = longArrayOf(pts.first() + 1, pts.last())
@@ -64,7 +64,7 @@ class GalleryAnalysisIntegrationTest {
                 "momentsAfterExplicitVideoEos=${moments.count { it.endUs > explicitVideoEosUs }}")
             assertTrue(moments.isNotEmpty())
             assertTrue("Moment exceeds independently authored EOS", moments.all { it.endUs <= explicitVideoEosUs })
-            assertTrue(moments.all { it.features.timeUs in pts && it.startUs >= pts.first() && it.endUs <= source.videoEndPtsUs })
+            assertTrue(moments.all { it.features.timeUs in pts && it.startUs >= pts.first() && it.endUs <= source.requiredVideoEndPtsUs })
             // Neither boundary invents a frame for a request after the last real sample.
             assertThrows(IllegalStateException::class.java) {
                 SequentialBitmapDecoder.decodeActual(file, longArrayOf(pts.last() + 1), 32, 32) { _, _, _ ->
@@ -83,7 +83,7 @@ class GalleryAnalysisIntegrationTest {
         assertTrue(source.durationUs in 500_000L..550_000L)
         val moments = GallerySourceAnalyzer().analyze(source) {}
         assertTrue(moments.isNotEmpty())
-        assertTrue(moments.all { it.endUs <= source.videoEndPtsUs && it.endUs - it.startUs >= 500_000 })
+        assertTrue(moments.all { it.endUs <= source.requiredVideoEndPtsUs && it.endUs - it.startUs >= 500_000 })
     }
 
     @Test fun decodeAndRefineCancellationReleaseWorker() = withClip("cancel", regularPts(90)) { file ->

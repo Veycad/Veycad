@@ -15,10 +15,10 @@ class GalleryImportPolicyTest {
         assertEquals(2_600_000L, held.videoEndPtsUs)
         assertThrows(IllegalArgumentException::class.java) {
             GalleryImportPolicy.validate(MediaSourceSet(listOf(offset.copy(
-                videoPresentationBounds = VideoPresentationBounds(5_000, 504_999)))))
+                videoEndPtsUs = 504_999))))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            GalleryImportPolicy.validate(MediaSourceSet(listOf(offset.copy(videoPresentationBounds = null))))
+            GalleryImportPolicy.validate(MediaSourceSet(listOf(offset.copy(videoEndPtsUs = null))))
         }
     }
     @Test fun enforcesCountAndTotalDuration() {

@@ -26,9 +26,9 @@ data class MediaSource(
     /** Measured first video presentation timestamp; never inferred from duration or requests. */
     val firstVideoPtsUs: Long? = null,
     /** Independently measured exclusive raw endpoint; container duration is not this fact. */
-    val videoEndPtsUs: Long? = null,
-    val videoPresentationBounds: VideoPresentationBounds? = if (firstVideoPtsUs != null && videoEndPtsUs != null) VideoPresentationBounds(firstVideoPtsUs, videoEndPtsUs) else null
+    val videoEndPtsUs: Long? = null
 ) {
+    val videoPresentationBounds: VideoPresentationBounds? = if (firstVideoPtsUs != null && videoEndPtsUs != null) VideoPresentationBounds(firstVideoPtsUs, videoEndPtsUs) else null
     val timeBounds = SourceTimeBounds(durationUs, firstVideoPtsUs, videoEndPtsUs)
     init {
         require(id.isNotBlank() && displayName.isNotBlank())

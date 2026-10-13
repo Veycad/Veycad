@@ -24,7 +24,7 @@ class GallerySourceAnalyzerTest {
         val analyzer = GallerySourceAnalyzer(frameReader = reader)
         assertTrue(analyzer.analyze(source) {}.isNotEmpty())
         assertThrows(IllegalArgumentException::class.java) {
-            analyzer.analyze(source.copy(videoPresentationBounds = null)) {}
+            analyzer.analyze(source.copy(videoEndPtsUs = null)) {}
         }
         assertEquals(2, reader.requests.size)
     }

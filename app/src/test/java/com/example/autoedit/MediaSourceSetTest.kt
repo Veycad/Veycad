@@ -64,8 +64,8 @@ class MediaSourceSetTest {
         assertThrows(IllegalArgumentException::class.java) { VideoPresentationBounds(1, 1) }
         assertThrows(IllegalArgumentException::class.java) { VideoPresentationBounds(1, 2, 2) }
         // Constructor compatibility never turns a legacy duration into timing proof.
-        val legacy = source.copy(videoPresentationBounds = null)
+        val legacy = source.copy(videoEndPtsUs = null)
         assertEquals(500_000L, legacy.durationUs)
-        assertThrows(IllegalArgumentException::class.java) { legacy.videoEndPtsUs }
+        assertThrows(IllegalArgumentException::class.java) { legacy.requiredVideoEndPtsUs }
     }
 }

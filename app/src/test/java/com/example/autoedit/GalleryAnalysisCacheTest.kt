@@ -54,8 +54,8 @@ class GalleryAnalysisCacheTest {
         assertEquals(620_000L, cache.load(source)!!.single().endUs)
         assertEquals("other", cache.load(source.copy(id = "other"))!!.single().sourceId)
         assertNull(cache.load(mediaSource("shifted", 500_000, firstVideoPtsUs = 5_000)))
-        assertNull(cache.load(source.copy(videoPresentationBounds = VideoPresentationBounds(120_000, 619_999))))
-        assertNull(cache.load(source.copy(videoPresentationBounds = null)))
+        assertNull(cache.load(source.copy(videoEndPtsUs = 619_999)))
+        assertNull(cache.load(source.copy(videoEndPtsUs = null)))
         assertThrows(IllegalArgumentException::class.java) {
             cache.store(source, listOf(moment.copy(startUs = 119_999)))
         }

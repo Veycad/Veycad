@@ -26,12 +26,12 @@ class MontageTextRoutingDeviceTest {
             shiftVideoUs = 400_000, videoEndUs = 2_000_000)
         val inspected = MediaInputInspector().inspect("offset", source, "Offset")
         val packetPts = videoPts(source)
-        assertTrue("Fixture must actually retain a nonzero raw origin", inspected.firstVideoPtsUs > 0)
-        assertEquals(inspected.firstVideoPtsUs, packetPts.first())
+        assertTrue("Fixture must actually retain a nonzero raw origin", inspected.requiredFirstVideoPtsUs > 0)
+        assertEquals(inspected.requiredFirstVideoPtsUs, packetPts.first())
         assertTrue("Use independent presentation proof, not declared duration",
-            inspected.videoEndPtsUs > packetPts.last())
-        assertEquals(0L, inspected.firstVideoPtsUs % 1000)
-        val originMs = inspected.firstVideoPtsUs / 1000
+            inspected.requiredVideoEndPtsUs > packetPts.last())
+        assertEquals(0L, inspected.requiredFirstVideoPtsUs % 1000)
+        val originMs = inspected.requiredFirstVideoPtsUs / 1000
         assertEquals(0L, videoPts(seed).first())
         // Selection order is [zero-origin, offset], while the montage starts at source 1.
         val graph = MontageGraph(inspected.durationUs / 1000, 2000, clips = listOf(
@@ -69,9 +69,9 @@ class MontageTextRoutingDeviceTest {
         for ((frameIndex, outputUs) in listOf(0 to 0L, 12 to 400_000L, 27 to 900_000L)) {
             // Independent raw sample table and literal one-speed output instants form the oracle;
             // neither expected target nor selected PTS uses renderer policy/frame-plan helpers.
-            val target = inspected.firstVideoPtsUs + outputUs
+            val target = inspected.requiredFirstVideoPtsUs + outputUs
             val rawSelected = packetPts.first { it >= target }
-            val finishingSelected = packetPts.first { it >= target + inspected.firstVideoPtsUs }
+            val finishingSelected = packetPts.first { it >= target + inspected.requiredFirstVideoPtsUs }
             val observed = requireNotNull(overlayWitness[outputUs])
             assertEquals(1, observed.sourceIndex)
             assertEquals(0, observed.clipIndex)
