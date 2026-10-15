@@ -152,7 +152,7 @@ class SettingsScreenTest {
         val sources = File(ui.context.filesDir, "source-draft").listFiles()!!
             .filter(File::isFile).associateWith(File::readBytes)
         assertTrue("The test must have a real imported source", sources.isNotEmpty())
-        val analysis = File(ui.context.cacheDir, "ui-analysis/cache.bin").apply {
+        val analysis = File(ui.context.cacheDir, "full-video-analysis/cache.bin").apply {
             parentFile!!.mkdirs()
             writeBytes(ByteArray(10_000) { (it % 251).toByte() })
         }

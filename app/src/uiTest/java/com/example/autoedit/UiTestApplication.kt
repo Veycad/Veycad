@@ -6,14 +6,26 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 /** Exists only in the isolated .uitest APK. File import/publication/save remain production code. */
-internal class UiTestApplication : Application(), EditSession.Owner {
+internal class UiTestApplication : Application(), EditSession.Owner, TextEditSession.Owner {
     val renderer = CapturingRenderEngine()
     private var ownedSession: EditSession? = null
+    private var ownedText: TextEditSession? = null
+    var textExportEngine = TextEditSession.NATIVE_EXPORT_ENGINE
+    var speechTranscriber: SpeechTranscriber = WhisperSpeechTranscriber()
+    override val textEditSession: TextEditSession
+        get() = ownedText ?: TextEditSession(this, transcriber = speechTranscriber,
+            exportEngine = textExportEngine).also { ownedText = it }
     override val editSession: EditSession
         get() = ownedSession ?: EditSession(this, renderer).also { ownedSession = it }
 
     fun resetSession() {
         check(ownedSession?.state?.value?.busy != true) { "Cannot reset a running job" }
+        check(ownedText?.state?.value?.busy != true) { "Cannot reset a running text job" }
+        check(MediaWorkCoordinator.process.snapshot() == MediaWorkCoordinator.Snapshot(0, false)) { "Active media lease" }
+        ownedText?.close()
+        ownedText = null
+        textExportEngine = TextEditSession.NATIVE_EXPORT_ENGINE
+        speechTranscriber = WhisperSpeechTranscriber()
         ownedSession?.close()
         ownedSession = null
         renderer.reset()
