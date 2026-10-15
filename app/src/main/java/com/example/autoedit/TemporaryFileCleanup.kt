@@ -30,6 +30,28 @@ internal object TemporaryFileCleanup {
     private fun safe(path: Path): Boolean = !Files.isSymbolicLink(path) &&
         path.toFile().canonicalFile.toPath() == path.toAbsolutePath().normalize()
 
+    /** Crash recovery only; durable sources remain outside the manual cleanup allowlist. */
+    fun clearInterruptedTextImports(filesDir: File, lease: MediaWorkCoordinator.Lease): List<String> {
+        lease.requireCleanupActive()
+        val directory = filesDir.canonicalFile.toPath().resolve("text-sources")
+        if (!Files.exists(directory, NOFOLLOW_LINKS)) return emptyList()
+        val failures = mutableListOf<String>()
+        try {
+            if (!safe(directory)) return listOf(directory.toString())
+            Files.newDirectoryStream(directory, "*.partial").use { paths ->
+                for (path in paths) {
+                    if (Files.isRegularFile(path, NOFOLLOW_LINKS) && safe(path)) {
+                        try { Files.delete(path) }
+                        catch (_: IOException) { failures += path.toString() }
+                        catch (_: SecurityException) { failures += path.toString() }
+                    }
+                }
+            }
+        } catch (_: IOException) { failures += directory.toString() }
+        catch (_: SecurityException) { failures += directory.toString() }
+        return failures
+    }
+
     fun estimateBytes(filesDir: File, cacheDir: File, scope: Scope): Long {
         var total = 0L
         for (target in targets(filesDir, cacheDir, scope)) {

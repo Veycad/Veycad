@@ -26,6 +26,7 @@ internal class TextEditSession internal constructor(context: Context,
     }
     private val app=context.applicationContext
     private val preferences=app.getSharedPreferences("text_session",Context.MODE_PRIVATE)
+    private val interruptedImport=preferences.getBoolean("running",false)
     private val store=TextEditStore(File(app.filesDir,"text-drafts"))
     private val main=Handler(Looper.getMainLooper())
     private val mediaWork=MediaWorkDispatch(coordinator,worker) { main.post(it) }
@@ -155,6 +156,8 @@ internal class TextEditSession internal constructor(context: Context,
         val lease=coordinator.tryBeginCleanup() ?: return
         lease.use {
             TemporaryFileCleanup.clear(app.filesDir,app.cacheDir,TemporaryFileCleanup.Scope.TEXT_WORK,it)
+            if(interruptedImport && TemporaryFileCleanup.clearInterruptedTextImports(app.filesDir,it).isNotEmpty())
+                LocalDiagnostics.record(app,"text_import_recovery_incomplete")
             recovered=true
         }
     }

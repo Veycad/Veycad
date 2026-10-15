@@ -174,6 +174,7 @@ class MainActivity : AppCompatActivity() {
         savedInstanceState?.getString("legacy_save_file")?.let { path ->
             session.state.value?.entry?.takeIf { it.file.path == path }?.let { legacySaveEntry = it }
         }
+        observedDraftGeneration = session.state.value?.draftGeneration ?: 0L
         restoreSourceDraft()
         updateMyEditsButton()
         LocalDiagnostics.record(this, "app_open")

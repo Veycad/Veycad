@@ -214,6 +214,129 @@ class MediaWorkSessionDeviceTest {
         assertTrue(link.exists())
     }
 
+    @Test fun newImportAfterCleanupSurvivesRenderAndRecreation() {
+        ui.launch()
+        ui.importVideos("before-cleanup.mp4")
+        ui.click(R.id.settingsButton); ui.click(R.id.clearCacheButton); ui.click(android.R.id.button1)
+        ui.awaitIdle(); idle()
+        ui.click(R.id.backFromSettingsButton)
+        ui.importVideos("new-selection.mp4")
+        ui.startRender(); ui.renderer.complete(); ui.awaitIdle(); idle()
+        assertNull(EditSession.get(ui.context).state.value!!.draft)
+        ui.recreate()
+        assertEquals("new-selection.mp4", ui.text(R.id.videoSelection))
+        assertTrue(File(ui.context.filesDir, "source-draft").listFiles().orEmpty().any { it.extension == "mp4" })
+    }
+
+    @Test fun interruptedTextImportRecoveryPreservesSourcesLinksAndProviderFiles() {
+        ui.launch()
+        val owner = MediaWorkCoordinator()
+        val file = source()
+        val bytes = file.readBytes()
+        val partial = File(file.parentFile, "interrupted.partial").apply { writeText("orphan") }
+        val provider = File(ui.context.cacheDir, "multiclass-matte.bin").apply { writeText("provider") }
+        val link = File(file.parentFile, "protected.partial")
+        android.system.Os.symlink(file.path, link.path)
+        ui.context.getSharedPreferences("text_session", 0).edit().putBoolean("running", true).commit()
+        lateinit var session: TextEditSession
+        main { session = TextEditSession(ui.context, coordinator = owner); session.open(file) }
+        idle(owner)
+        assertFalse(partial.exists())
+        assertTrue(link.exists())
+        assertArrayEquals(bytes, file.readBytes())
+        assertEquals("provider", provider.readText())
+        main { session.close() }
+    }
+
+    @Test fun rejectedRecoveryDoesNotReleaseRecordingLease() {
+        ui.launch()
+        val owner = MediaWorkCoordinator()
+        val queue = ManualExecutor()
+        lateinit var camera: CaptureRecordingSession
+        main {
+            camera = CaptureRecordingSession(ui.context, owner, queue)
+            camera.start(Recorder.Builder().build(), requireNotNull(CaptureScript.forStyle("heartbeat")),
+                CaptureMode.MUSIC, false, 0)
+            val before = owner.snapshot()
+            queue.reject = true
+            try {
+                camera.recover {}
+                assertEquals(before, owner.snapshot())
+            } finally { queue.reject = false; camera.stop() }
+        }
+        queue.next(); idle(owner); queue.shutdown()
+    }
+
+    @Test fun finalizationObserverFailureReleasesOnlyItsRecordingLease() = checkFinalizationFailure(true)
+    @Test fun finalizationQueueRejectionReleasesOnlyItsRecordingLease() = checkFinalizationFailure(false)
+
+    @Test fun preparationCallbackRejectionReleasesRecordingLease() {
+        ui.launch()
+        val owner = MediaWorkCoordinator()
+        val queue = ManualExecutor()
+        lateinit var camera: CaptureRecordingSession
+        main {
+            camera = CaptureRecordingSession(ui.context, owner, queue)
+            CaptureRecordingSession::class.java.getDeclaredField("mediaWork").apply { isAccessible = true }
+                .set(camera, MediaWorkDispatch(owner, queue) { false })
+            camera.start(Recorder.Builder().build(), requireNotNull(CaptureScript.forStyle("heartbeat")),
+                CaptureMode.MUSIC, false, 0)
+        }
+        try {
+            assertThrows(java.util.concurrent.RejectedExecutionException::class.java) { queue.next() }
+            assertEquals(MediaWorkCoordinator.Snapshot(0, false), owner.snapshot())
+        } finally { main { camera.stop() }; queue.shutdown() }
+    }
+
+    private fun checkFinalizationFailure(observerFailure: Boolean) {
+        ui.launch()
+        val owner = MediaWorkCoordinator()
+        val queue = ManualExecutor()
+        lateinit var camera: CaptureRecordingSession
+        val script = requireNotNull(CaptureScript.forStyle("heartbeat"))
+        val observer = androidx.lifecycle.Observer<CaptureRecordingSession.State> {
+            if (it.phase == CaptureRecordingSession.Phase.FINALIZING) error("finalizing observer")
+        }
+        main {
+            camera = CaptureRecordingSession(ui.context, owner, queue)
+            camera.start(Recorder.Builder().build(), script, CaptureMode.MUSIC, false, 0)
+            val session = camera.store.create(script, CaptureMode.MUSIC, 1, false, 0)
+            val state = camera.state as androidx.lifecycle.MutableLiveData<CaptureRecordingSession.State>
+            state.value = CaptureRecordingSession.State(CaptureRecordingSession.Phase.PREPARING, session)
+            if (observerFailure) camera.state.observeForever(observer) else queue.reject = true
+            try {
+                val receive = CaptureRecordingSession::class.java.getDeclaredMethod("receive",
+                    Long::class.javaPrimitiveType, CaptureScript::class.java, androidx.camera.video.VideoRecordEvent::class.java)
+                    .apply { isAccessible = true }
+                val failure = assertThrows(java.lang.reflect.InvocationTargetException::class.java) {
+                    receive.invoke(camera, 1L, script, finalizeEvent(camera.store.staging(session.id)))
+                }
+                assertTrue(failure.cause.toString(), failure.cause is IllegalStateException ||
+                    failure.cause is java.util.concurrent.RejectedExecutionException)
+                // Only the queued preparation is still using files. Finalize must release its own long lease.
+                assertEquals(MediaWorkCoordinator.Snapshot(1, false), owner.snapshot())
+            } finally {
+                camera.state.removeObserver(observer); queue.reject = false
+                state.value = CaptureRecordingSession.State(CaptureRecordingSession.Phase.PREPARING, session)
+                camera.stop()
+            }
+        }
+        queue.next(); queue.next(); idle(owner); queue.shutdown()
+    }
+
+    private fun finalizeEvent(file: File): androidx.camera.video.VideoRecordEvent {
+        fun call(type: Class<*>, name: String, vararg args: Any?): Any =
+            type.declaredMethods.first { it.name == name && it.parameterCount == args.size }
+                .apply { isAccessible = true }.invoke(null, *args)!!
+        val audio = call(androidx.camera.video.AudioStats::class.java, "of", 1, null, 0.0, 0L)
+        val stats = call(androidx.camera.video.RecordingStats::class.java, "of", 1_000_000_000L, 1L, audio)
+        val output = call(androidx.camera.video.OutputResults::class.java, "of", android.net.Uri.EMPTY)
+        return call(androidx.camera.video.VideoRecordEvent::class.java, "finalizeWithError",
+            androidx.camera.video.FileOutputOptions.Builder(file).build(), stats, output,
+            androidx.camera.video.VideoRecordEvent.Finalize.ERROR_UNKNOWN, IllegalStateException("fixture"))
+            as androidx.camera.video.VideoRecordEvent
+    }
+
     @Test fun realTextExportRejectsConcurrentCleanupAndFinishes() {
         ui.launch()
         val app = ui.context.applicationContext as UiTestApplication
@@ -275,9 +398,10 @@ class MediaWorkSessionDeviceTest {
 
     private class ManualExecutor : AbstractExecutorService() {
         private var stopped = false
+        var reject = false
         private val jobs = LinkedBlockingQueue<Runnable>()
         override fun execute(command: Runnable) {
-            if (stopped) throw java.util.concurrent.RejectedExecutionException()
+            if (stopped || reject) throw java.util.concurrent.RejectedExecutionException()
             jobs.add(command)
         }
         fun next() = checkNotNull(jobs.poll(5, TimeUnit.SECONDS)).run()
