@@ -19,8 +19,7 @@ internal object VeycadAutomaticEditor {
 
     data class Request(
         val context: Context,
-        val sourceFile: File,
-        val secondarySourceFile: File? = null,
+        val sources: MediaSourceSet,
         val musicFile: File,
         val outputFile: File,
         val style: EventMatchingDirector.Style? = null,
@@ -33,19 +32,70 @@ internal object VeycadAutomaticEditor {
             RenderPassPlanner.DeviceCapabilities.conservative(),
         val onProgress: (Progress) -> Unit = {},
         val checkCancelled: () -> Unit = {},
-        val jobLease: File? = null
+        val jobLease: File? = null,
+        val musicStartUs: Long = 0L
     ) {
+        val sourceFile: File get() = sources.items.first().file
+        val secondarySourceFile: File? get() = sources.items.getOrNull(1)?.file
+
+        /** Legacy callers are worker-thread callers; inspection uses real metadata and cancellation. */
+        constructor(
+            context: Context,
+            sourceFile: File,
+            secondarySourceFile: File? = null,
+            musicFile: File,
+            outputFile: File,
+            style: EventMatchingDirector.Style? = null,
+            recipe: MontageStyleCatalog.Recipe = MontageStyleCatalog.Recipe.SIGMA,
+            heartbeatEchoOffsetMs: Long = -67L,
+            width: Int = 720,
+            height: Int = 1_280,
+            bitrate: Int = 5_000_000,
+            capabilities: RenderPassPlanner.DeviceCapabilities = RenderPassPlanner.DeviceCapabilities.conservative(),
+            onProgress: (Progress) -> Unit = {},
+            checkCancelled: () -> Unit = {},
+            jobLease: File? = null
+        ) : this(context, inspectLegacySources(sourceFile, secondarySourceFile, checkCancelled),
+            musicFile, outputFile, style, recipe, heartbeatEchoOffsetMs, width, height, bitrate,
+            capabilities, onProgress, checkCancelled, jobLease)
+
+        companion object {
+            internal fun validateRecipeSources(sources: MediaSourceSet, recipe: MontageStyleCatalog.Recipe) {
+                if (recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) {
+                    GalleryImportPolicy.validate(sources)
+                    return
+                }
+                val expected = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) 2 else 1
+                require(sources.items.size == expected) {
+                    "DUALITY requires exactly two video sources and other recipes require one"
+                }
+            }
+
+            internal fun inspectLegacySources(source: File, secondary: File?, checkCancelled: () -> Unit): MediaSourceSet {
+                require(secondary == null || secondary.canonicalPath != source.canonicalPath)
+                val inspector = MediaInputInspector(checkCancelled)
+                return MediaSourceSet(listOfNotNull(source, secondary).mapIndexed { index, file ->
+                    inspector.inspect("legacy-$index", file, file.name)
+                })
+            }
+
+            internal fun validateSourceFiles(sources: MediaSourceSet, musicFile: File,
+                recipe: MontageStyleCatalog.Recipe) {
+                require(sources.items.isNotEmpty() && musicFile.isFile)
+                val musicPath = musicFile.canonicalPath
+                val paths = sources.items.map { source ->
+                    require(source.file.isFile) { "Недоступен исходный файл: ${source.displayName}" }
+                    source.file.canonicalPath.also { require(it != musicPath) }
+                }
+                // Gallery identity belongs to selections even when they reference the same file.
+                if (recipe != MontageStyleCatalog.Recipe.GALLERY_MONTAGE) require(paths.distinct().size == paths.size)
+            }
+        }
+
         init {
-            require(sourceFile.isFile && musicFile.isFile)
-            require(sourceFile.canonicalPath != musicFile.canonicalPath)
-            require((secondarySourceFile != null) == (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP)) {
-                "DUALITY requires exactly two video sources and other recipes require one"
-            }
-            secondarySourceFile?.let { secondary ->
-                require(secondary.isFile)
-                require(secondary.canonicalPath != sourceFile.canonicalPath)
-                require(secondary.canonicalPath != musicFile.canonicalPath)
-            }
+            require(musicStartUs >= 0L && (musicStartUs == 0L || recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC)) { "Authored recipes require their original audio timing" }
+            validateRecipeSources(sources, recipe)
+            validateSourceFiles(sources, musicFile, recipe)
             require(recipe != MontageStyleCatalog.Recipe.HEARTBEAT ||
                 HeartbeatMontageProfile.matchesAudio(musicFile)) {
                 "Heartbeat requires its authored score; refusing a mixed-style render"
@@ -63,13 +113,18 @@ internal object VeycadAutomaticEditor {
     internal fun fearAudioMatchesRecipe(
         recipe: MontageStyleCatalog.Recipe,
         musicFile: File
-    ): Boolean = FearStrobeProfile.matchesAudio(musicFile) ==
+    ): Boolean = recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC || FearStrobeProfile.matchesAudio(musicFile) ==
         (recipe == MontageStyleCatalog.Recipe.FEAR_STROBE)
+
+    /** Internal neutral route; G6/G7 must integrate its analysis, export and decoded QA. */
+    internal fun directGallery(sources: MediaSourceSet, moments: List<GalleryMoment>,
+        audioMap: AudioBeatMap, requestedDurationMs: Long = 30_000): MontageGraph =
+        GalleryMontageDirector.direct(sources, moments, audioMap, requestedDurationMs)
 
     internal fun dualityAudioMatchesRecipe(
         recipe: MontageStyleCatalog.Recipe,
         musicFile: File
-    ): Boolean = DualityLoopProfile.matchesAudio(musicFile) ==
+    ): Boolean = recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC || DualityLoopProfile.matchesAudio(musicFile) ==
         (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP)
 
     data class Candidate(
@@ -120,16 +175,20 @@ internal object VeycadAutomaticEditor {
         MaterialSuitability.checkHumanEvidence(request.recipe,
             listOfNotNull(primaryVisualMap, secondaryVisualMap))
         request.onProgress(Progress(Stage.DIRECTING, 0, candidateCount(request)))
-        // Only Sigma enters the generic event-matching director. The other three products
-        // select their own source windows from neutral evidence before authoring their graph.
-        val sigmaPipeline = if (request.recipe == MontageStyleCatalog.Recipe.SIGMA)
+        // Custom music uses measured rhythm in the generic director. Authored products retain
+        // their fixed scores and timeline grammars.
+        val automaticPipeline = if (request.recipe == MontageStyleCatalog.Recipe.SIGMA ||
+            request.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC)
             VeycadEventPipeline.fromAudioFile(
                 sourceId = request.sourceFile.name,
                 audioFile = request.musicFile,
                 sourceDurationUs = analysis.durationUs,
                 observations = analysis.observations,
                 frameAttachments = analysis.attachments,
-                requestedStyle = request.style
+                requestedStyle = request.style,
+                audioStartUs = request.musicStartUs,
+                useAuthoredProfile = request.recipe != MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
+                checkCancelled = request.checkCancelled
             ) else null
         var productSourcePool: MontageGraph? = null
         var heartbeatSelectionTrace: HeartbeatSourcePool.SelectionTrace? = null
@@ -174,7 +233,7 @@ internal object VeycadAutomaticEditor {
                 listOf(EventMatchingDirector.Alternative(
                     EventMatchingDirector.Style.DYNAMIC, graph, 0, 0
                 )))
-        } else requireNotNull(sigmaPipeline)
+        } else requireNotNull(automaticPipeline)
         val alternatives = request.style?.let { requested ->
             listOf(pipeline.alternatives.first { it.style == requested })
         } ?: pipeline.alternatives
@@ -282,8 +341,7 @@ internal object VeycadAutomaticEditor {
         val previousInspectorReport = VeykadRenderInspector.latest(request.context)?.report
         var executedPasses: Map<RenderPassPlanner.PassKind, Int> = emptyMap()
         val frames = MediaCodecSpeedRampRenderer.render(MediaCodecSpeedRampRenderer.Request(
-            masterFile = request.sourceFile,
-            secondaryFile = request.secondarySourceFile,
+            sourceFiles = request.sources.items.map { it.file },
             graph = alternative.graph,
             outputFile = file,
             width = request.width,
@@ -292,6 +350,7 @@ internal object VeycadAutomaticEditor {
             fps = if (request.recipe == MontageStyleCatalog.Recipe.HEARTBEAT) 60
                 else HighQualityFramePlan.DEFAULT_FPS,
             audioFile = request.musicFile,
+            audioStartUs = request.musicStartUs,
             context = request.context,
             renderPlan = passPlan,
             onPassesExecuted = { executedPasses = it },
@@ -324,7 +383,12 @@ internal object VeycadAutomaticEditor {
             renderFps = if (request.recipe == MontageStyleCatalog.Recipe.HEARTBEAT) 60
                 else HighQualityFramePlan.DEFAULT_FPS,
             secondarySourceVisualMap = secondaryVisualMap,
-            checkCancelled = request.checkCancelled
+            checkCancelled = request.checkCancelled,
+            // DUALITY's authored grade historically excludes source-luma comparisons.
+            sourceFiles = if (request.recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) emptyList()
+                else request.sources.items.map { it.file },
+            sourceVisualMaps = listOf(pipeline.visualMap, secondaryVisualMap),
+            decodedFrameProvenance = VeykadRenderInspector.decodedFrameProvenance(artifacts)
         )
         val decodedAcceptance = RenderedMp4Acceptance.evaluate(
             alternative.graph,

@@ -3,6 +3,11 @@ package com.veycad.app
 import java.io.File
 import java.util.Collections
 
+/** Independent container presentation evidence, never inferred from KEY_DURATION. */
+data class VideoPresentationBounds(val firstPtsUs: Long, val endPtsUs: Long, val timingVersion: Int = 1) {
+    init { require(firstPtsUs >= 0 && endPtsUs > firstPtsUs && timingVersion == 1) }
+}
+
 /** Identity belongs to a selection; equal fingerprints need not have equal source IDs. */
 data class MediaSource(
     val id: String,
@@ -23,10 +28,15 @@ data class MediaSource(
     /** Independently measured exclusive raw endpoint; container duration is not this fact. */
     val videoEndPtsUs: Long? = null
 ) {
+    val videoPresentationBounds: VideoPresentationBounds? = if (firstVideoPtsUs != null && videoEndPtsUs != null) VideoPresentationBounds(firstVideoPtsUs, videoEndPtsUs) else null
     val timeBounds = SourceTimeBounds(durationUs, firstVideoPtsUs, videoEndPtsUs)
     init {
         require(id.isNotBlank() && displayName.isNotBlank())
         require(durationUs > 0 && sizeBytes > 0)
+        require(firstVideoPtsUs == null || (firstVideoPtsUs >= 0 && durationUs <= Long.MAX_VALUE - firstVideoPtsUs)) {
+            "Некорректные границы PTS исходного видео"
+        }
+        require(videoPresentationBounds == null || videoPresentationBounds.firstPtsUs == firstVideoPtsUs)
         require(rotationDegrees in setOf(0, 90, 180, 270))
         require(width > 0 && height > 0 && mime.startsWith("video/"))
         require(fingerprint.matches(Regex("[0-9a-f]{64}")))
@@ -34,6 +44,13 @@ data class MediaSource(
 
     /** Describes the supported input matrix, not artistic or device acceptance. */
     val isBaselineInput: Boolean get() = mime == "video/avc" && (colorTransfer == null || colorTransfer == 3)
+
+    /** Absolute endpoint requires independent evidence; legacy duration is not that proof. */
+    val requiredVideoEndPtsUs: Long get() = requireNotNull(videoPresentationBounds) {
+        "Границы времени этой видеодорожки пока не поддерживаются"
+    }.endPtsUs
+    val requiredFirstVideoPtsUs: Long get() = requireNotNull(firstVideoPtsUs) { "Первый PTS видео неизвестен" }
+    val videoContentDurationUs: Long get() = requiredVideoEndPtsUs - requiredFirstVideoPtsUs
 }
 
 /** Graph source indices refer to this snapshot, never to a caller-owned mutable list. */
@@ -43,5 +60,23 @@ class MediaSourceSet(items: List<MediaSource>, val schemaVersion: Int = 1) {
     init {
         require(schemaVersion == 1) { "Неподдерживаемая версия списка исходников" }
         require(this.items.map { it.id }.toSet().size == this.items.size) { "Повторяющиеся ID исходников" }
+    }
+}
+
+object GalleryImportPolicy {
+    const val MAX_FILES = 20
+    const val MAX_DURATION_US = 1_800_000_000L
+    const val MIN_SOURCE_US = 500_000L
+
+    fun validate(sources: MediaSourceSet) {
+        require(sources.items.size in 1..MAX_FILES) { "Выберите от 1 до $MAX_FILES видео" }
+        var remainingUs = MAX_DURATION_US
+        for (source in sources.items) {
+            val usableUs = source.videoContentDurationUs
+            require(usableUs >= MIN_SOURCE_US) { "${source.displayName}: видео короче 0,5 секунды" }
+            // Subtract before accumulating: even Long.MAX_VALUE cannot wrap the total.
+            require(usableUs <= remainingUs) { "Общая длительность видео превышает 30 минут" }
+            remainingUs -= usableUs
+        }
     }
 }

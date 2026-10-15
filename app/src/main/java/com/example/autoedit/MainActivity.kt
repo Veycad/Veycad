@@ -39,9 +39,11 @@ import java.util.concurrent.Executors
 class MainActivity : AppCompatActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private var sourceFile: File? = null
+    private var selectedSourceFiles: List<File> = emptyList()
     private var secondarySourceFile: File? = null
     private var sourceDisplayNames: List<String> = emptyList()
     private var musicSelection: BuiltInMusicCatalog.Selection? = null
+    private lateinit var customMusic: CustomMusicController
     private val musicRequests = MontageStylePresentation.MusicRequests()
     private var renderedFile: File? = null
     private var renderedSaved = false
@@ -87,13 +89,16 @@ class MainActivity : AppCompatActivity() {
                 montageStyle = MontageStyleCatalog.restore(capture.styleId)
                 getSharedPreferences("montage_style", MODE_PRIVATE).edit().putString("selected", montageStyle.id).apply()
                 showDirectorScreen()
-                updateStyleLabel()
+        updateStyleLabel()
                 refreshMusicForStyle()
                 val fullHd = settingsPreferences().getString(PREF_QUALITY, QUALITY_720) == QUALITY_1080
                 session.prepareCapture(id, result.data?.getIntExtra(CaptureActivity.EXTRA_TAKE, 0)?.takeIf { it > 0 },
                     if (fullHd) 1080 else 720, if (fullHd) 1920 else 1280, if (fullHd) 8_000_000 else 5_000_000)
             }
         }
+    }
+    private val musicPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { customMusic.import(it) }
     }
     private val videoGallery = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) result.data?.data?.let { uri ->
@@ -105,7 +110,9 @@ class MainActivity : AppCompatActivity() {
     ) { uris ->
         val unique = uris.distinct()
         if (unique.isEmpty()) return@registerForActivityResult
-        if (unique.size != 2) {
+        if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) {
+            if (unique.size > 20) { toast("Выберите от 1 до 20 видео"); return@registerForActivityResult }
+        } else if (unique.size != 2) {
             toast("Для стиля DUALITY выберите ровно два видео")
             return@registerForActivityResult
         }
@@ -160,11 +167,24 @@ class MainActivity : AppCompatActivity() {
         ViewCompat.requestApplyInsets(content)
         session = EditSession.get(this)
         bindViews()
+        customMusic = CustomMusicController(this,
+            onChanged = { updateMusicDisplay(); updateReadyState() },
+            onImported = {
+                montageStyle = MontageStyleCatalog.customMusic
+                getSharedPreferences("montage_style", MODE_PRIVATE).edit()
+                    .putString("selected", montageStyle.id).apply()
+                musicRequests.invalidate()
+                musicSelection = null
+                setCaptureMode(false)
+        updateStyleLabel()
+            })
         findViewById<TextView>(R.id.appVersion).text =
             "Veykad ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}"
         montageStyle = MontageStyleCatalog.restore(
-            getSharedPreferences("montage_style", MODE_PRIVATE).getString("selected", null))
+            getSharedPreferences("montage_style", MODE_PRIVATE).getString("selected",
+                if (BuildConfig.GALLERY_MVP) MontageStyleCatalog.galleryMontage.id else null))
         updateStyleLabel()
+        customMusic.observe()
         bindActions()
         captureMode = runCatching { CaptureMode.valueOf(savedInstanceState?.getString("capture_mode").orEmpty()) }
             .getOrDefault(CaptureMode.MUSIC)
@@ -173,6 +193,7 @@ class MainActivity : AppCompatActivity() {
             session.state.value?.entry?.takeIf { it.file.path == path }?.let { legacySaveEntry = it }
         }
         restoreSourceDraft()
+        if (montageStyle == MontageStyleCatalog.customMusic) refreshMusicForStyle()
         updateMyEditsButton()
         LocalDiagnostics.record(this, "app_open")
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -194,10 +215,11 @@ class MainActivity : AppCompatActivity() {
             completedEntry = state.entry
             updateReadyState()
             state.draft?.let { draft ->
+                selectedSourceFiles = draft.files
                 sourceFile = draft.files[0]
                 secondarySourceFile = draft.files.getOrNull(1)
                 sourceDisplayNames = draft.names
-                if (draft.music.styleId == montageStyle.id) {
+                if (draft.music?.styleId == montageStyle.id) {
                     musicRequests.invalidate()
                     musicSelection = draft.music
                 } else if (musicSelection?.styleId != montageStyle.id) musicSelection = null
@@ -261,7 +283,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             findViewById<Button>(R.id.cancelRenderButton).visibility =
-                if (rendering && !state.publishing) View.VISIBLE else View.GONE
+                if ((rendering || importing) && !state.publishing) View.VISIBLE else View.GONE
             updateMyEditsButton()
         }
     }
@@ -269,6 +291,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         stopPreviewPlayback()
         musicRequests.invalidate()
+        if (::customMusic.isInitialized) customMusic.close()
         // Music selection and short diagnostics exports use this executor; media jobs belong to EditSession.
         worker.shutdown()
         super.onDestroy()
@@ -281,6 +304,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        if (::customMusic.isInitialized) customMusic.stopPreview()
         activityResumed = false
         if (resultVideo.isPlaying) resultVideo.pause()
         super.onPause()
@@ -315,6 +339,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
+        findViewById<Button>(R.id.manualMvpButton).setOnClickListener { stopPreviewPlayback(); startActivity(Intent(this, ManualMvpActivity::class.java)) }
+        findViewById<Button>(R.id.importMusicButton).setOnClickListener {
+            if (!rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null) musicPicker.launch(arrayOf("audio/*", "application/ogg"))
+        }
         findViewById<Button>(R.id.textEditorButton).setOnClickListener { stopPreviewPlayback(); TextEditActivity.open(this) }
         findViewById<Button>(R.id.addResultTextButton).setOnClickListener {
             renderedFile?.let { stopPreviewPlayback(); TextEditActivity.open(this,it) }
@@ -349,7 +377,7 @@ class MainActivity : AppCompatActivity() {
         selectVideoButton.setOnClickListener {
             if (rendering || importing || saving || legacySaveEntry != null) return@setOnClickListener
             LocalDiagnostics.record(this, "tap_select_video")
-            if (montageStyle.sourceCount == 2) {
+            if (montageStyle.sourceCount == 2 || montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) {
                 dualVideoGallery.launch(arrayOf("video/*"))
             } else if (hasFullVideoAccess()) {
                 openVideoGallery()
@@ -379,7 +407,7 @@ class MainActivity : AppCompatActivity() {
             showNewEditScreen()
         }
         findViewById<Button>(R.id.cancelRenderButton).setOnClickListener {
-            if (session.cancelRender()) progressDetail.text = "Отменяю монтаж. Освобождаю ресурсы…"
+            if (session.cancelRender()) progressDetail.text = "Отменяю обработку…"
         }
         // VideoView consumes touches for its optional media controller on some Android
         // versions, so its normal click listener alone does not receive screen taps.
@@ -409,14 +437,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showStylePicker(fromSettings: Boolean = false) {
-        if (rendering || importing || saving || legacySaveEntry != null) return
+        if (rendering || importing || saving || customMusic.busy || legacySaveEntry != null) return
         LocalDiagnostics.record(this, "tap_select_style")
         StylePickerDialog.show(this, MontageStyleCatalog.all, montageStyle.id) { selected ->
             if (!selected.available) return@show
             montageStyle = selected
             getSharedPreferences("montage_style", MODE_PRIVATE).edit()
                 .putString("selected", selected.id).apply()
-            updateStyleLabel()
+        updateStyleLabel()
             refreshMusicForStyle()
             if (fromSettings) updateSettingsValues()
             LocalDiagnostics.record(this, "select_montage_style", mapOf("style" to selected.id))
@@ -454,7 +482,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateReadyState() {
-        val ready = !rendering && !importing && !saving && legacySaveEntry == null
+        val ready = !rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null
         findViewById<Button>(R.id.textEditorButton).isEnabled = ready
         findViewById<Button>(R.id.addResultTextButton).isEnabled = ready && renderedFile != null
         findViewById<Button>(R.id.galleryModeButton).isEnabled = ready
@@ -465,20 +493,24 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.newEditButton).isEnabled = ready
         selectVideoButton.isEnabled = ready
         findViewById<Button>(R.id.selectStyleButton).isEnabled = ready
-        val sourcesReady = sourceFile?.isFile == true &&
-            (montageStyle.sourceCount == 1 || secondarySourceFile?.isFile == true)
-        val musicReady = musicSelection?.let { it.styleId == montageStyle.id && it.file.isFile } == true
+        val sourcesReady = if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
+            selectedSourceFiles.size in 1..20 && selectedSourceFiles.all(File::isFile)
+        else sourceFile?.isFile == true && (montageStyle.sourceCount == 1 || secondarySourceFile?.isFile == true)
+        val customStyle = montageStyle == MontageStyleCatalog.customMusic
+        val musicReady = if (customStyle) customMusic.ready else musicSelection?.let { it.styleId == montageStyle.id && it.file.isFile } == true
+        customMusic.updateControls(customStyle && !autoCapture, ready, !autoCapture)
         renderButton.isEnabled = if (autoCapture) ready else ready && montageStyle.available && sourcesReady && musicReady
         renderButton.text = if (autoCapture) getString(R.string.capture_open) else "Создать монтаж"
         findViewById<TextView>(R.id.renderHint).text = when {
             importing -> "Добавляю исходники…"
             rendering -> "Монтаж создаётся"
             saving -> "Сохраняю результат…"
+            customMusic.busy -> "Анализирую ритм трека…"
             autoCapture -> if (CaptureScript.forStyle(montageStyle.id) == null) getString(R.string.capture_style_missing)
                 else getString(R.string.capture_prototype)
             !montageStyle.available -> montageStyle.unavailableLabel
             !sourcesReady -> if (montageStyle.sourceCount == 2) "Сначала добавь два видео" else "Сначала добавь видео"
-            !musicReady -> "Подбираю музыку…"
+            !musicReady -> if (customStyle) "Добавь свой MP3 или WAV" else "Подбираю музыку…"
             else -> "Всё готово к монтажу"
         }
     }
@@ -487,6 +519,10 @@ class MainActivity : AppCompatActivity() {
         val presentation = MontageStylePresentation.forStyle(montageStyle)
         findViewById<Button>(R.id.selectStyleButton).text = presentation.selectorLabel
         selectVideoButton.text = presentation.addSourceLabel
+        if (!autoCapture) findViewById<TextView>(R.id.createIntro).setText(R.string.create_gallery_intro)
+        if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE && !autoCapture)
+            findViewById<TextView>(R.id.createIntro).text = "До 30 секунд под встроенную музыку. " +
+                "Текст добавьте после монтажа. Автосубтитры — в «Текст» на отдельно выбранном исходнике с речью."
         updateCaptureActionPreview()
         updateSourceDisplay()
         updateMusicDisplay()
@@ -508,6 +544,9 @@ class MainActivity : AppCompatActivity() {
             if (enabled) R.string.create_auto_headline else R.string.create_gallery_headline)
         findViewById<TextView>(R.id.createIntro).setText(
             if (enabled) R.string.create_auto_intro else R.string.create_gallery_intro)
+        if (!enabled && montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
+            findViewById<TextView>(R.id.createIntro).text = "До 30 секунд под встроенную музыку. " +
+                "Текст добавьте после монтажа. Автосубтитры — в «Текст» на отдельно выбранном исходнике с речью."
         findViewById<View>(R.id.autoCaptureOptions).visibility = if (enabled) View.VISIBLE else View.GONE
         findViewById<View>(R.id.captureActionPreviewPanel).visibility = if (enabled) View.VISIBLE else View.GONE
         selectVideoButton.visibility = if (enabled) View.GONE else View.VISIBLE
@@ -531,7 +570,7 @@ class MainActivity : AppCompatActivity() {
             val styles = listOf(MontageStyleCatalog.fearStrobe, MontageStyleCatalog.heartbeat)
             AlertDialog.Builder(this).setTitle(R.string.capture_select_style).setItems(styles.map { it.title }.toTypedArray()) { _, index ->
                 montageStyle = styles[index]
-                updateStyleLabel()
+        updateStyleLabel()
                 refreshMusicForStyle()
                 openCapture()
             }.setNegativeButton(android.R.string.cancel, null).show()
@@ -551,6 +590,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateMusicDisplay() {
+        if (montageStyle == MontageStyleCatalog.customMusic) {
+            findViewById<TextView>(R.id.musicSelection).text = customMusic.display()
+            return
+        }
         val music = musicSelection?.takeIf { it.styleId == montageStyle.id }
         findViewById<TextView>(R.id.musicSelection).text = if (music != null) {
             "♫ ${music.track.title} · ${music.track.bpm} BPM"
@@ -558,6 +601,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshMusicForStyle() {
+        customMusic.stopPreview()
+        if (montageStyle == MontageStyleCatalog.customMusic) {
+            musicRequests.invalidate()
+            musicSelection = null
+            customMusic.load()
+            updateMusicDisplay()
+            updateReadyState()
+            return
+        }
         val styleId = montageStyle.id
         val request = musicRequests.begin(styleId)
         musicSelection = null
@@ -585,7 +637,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startAutomaticEdit() {
-        if (rendering || importing || saving || legacySaveEntry != null) return
+        if (rendering || importing || saving || customMusic.busy || legacySaveEntry != null) return
         if (!montageStyle.available) {
             toast(montageStyle.unavailableLabel)
             return
@@ -593,24 +645,35 @@ class MainActivity : AppCompatActivity() {
         val source = sourceFile ?: return
         val secondary = secondarySourceFile.takeIf { montageStyle.sourceCount == 2 }
         if (montageStyle.sourceCount == 2 && secondary == null) return
-        val music = musicSelection ?: return
-        if (music.styleId != montageStyle.id) {
+        val customStyle = montageStyle == MontageStyleCatalog.customMusic
+        val music = musicSelection
+        val selectedCustomMusic = customMusic.selection.takeIf { customStyle && customMusic.ready }
+        if (customStyle && selectedCustomMusic == null) return
+        if (!customStyle && music?.styleId != montageStyle.id) {
             refreshMusicForStyle()
             return
         }
         val fullHd = settingsPreferences().getString(PREF_QUALITY, QUALITY_720) == QUALITY_1080
+        if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) {
+            session.render(selectedSourceFiles, requireNotNull(music).file, montageStyle,
+                width = if (fullHd) 1080 else 720, height = if (fullHd) 1920 else 1280,
+                bitrate = if (fullHd) 8_000_000 else 5_000_000)
+            return
+        }
         session.render(
-            source, secondary, music.file, montageStyle,
+            source, secondary, selectedCustomMusic?.file ?: requireNotNull(music).file, montageStyle,
             width = if (fullHd) 1080 else 720,
             height = if (fullHd) 1920 else 1280,
-            bitrate = if (fullHd) 8_000_000 else 5_000_000
+            bitrate = if (fullHd) 8_000_000 else 5_000_000,
+            musicStartUs = selectedCustomMusic?.startUs ?: 0L
         )
     }
 
     private fun showProgress(progress: VeycadAutomaticEditor.Progress) {
         val copy = when (progress.stage) {
             VeycadAutomaticEditor.Stage.ANALYSING_VIDEO ->
-                "Анализирую видео" to "Ищу лица, движение, композицию и чистые моменты"
+                "Анализирую видео" to if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
+                    "Ищу движение, композицию и чистые моменты" else "Ищу лица, движение, композицию и чистые моменты"
             VeycadAutomaticEditor.Stage.DIRECTING ->
                 "Строю режиссуру" to "Сопоставляю визуальные события с ритмом музыки"
             VeycadAutomaticEditor.Stage.RENDERING ->
@@ -728,7 +791,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSettingsValues() {
-        findViewById<TextView>(R.id.settingsStyleValue).text = "${montageStyle.title}  ›"
+        findViewById<TextView>(R.id.settingsStyleValue).text = "${MontageStylePresentation.forStyle(montageStyle).title}  ›"
         val quality = settingsPreferences().getString(PREF_QUALITY, QUALITY_720) ?: QUALITY_720
         findViewById<TextView>(R.id.settingsQualityValue).text = "$quality  ›"
         autoSaveSwitch.isChecked = settingsPreferences().getBoolean(PREF_AUTO_SAVE, false)
@@ -760,15 +823,17 @@ class MainActivity : AppCompatActivity() {
         val size = formatBytes(temporaryBytes())
         AlertDialog.Builder(this)
             .setTitle("Очистить временные файлы?")
-            .setMessage("Будут удалены выбранные исходники, кэш анализа и незавершённые данные рендера ($size). Сохранённые эдиты останутся.")
+            .setMessage(if (BuildConfig.GALLERY_MVP) "Выбор видео сбросится. Исходники и готовые видео сохранятся."
+                else "Будут удалены выбранные исходники, кэш анализа и незавершённые данные рендера ($size). Сохранённые эдиты останутся.")
             .setNegativeButton("Отмена", null)
             .setPositiveButton("Очистить") { _, _ ->
                 musicRequests.invalidate()
                 session.clearDraft()
                 getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE).edit().clear().apply()
-                RenderWorkspace.clearTransient(filesDir, cacheDir)
-                cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+                if (!BuildConfig.GALLERY_MVP) RenderWorkspace.clearTransient(filesDir, cacheDir)
+                if (!BuildConfig.GALLERY_MVP) cacheDir.listFiles()?.forEach { it.deleteRecursively() }
                 sourceFile = null
+                selectedSourceFiles = emptyList()
                 secondarySourceFile = null
                 sourceDisplayNames = emptyList()
                 musicSelection = null
@@ -865,6 +930,7 @@ class MainActivity : AppCompatActivity() {
         directorContent.scrollTo(0, 0)
         resultPanel.visibility = View.GONE
         sourceFile = null
+        selectedSourceFiles = emptyList()
         secondarySourceFile = null
         sourceDisplayNames = emptyList()
         musicSelection = null
@@ -997,6 +1063,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restoreSourceDraft() {
+        // The process-owned session carries all ordered sources during rotation. After process
+        // death MVP asks for a new selection, keeping old copies available to text drafts.
+        if (BuildConfig.GALLERY_MVP) return
         val drafts = RenderWorkspace.sourceDraftDirectory(filesDir).listFiles()
             ?.filter { it.isFile && it.extension.lowercase() in setOf("mp4", "mov", "m4v", "webm", "mkv", "3gp") }
             ?.sortedBy { it.name }
@@ -1004,7 +1073,8 @@ class MainActivity : AppCompatActivity() {
         if (drafts.isEmpty()) return
         val preferences = getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE)
         val restored = MontageStylePresentation.restoredSources(drafts, montageStyle)
-        runCatching { BuiltInMusicCatalog.select(this, montageStyle.id) }.onSuccess { music ->
+        runCatching { if (montageStyle == MontageStyleCatalog.customMusic) null
+            else BuiltInMusicCatalog.select(this, montageStyle.id) }.onSuccess { music ->
             sourceFile = restored[0]
             secondarySourceFile = restored.getOrNull(1)
             musicSelection = music
@@ -1015,13 +1085,12 @@ class MainActivity : AppCompatActivity() {
                 }
             )
             updateSourceDisplay()
-            findViewById<TextView>(R.id.musicSelection).text =
-                "♫ ${music.track.title} · ${music.track.bpm} BPM"
+            updateMusicDisplay()
             updateReadyState()
             LocalDiagnostics.record(this, "source_draft_restored", mapOf(
                 "source_count" to restored.size.toString(),
                 "bytes" to restored.sumOf(File::length).toString(),
-                "music" to music.track.id
+                "music" to (music?.track?.id ?: "custom")
             ))
         }
     }

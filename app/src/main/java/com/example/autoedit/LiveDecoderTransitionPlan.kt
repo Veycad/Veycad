@@ -7,6 +7,24 @@ internal object LiveDecoderTransitionPlan {
         val incoming: List<HighQualityFramePlan.Frame>
     )
 
+    /** A driver warm-up hold may not consume the only retained transition sample. */
+    fun overlapStart(window: Window, sigmaProfile: Boolean): Int =
+        if (window.incoming.size == 1 || (sigmaProfile &&
+            window.incoming.first().transitionIn == MontageGraph.Transition.WHIP)) 0 else 1
+
+    /** Adapts the authoritative frame plan to the exact primary-image draw schedule.
+     * No timing is recompiled; only the existing first-overlap hold changes image provenance. */
+    fun drawFrames(frames: List<HighQualityFramePlan.Frame>, sigmaProfile: Boolean = false): List<HighQualityFramePlan.Frame> {
+        val byClip = frames.groupBy { it.clipIndex }
+        val held = byClip.values.mapNotNull { current ->
+            val previous = byClip[current.first().clipIndex - 1] ?: return@mapNotNull null
+            val incoming = current.takeWhile { TransitionTimeline.blendFor(it) != null }
+            if (incoming.isEmpty() || overlapStart(Window(emptyList(), incoming), sigmaProfile) == 0) null
+            else incoming.first().outputTimeUs to MediaCodecSpeedRampRenderer.heldBoundaryFrame(previous.last(), incoming.first())
+        }.toMap()
+        return frames.map { held[it.outputTimeUs] ?: it }
+    }
+
     fun forClip(
         previous: List<HighQualityFramePlan.Frame>,
         current: List<HighQualityFramePlan.Frame>,

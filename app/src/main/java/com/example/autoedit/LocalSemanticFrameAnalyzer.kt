@@ -35,7 +35,9 @@ internal class LocalSemanticFrameAnalyzer : Closeable {
         val humanPresenceConfidence: Float,
         val faceInferenceSucceeded: Boolean = false,
         /** A detected current-frame pose, not a zero substituted after failure/no landmarks. */
-        val gestureEvidenceAvailable: Boolean = false
+        val gestureEvidenceAvailable: Boolean = false,
+        /** All detected faces; null means inference failed or was not requested. */
+        val detectedFaceCount: Int? = null
     )
 
     private data class PoseResult(
@@ -126,10 +128,9 @@ internal class LocalSemanticFrameAnalyzer : Closeable {
         if (pose == null) previousWrists = null
         val faceInference = runCatching {
             Tasks.await(faceTask, TIMEOUT_MS, TimeUnit.MILLISECONDS)
-                .maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
-        }.onSuccess { if (it != null) successfulModels++ }
+        }.onSuccess { if (it.isNotEmpty()) successfulModels++ }
             .onFailure { android.util.Log.w("LocalSemanticFace", "Face inference failed; not evidence of absent face", it) }
-        val faceResult = faceInference.getOrNull()
+        val faceResult = faceInference.getOrNull()?.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
 
         val face = faceResult?.let {
             VisualEventMap.Face(
@@ -198,7 +199,8 @@ internal class LocalSemanticFrameAnalyzer : Closeable {
             successfulModels = successfulModels,
             humanPresenceConfidence = maxOf(face?.confidence ?: 0f, pose?.depthConfidence ?: 0f),
             faceInferenceSucceeded = faceInference.isSuccess,
-            gestureEvidenceAvailable = pose?.gestureEvidenceAvailable == true
+            gestureEvidenceAvailable = pose?.gestureEvidenceAvailable == true,
+            detectedFaceCount = faceInference.getOrNull()?.size
         )
     }
 

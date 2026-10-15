@@ -1,0 +1,52 @@
+name: Android integrated APK
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-integrated-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrated:
+    if: github.head_ref == 'codex/samsung-integrated' || github.ref_name == 'codex/samsung-integrated'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358 cmake;3.22.1'
+      - name: Build the combined app and retain exact provenance
+        env:
+          PULL_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          chmod +x gradlew
+          checkout_sha=$(git rev-parse HEAD)
+          test "$checkout_sha" = "$PULL_HEAD_SHA"
+          ./gradlew --no-daemon --console=plain :app:assembleIntegrated -PsourceSha="$checkout_sha"
+          mkdir -p build/reports/integrated
+          cp app/build/outputs/apk/integrated/app-universal-integrated.apk build/reports/integrated/Veycad-integrated-universal.apk
+          printf 'checkout_sha=%s\npull_head_sha=%s\n' "$checkout_sha" "$PULL_HEAD_SHA" > build/reports/integrated/provenance.txt
+          cd build/reports/integrated
+          sha256sum Veycad-integrated-universal.apk > sha256.txt
+          cat sha256.txt >> provenance.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: integrated-universal-apk
+          path: build/reports/integrated/
+          if-no-files-found: error

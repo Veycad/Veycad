@@ -26,7 +26,7 @@ jobs:
           java-version: '25'
       - uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358 cmake;3.22.1'
       - uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
@@ -39,6 +39,35 @@ jobs:
         run: python -m pip install -r tools/requirements-test.txt
       - name: Verify baseline
         run: ./gradlew --no-daemon clean baselineVerify -PpythonExecutable=python
+      - name: Assemble separate manual MVP
+        run: ./gradlew --no-daemon :app:assembleManualMvp
+      - name: Record manual MVP source and APK
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          directory = Path('app/build/outputs/apk/manualMvp')
+          metadata = json.loads((directory / 'output-metadata.json').read_text())
+          assert metadata['applicationId'] == 'com.veycad.app.manualmvp'
+          outputs = [entry for entry in metadata['elements'] if not entry['filters']]
+          assert len(outputs) == 1, 'Expected exactly one universal manual MVP APK'
+          apk = directory / outputs[0]['outputFile']
+          assert apk.is_file() and apk.suffix == '.apk' and apk.resolve().parent == directory.resolve()
+          target = Path('manual-mvp-artifact')
+          target.mkdir()
+          shutil.copy2(apk, target / 'Veycad-manual-MVP-universal.apk')
+          PY
+          {
+            echo "checkout_sha=$(git rev-parse HEAD)"
+            echo "pull_head_sha=${{ github.event.pull_request.head.sha || github.sha }}"
+            sha256sum manual-mvp-artifact/Veycad-manual-MVP-universal.apk
+          } > manual-mvp-artifact/provenance.txt
+      - name: Upload manual MVP APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-mvp-universal-apk
+          path: manual-mvp-artifact/
+          if-no-files-found: error
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4
