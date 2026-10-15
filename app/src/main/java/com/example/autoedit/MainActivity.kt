@@ -37,6 +37,8 @@ import java.util.concurrent.Executors
 
 /** Automatic montage flow, with a separate text finishing editor for source or result MP4. */
 class MainActivity : AppCompatActivity() {
+    private var observedDraftGeneration = 0L
+    private var observedCleanup: TemporaryFileCleanup.Report? = null
     private val worker = Executors.newSingleThreadExecutor()
     private var sourceFile: File? = null
     private var secondarySourceFile: File? = null
@@ -188,8 +190,18 @@ class MainActivity : AppCompatActivity() {
         })
         showDirectorAfterSplash()
         session.state.observe(this) { state ->
+            if (state.draftGeneration != observedDraftGeneration) {
+                observedDraftGeneration = state.draftGeneration
+                musicRequests.invalidate()
+                sourceFile = null
+                secondarySourceFile = null
+                sourceDisplayNames = emptyList()
+                musicSelection = null
+                updateSourceDisplay()
+                updateMusicDisplay()
+            }
             importing = state.importing
-            rendering = state.busy && !state.saving && !state.importing
+            rendering = state.busy && !state.saving && !state.importing && !state.cleaning
             saving = state.saving
             completedEntry = state.entry
             updateReadyState()
@@ -207,7 +219,12 @@ class MainActivity : AppCompatActivity() {
                 updateReadyState()
             }
             val progressWasVisible = progressPanel.visibility == View.VISIBLE
-            if (importing) {
+            if (state.cleaning) {
+                progressPanel.visibility = View.VISIBLE
+                progressBar.isIndeterminate = true
+                progressTitle.text = "Очищаю временные файлы"
+                progressDetail.text = "Дождитесь завершения очистки"
+            } else if (importing) {
                 progressPanel.visibility = View.VISIBLE
                 progressBar.isIndeterminate = true
                 progressTitle.text = "Загружаю видео"
@@ -263,6 +280,14 @@ class MainActivity : AppCompatActivity() {
             findViewById<Button>(R.id.cancelRenderButton).visibility =
                 if (rendering && !state.publishing) View.VISIBLE else View.GONE
             updateMyEditsButton()
+            if (!state.busy) updateSettingsValues()
+            state.cleanupReport?.let { report ->
+                if (observedCleanup !== report) {
+                    observedCleanup = report
+                    if (report.failures.isEmpty() && state.error == null &&
+                        state.cleanupScope == TemporaryFileCleanup.Scope.ALL_TEMPORARY) toast("Временные файлы очищены")
+                }
+            }
         }
     }
 
@@ -753,31 +778,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun confirmClearTemporaryFiles() {
-        if (session.state.value?.busy == true) {
-            toast("Дождитесь завершения текущей операции")
+        if (session.state.value?.busy == true || MediaWorkCoordinator.process.snapshot().activeWork > 0) {
+            toast(MediaWorkCoordinator.BUSY_MESSAGE)
             return
         }
-        val size = formatBytes(temporaryBytes())
+        val bytes = temporaryBytes()
+        if (bytes < 0) { toast("Не удалось оценить временные файлы. Повторите позже."); return }
         AlertDialog.Builder(this)
             .setTitle("Очистить временные файлы?")
-            .setMessage("Будут удалены выбранные исходники, кэш анализа и незавершённые данные рендера ($size). Сохранённые эдиты останутся.")
+            .setMessage("Будут удалены выбранные исходники, кэш анализа и незавершённые данные рендера (${formatBytes(bytes)}). Сохранённые эдиты останутся.")
             .setNegativeButton("Отмена", null)
-            .setPositiveButton("Очистить") { _, _ ->
-                musicRequests.invalidate()
-                session.clearDraft()
-                getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE).edit().clear().apply()
-                RenderWorkspace.clearTransient(filesDir, cacheDir)
-                cacheDir.listFiles()?.forEach { it.deleteRecursively() }
-                sourceFile = null
-                secondarySourceFile = null
-                sourceDisplayNames = emptyList()
-                musicSelection = null
-                updateSourceDisplay()
-                updateMusicDisplay()
-                updateReadyState()
-                updateSettingsValues()
-                toast("Временные файлы очищены")
-            }
+            .setPositiveButton("Очистить") { _, _ -> session.clearTemporaryFiles() }
             .show()
     }
 
@@ -806,18 +817,12 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun temporaryBytes(): Long {
-        fun File.bytes(): Long = when {
-            isFile -> length()
-            isDirectory -> listFiles()?.sumOf { it.bytes() } ?: 0L
-            else -> 0L
-        }
-        return cacheDir.bytes() +
-            RenderWorkspace.sourceDraftDirectory(filesDir).bytes() +
-            RenderWorkspace.pendingRendersDirectory(filesDir).bytes()
-    }
+    private fun temporaryBytes(): Long = runCatching {
+        TemporaryFileCleanup.estimateBytes(filesDir, cacheDir, TemporaryFileCleanup.Scope.ALL_TEMPORARY)
+    }.getOrDefault(-1L)
 
     private fun formatBytes(bytes: Long): String = when {
+        bytes < 0 -> "Не удалось оценить"
         bytes >= 1_000_000_000L -> "%.1f ГБ".format(bytes / 1_000_000_000f)
         bytes >= 1_000_000L -> "%.1f МБ".format(bytes / 1_000_000f)
         bytes >= 1_000L -> "%.1f КБ".format(bytes / 1_000f)
@@ -854,20 +859,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun showNewEditScreen() {
         if (session.state.value?.busy == true || legacySaveEntry != null) return
+        if (!session.clearDraft()) return
         stopPreviewPlayback()
         musicRequests.invalidate()
-        session.clearDraft()
-        getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE).edit().clear().apply()
         resultContent.visibility = View.GONE
         myEditsContent.visibility = View.GONE
         settingsContent.visibility = View.GONE
         directorContent.visibility = View.VISIBLE
         directorContent.scrollTo(0, 0)
         resultPanel.visibility = View.GONE
-        sourceFile = null
-        secondarySourceFile = null
-        sourceDisplayNames = emptyList()
-        musicSelection = null
         renderedFile = null
         renderedSaved = false
         resultOpenedFromLibrary = false
@@ -997,6 +997,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restoreSourceDraft() {
+        if (getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE).getBoolean("cleanup_incomplete", false)) return
         val drafts = RenderWorkspace.sourceDraftDirectory(filesDir).listFiles()
             ?.filter { it.isFile && it.extension.lowercase() in setOf("mp4", "mov", "m4v", "webm", "mkv", "3gp") }
             ?.sortedBy { it.name }

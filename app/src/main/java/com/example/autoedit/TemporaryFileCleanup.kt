@@ -11,7 +11,7 @@ import java.nio.file.attribute.BasicFileAttributes
 
 /** A deliberately small allowlist. Provider scratch and unknown caches belong to their owners. */
 internal object TemporaryFileCleanup {
-    enum class Scope { ALL_TEMPORARY, SOURCE_DRAFT, TRANSIENT_RENDER }
+    enum class Scope { ALL_TEMPORARY, SOURCE_DRAFT, TRANSIENT_RENDER, TEXT_WORK }
     enum class DraftDisposition { UNTOUCHED, REMOVED, INCOMPLETE }
     data class Report(val failures: List<String>, val draft: DraftDisposition)
 
@@ -19,6 +19,7 @@ internal object TemporaryFileCleanup {
         val files = filesDir.canonicalFile.toPath()
         val cache = cacheDir.canonicalFile.toPath()
         return when (scope) {
+            Scope.TEXT_WORK -> listOf(cache.resolve("text-work"))
             Scope.SOURCE_DRAFT -> listOf(files.resolve("source-draft"))
             Scope.TRANSIENT_RENDER -> listOf(files.resolve("pending-renders"), cache.resolve("imports"))
             Scope.ALL_TEMPORARY -> listOf(files.resolve("source-draft"), files.resolve("pending-renders"),
@@ -82,7 +83,7 @@ internal object TemporaryFileCleanup {
             } catch (_: IOException) { failures += target.toString() }
             catch (_: SecurityException) { failures += target.toString() }
         }
-        val draft = if (scope == Scope.TRANSIENT_RENDER) DraftDisposition.UNTOUCHED
+        val draft = if (scope == Scope.TRANSIENT_RENDER || scope == Scope.TEXT_WORK) DraftDisposition.UNTOUCHED
             else if (Files.exists(paths.first(), NOFOLLOW_LINKS)) DraftDisposition.INCOMPLETE else DraftDisposition.REMOVED
         return Report(failures.toList(), draft)
     }

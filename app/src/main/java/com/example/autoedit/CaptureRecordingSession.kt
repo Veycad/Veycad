@@ -21,11 +21,15 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /** Owns finalization independently of the camera Activity. Never stores a View or Activity. */
-internal class CaptureRecordingSession private constructor(context: Context) {
+internal class CaptureRecordingSession internal constructor(context: Context,
+    private val coordinator: MediaWorkCoordinator = MediaWorkCoordinator.process,
+    private val io: java.util.concurrent.ExecutorService = Executors.newSingleThreadExecutor()
+) {
     private val app = context.applicationContext
     val store = CaptureSessionStore(app.filesDir)
     private val main = Handler(Looper.getMainLooper())
-    private val io = Executors.newSingleThreadExecutor()
+    private val mediaWork = MediaWorkDispatch(coordinator, io) { main.post(it) }
+    private val recordingLeases = mutableMapOf<Long, MediaWorkCoordinator.Lease>()
     private val audio = app.getSystemService(AudioManager::class.java)
     private var audioFocus: AudioFocusRequest? = null
     private var recording: Recording? = null
@@ -52,59 +56,66 @@ internal class CaptureRecordingSession private constructor(context: Context) {
     ) { val busy get() = phase in setOf(Phase.PREPARING, Phase.RECORDING, Phase.FINALIZING) }
 
     fun recover(onResult: (List<CaptureSessionStore.Session>) -> Unit) {
-        val live = state.value?.takeIf { it.busy }?.session?.id
-        io.execute {
-            val sessions = if (!recovered) store.recover(setOfNotNull(live)).also { recovered = true } else store.list()
-            main.post { onResult(sessions) }
+        withMediaWork {
+
+            val live = state.value?.takeIf { it.busy }?.session?.id
+            mediaWork.execute {
+                val sessions = if (!recovered) store.recover(setOfNotNull(live)).also { recovered = true } else store.list()
+                mediaWork.post { onResult(sessions) }
+            }
         }
     }
 
     fun start(recorder: Recorder, script: CaptureScript, mode: CaptureMode, front: Boolean, rotation: Int) {
-        check(Looper.myLooper() == Looper.getMainLooper())
-        if (state.value?.busy == true) return
-        val token = ++generation
-        lastDurationMs = 0
-        lastStatsNs = 0
-        lastGuidanceMs = 0
-        val takes = if (mode == CaptureMode.MUSIC) 1 else CaptureScript.DEFAULT_TAKES
-        LocalDiagnostics.record(app, "capture_record_requested", mapOf("style" to script.styleId,
-            "mode" to mode.name, "front" to front.toString()))
-        mutable.value = State(Phase.PREPARING)
-        io.execute {
-            var stage = CaptureDiagnostics.Stage.STORAGE_CHECK
-            val result = runCatching {
-                // Conservative prototype reserve: source + derivative + output, at 16 Mbit/s.
-                val reserved = CaptureTakeTimeline.totalDurationMs(script,
-                    if (mode == CaptureMode.MUSIC) 1 else CaptureScript.MAX_TAKES) * 2_000L * 3 + 128_000_000L
-                check(app.filesDir.usableSpace >= reserved) { "Недостаточно места для съёмки и монтажа" }
-                stage = CaptureDiagnostics.Stage.MUSIC_ASSET
-                BuiltInMusicCatalog.select(app, script.styleId).file
-            }
-            main.post {
-                if (token != generation) return@post
-                result.onSuccess { music ->
-                    var session: CaptureSessionStore.Session? = null
-                    runCatching {
-                        stage = CaptureDiagnostics.Stage.MUSIC_PLAYER
-                        prepareAudio(music)
-                        // Create the draft only after cancellation is no longer possible on another main-thread turn.
-                        stage = CaptureDiagnostics.Stage.SESSION_CREATE
-                        session = store.create(script, mode, takes, front, rotation)
-                        val started = requireNotNull(session)
-                        mutable.value = State(Phase.PREPARING, started)
-                        // LiveData observers can cancel preparation before the recorder is assigned.
-                        if (token != generation || state.value?.phase != Phase.PREPARING) return@runCatching
-                        val options = FileOutputOptions.Builder(store.staging(started.id))
-                            .setFileSizeLimit(512_000_000L)
-                            .setDurationLimitMillis(CaptureTakeTimeline.totalDurationMs(script,
-                                if (mode == CaptureMode.MUSIC) 1 else CaptureScript.MAX_TAKES)).build()
-                        stage = CaptureDiagnostics.Stage.RECORDER_START
-                        recording = recorder.prepareRecording(app, options)
-                            .start(ContextCompat.getMainExecutor(app)) { event ->
-                                receive(token, script, event)
-                            }
-                    }.onFailure { fail(session, it.message ?: "Не удалось начать запись", stage, it) }
-                }.onFailure { fail(null, it.message ?: "Не удалось подготовить запись", stage, it) }
+        withMediaWork {
+
+            check(Looper.myLooper() == Looper.getMainLooper())
+            if (state.value?.busy == true) return
+            val token = ++generation
+            recordingLeases[token] = checkNotNull(coordinator.tryBeginWork())
+            lastDurationMs = 0
+            lastStatsNs = 0
+            lastGuidanceMs = 0
+            val takes = if (mode == CaptureMode.MUSIC) 1 else CaptureScript.DEFAULT_TAKES
+            LocalDiagnostics.record(app, "capture_record_requested", mapOf("style" to script.styleId,
+                "mode" to mode.name, "front" to front.toString()))
+            mutable.value = State(Phase.PREPARING)
+            mediaWork.execute {
+                var stage = CaptureDiagnostics.Stage.STORAGE_CHECK
+                val result = runCatching {
+                    // Conservative prototype reserve: source + derivative + output, at 16 Mbit/s.
+                    val reserved = CaptureTakeTimeline.totalDurationMs(script,
+                        if (mode == CaptureMode.MUSIC) 1 else CaptureScript.MAX_TAKES) * 2_000L * 3 + 128_000_000L
+                    check(app.filesDir.usableSpace >= reserved) { "Недостаточно места для съёмки и монтажа" }
+                    stage = CaptureDiagnostics.Stage.MUSIC_ASSET
+                    BuiltInMusicCatalog.select(app, script.styleId).file
+                }
+                mediaWork.post {
+                    if (token != generation) return@post
+                    result.onSuccess { music ->
+                        var session: CaptureSessionStore.Session? = null
+                        runCatching {
+                            stage = CaptureDiagnostics.Stage.MUSIC_PLAYER
+                            prepareAudio(music)
+                            // Create the draft only after cancellation is no longer possible on another main-thread turn.
+                            stage = CaptureDiagnostics.Stage.SESSION_CREATE
+                            session = store.create(script, mode, takes, front, rotation)
+                            val started = requireNotNull(session)
+                            mutable.value = State(Phase.PREPARING, started)
+                            // LiveData observers can cancel preparation before the recorder is assigned.
+                            if (token != generation || state.value?.phase != Phase.PREPARING) return@runCatching
+                            val options = FileOutputOptions.Builder(store.staging(started.id))
+                                .setFileSizeLimit(512_000_000L)
+                                .setDurationLimitMillis(CaptureTakeTimeline.totalDurationMs(script,
+                                    if (mode == CaptureMode.MUSIC) 1 else CaptureScript.MAX_TAKES)).build()
+                            stage = CaptureDiagnostics.Stage.RECORDER_START
+                            recording = recorder.prepareRecording(app, options)
+                                .start(ContextCompat.getMainExecutor(app)) { event ->
+                                    receive(token, script, event)
+                                }
+                        }.onFailure { fail(session, it.message ?: "Не удалось начать запись", stage, it) }
+                    }.onFailure { fail(null, it.message ?: "Не удалось подготовить запись", stage, it) }
+                }
             }
         }
     }
@@ -145,7 +156,10 @@ internal class CaptureRecordingSession private constructor(context: Context) {
     }
 
     private fun receive(token: Long, script: CaptureScript, event: VideoRecordEvent) {
-        if (token != generation) return
+        if (token != generation) {
+            if (event is VideoRecordEvent.Finalize) recordingLeases.remove(token)?.close()
+            return
+        }
         val current = state.value?.session ?: return
         lastDurationMs = event.recordingStats.recordedDurationNanos / 1_000_000
         lastStatsNs = SystemClock.elapsedRealtimeNanos()
@@ -188,14 +202,14 @@ internal class CaptureRecordingSession private constructor(context: Context) {
                     VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED, VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED)
                 val failure = if (event.hasError() && !recoverableStop)
                     "Запись завершилась с ошибкой (${event.error}). Исходник сохранён для проверки." else null
-                io.execute {
+                mediaWork.execute {
                     val result = runCatching {
                         store.save(session)
                         check(failure == null) { requireNotNull(failure) }
                         val durationMs = readableVideoDurationMs(store.staging(session.id))
                         store.markReady(session, durationMs)
                     }
-                    main.post {
+                    mediaWork.post {
                         if (token != generation) return@post
                         result.onSuccess { ready -> mutable.value = State(Phase.READY, ready, ready.durationMs,
                             error = state.value?.error) }
@@ -204,6 +218,7 @@ internal class CaptureRecordingSession private constructor(context: Context) {
                                     CaptureDiagnostics.Stage.RECORD_FINALIZE, it) }
                     }
                 }
+                recordingLeases.remove(token)?.close()
             }
         }
     }
@@ -244,12 +259,14 @@ internal class CaptureRecordingSession private constructor(context: Context) {
         LocalDiagnostics.record(app, "capture_stop_requested", mapOf("phase" to current.phase.name,
             "video_ms" to lastGuidanceMs.toString(), "has_stop_reason" to (reason != null).toString()))
         if (current.phase == Phase.PREPARING && recording == null) {
-            generation++
-            releaseAudio()
-            val interrupted = current.session?.copy(status = CaptureSessionStore.Status.INTERRUPTED,
-                stopReason = reason, error = reason)
-            interrupted?.let(::persist)
-            mutable.value = State(session = interrupted, error = reason)
+            val stoppedGeneration = generation++
+            try {
+                releaseAudio()
+                val interrupted = current.session?.copy(status = CaptureSessionStore.Status.INTERRUPTED,
+                    stopReason = reason, error = reason)
+                interrupted?.let(::persist)
+                mutable.value = State(session = interrupted, error = reason)
+            } finally { recordingLeases.remove(stoppedGeneration)?.close() }
             return
         }
         main.removeCallbacksAndMessages(TICK_TOKEN)
@@ -274,11 +291,11 @@ internal class CaptureRecordingSession private constructor(context: Context) {
 
     private fun logEvent(id: String, type: String, videoMs: Long, musicMs: Long) {
         val at = SystemClock.elapsedRealtimeNanos()
-        io.execute { runCatching { store.events(id).appendText("$type\t$at\t$videoMs\t$musicMs\n") } }
+        mediaWork.execute { runCatching { store.events(id).appendText("$type\t$at\t$videoMs\t$musicMs\n") } }
     }
     private fun persist(session: CaptureSessionStore.Session) {
-        io.execute { runCatching { store.save(session) }.onFailure {
-            main.post { if (state.value?.session?.id == session.id) stop("Не удалось сохранить состояние съёмки") }
+        mediaWork.execute { runCatching { store.save(session) }.onFailure {
+            mediaWork.post { if (state.value?.session?.id == session.id) stop("Не удалось сохранить состояние съёмки") }
         } }
     }
     private fun fail(session: CaptureSessionStore.Session?, message: String, stage: CaptureDiagnostics.Stage,
@@ -288,8 +305,12 @@ internal class CaptureRecordingSession private constructor(context: Context) {
         }.orEmpty())
         releaseAudio()
         val failed = session?.copy(status = CaptureSessionStore.Status.FAILED, error = message)
-        if (failed != null) io.execute { runCatching { store.save(failed) } }
-        mutable.value = State(Phase.FAILED, failed, error = message)
+        if (failed != null) mediaWork.execute { runCatching { store.save(failed) } }
+        try { mutable.value = State(Phase.FAILED, failed, error = message) }
+        finally {
+            if (recording == null) recordingLeases.remove(generation)?.close()
+            else recording?.stop()
+        }
     }
     private fun releaseAudio() {
         musicPlayback?.close()
@@ -301,17 +322,35 @@ internal class CaptureRecordingSession private constructor(context: Context) {
     }
 
     fun inspectInterrupted(id: String, onResult: (Result<CaptureSessionStore.Session>) -> Unit) {
-        check(state.value?.busy != true)
-        io.execute {
-            val result = runCatching {
-                val session = requireNotNull(store.load(id))
-                val source = store.recording(id).takeIf { it.isFile } ?: store.staging(id)
-                val duration = readableVideoDurationMs(source)
-                store.acceptRecovered(session, duration)
+        withMediaWork {
+
+            check(state.value?.busy != true)
+            mediaWork.execute {
+                val result = runCatching {
+                    val session = requireNotNull(store.load(id))
+                    val source = store.recording(id).takeIf { it.isFile } ?: store.staging(id)
+                    val duration = readableVideoDurationMs(source)
+                    store.acceptRecovered(session, duration)
+                }
+                result.exceptionOrNull()?.let { CaptureDiagnostics.failure(app, CaptureDiagnostics.Stage.RECOVERY, it) }
+                mediaWork.post { onResult(result) }
             }
-            result.exceptionOrNull()?.let { CaptureDiagnostics.failure(app, CaptureDiagnostics.Stage.RECOVERY, it) }
-            main.post { onResult(result) }
         }
+    }
+
+    private inline fun withMediaWork(action: () -> Unit) {
+        val before = state.value ?: State()
+        val lease = coordinator.tryBeginWork()
+            ?: run { mutable.value = before.copy(error = MediaWorkCoordinator.CLEANING_MESSAGE); return }
+        try { action() }
+        catch (failure: java.util.concurrent.RejectedExecutionException) {
+            if (recording == null) recordingLeases.remove(generation)?.close()
+            mutable.value = before.copy(error = failure.message ?: "Не удалось начать обработку")
+        } catch (failure: Throwable) {
+            if (recording == null) recordingLeases.remove(generation)?.close()
+            runCatching { mutable.value = before }
+            throw failure
+        } finally { lease.close() }
     }
 
     companion object {

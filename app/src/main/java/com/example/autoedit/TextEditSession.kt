@@ -13,20 +13,24 @@ import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
 
 /** Process owner: activities only observe. Draft and source survive process death. */
-internal class TextEditSession private constructor(context: Context) {
+internal class TextEditSession internal constructor(context: Context,
+    private val coordinator: MediaWorkCoordinator = MediaWorkCoordinator.process,
+    private val worker: java.util.concurrent.ExecutorService = Executors.newSingleThreadExecutor(),
+    private val transcriber: SpeechTranscriber = WhisperSpeechTranscriber(),
+    private val exportEngine: ExportEngine = NATIVE_EXPORT_ENGINE
+) {
+    internal interface Owner { val textEditSession: TextEditSession }
+    internal fun interface ExportEngine {
+        fun export(context: Context, project: TextEditProject, output: File,
+            checkCancelled: () -> Unit, onProgress: (Int) -> Unit)
+    }
     private val app=context.applicationContext
     private val preferences=app.getSharedPreferences("text_session",Context.MODE_PRIVATE)
     private val store=TextEditStore(File(app.filesDir,"text-drafts"))
-    private val worker=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
-    private val scratch=File(app.cacheDir,"text-work").apply { mkdirs() }
-    init {
-        if(preferences.getBoolean("running",false)) {
-            // This flat directory is owned only by this session, never by selected video files.
-            scratch.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
-            File(app.filesDir,"text-sources").listFiles()?.filter { it.extension=="partial" }?.forEach { it.delete() }
-        }
-    }
+    private val mediaWork=MediaWorkDispatch(coordinator,worker) { main.post(it) }
+    private var recovered=false
+    private val scratch=File(app.cacheDir,"text-work")
     private val lock=Any()
     @Volatile private var cancelled=false
     @Volatile private var publishing=false
@@ -91,7 +95,7 @@ internal class TextEditSession private constructor(context: Context) {
     fun transcribe() {
         val project=state.value?.project ?: return
         runJob("Распознаю речь") {
-            val outcome=WhisperSpeechTranscriber().transcribeOutcome(app,File(project.sourcePath),project.language,::checkCancelled,::progress)
+            val outcome=transcriber.transcribeOutcome(app,File(project.sourcePath),project.language,::checkCancelled,::progress)
             if(outcome is SpeechOutcome.Failure) throw SpeechFailureException(outcome.code,outcome.cause)
             val cues=outcome.cuesOrThrow()
             val updated=project.copy(captions=cues,captionsEdited=false)
@@ -109,9 +113,9 @@ internal class TextEditSession private constructor(context: Context) {
         runJob("Экспортирую видео") {
             val result=File(scratch,"text-${UUID.randomUUID()}.mp4")
             try {
-                TextVideoExporter.export(app,project,result,::checkCancelled,::progress)
+                exportEngine.export(app,project,result,::checkCancelled,::progress)
                 synchronized(lock) { checkCancelled(); publishing=true }
-                main.post { mutable.value=mutable.value!!.copy(canCancel=false,operation="Сохраняю результат") }
+                mediaWork.post { mutable.value=mutable.value!!.copy(canCancel=false,operation="Сохраняю результат") }
                 val entry=CompletedRenderStore.publish(app.filesDir,result,"Текст и субтитры · ${project.layers.size} слоёв · ${project.captions.size} фраз",
                     textSourcePath=project.sourcePath)
                 store.save(project,entry.file.path)
@@ -122,26 +126,60 @@ internal class TextEditSession private constructor(context: Context) {
     private fun progress(value:Int) {
         if(lastProgress==value) return
         lastProgress=value
-        main.post { if(mutable.value?.busy==true) mutable.value=mutable.value!!.copy(progress=value) }
+        mediaWork.post { if(mutable.value?.busy==true) mutable.value=mutable.value!!.copy(progress=value) }
     }
     private fun runJob(operation:String, action:()->State) {
-        if(state.value?.busy==true) return
-        val before=state.value ?: State()
-        synchronized(lock) { cancelled=false; publishing=false }
-        lastProgress=-1
-        preferences.edit().putBoolean("running",true).commit()
-        mutable.value=before.copy(busy=true,progress=0,operation=operation,error=null,entry=null)
-        worker.execute {
-            val result=runCatching(action).getOrElse {
-                before.copy(error=if(it is CancellationException) "Обработка отменена. Черновик сохранён." else it.message ?: "Не удалось обработать видео")
+        withMediaWork {
+
+            if(state.value?.busy==true) return
+            val before=state.value ?: State()
+            synchronized(lock) { cancelled=false; publishing=false }
+            lastProgress=-1
+            preferences.edit().putBoolean("running",true).commit()
+            mutable.value=before.copy(busy=true,progress=0,operation=operation,error=null,entry=null)
+            mediaWork.execute {
+                val result=runCatching(action).getOrElse {
+                    before.copy(error=if(it is CancellationException) "Обработка отменена. Черновик сохранён." else it.message ?: "Не удалось обработать видео")
+                }
+                preferences.edit().putBoolean("running",false).commit()
+                mediaWork.post { mutable.value=result }
             }
-            preferences.edit().putBoolean("running",false).commit()
-            main.post { mutable.value=result }
         }
     }
+    internal fun close() {
+        check(state.value?.busy != true)
+        worker.shutdown()
+    }
+    private fun recoverIfIdle() {
+        if(recovered) return
+        val lease=coordinator.tryBeginCleanup() ?: return
+        lease.use {
+            TemporaryFileCleanup.clear(app.filesDir,app.cacheDir,TemporaryFileCleanup.Scope.TEXT_WORK,it)
+            recovered=true
+        }
+    }
+    private inline fun withMediaWork(action:()->Unit) {
+        recoverIfIdle()
+        val before=state.value ?: State()
+        val running=preferences.getBoolean("running",false)
+        val lease=coordinator.tryBeginWork()
+            ?: run { mutable.value=before.copy(error=MediaWorkCoordinator.CLEANING_MESSAGE); return }
+        try { action() }
+        catch(failure:java.util.concurrent.RejectedExecutionException) {
+            preferences.edit().putBoolean("running",running).commit()
+            mutable.value=before.copy(error=failure.message ?: "Не удалось начать обработку")
+        } catch(failure:Throwable) {
+            preferences.edit().putBoolean("running",running).commit()
+            runCatching { mutable.value=before }
+            throw failure
+        } finally { lease.close() }
+    }
     companion object {
+        internal val NATIVE_EXPORT_ENGINE=ExportEngine { context,project,output,cancel,progress ->
+            TextVideoExporter.export(context,project,output,cancel,progress)
+        }
         @Volatile private var instance:TextEditSession?=null
-        fun get(context:Context):TextEditSession = instance ?: synchronized(this) {
+        fun get(context:Context):TextEditSession = (context.applicationContext as? Owner)?.textEditSession ?: instance ?: synchronized(this) {
             instance ?: TextEditSession(context).also { instance=it }
         }
     }
