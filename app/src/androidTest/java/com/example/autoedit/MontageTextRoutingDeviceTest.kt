@@ -21,12 +21,20 @@ class MontageTextRoutingDeviceTest {
 
     @Test fun rawOffsetSourceSelectionAndLegacyFinishingRemainDifferentWithText() {
         val directory = File(context.cacheDir, "t6a-offset-routing").apply { mkdirs() }
-        val seed = SyntheticVideo.create(File(directory, "seed.mp4"), 2000, lumaBase = 80)
-        val source = SourceAudioNativeFixtures.remux(File(directory, "offset.mp4"), listOf(seed),
-            shiftVideoUs = 400_000, videoEndUs = 2_000_000)
+        fun fixture(name: String) = File(directory, name).also { target ->
+            InstrumentationRegistry.getInstrumentation().context.assets.open("media/$name").use { input ->
+                target.outputStream().use { input.copyTo(it) }
+            }
+        }
+        // Identical encoded samples, but ctts adds 400 ms without a rebasing edit list.
+        val seed = fixture("raw-origin-seed.mp4")
+        val source = fixture("raw-origin-400ms.mp4")
         val inspected = MediaInputInspector().inspect("offset", source, "Offset")
         val packetPts = videoPts(source)
         assertTrue("Fixture must actually retain a nonzero raw origin", inspected.requiredFirstVideoPtsUs > 0)
+        assertEquals(400_000L, inspected.requiredFirstVideoPtsUs)
+        assertEquals(2_400_000L, inspected.requiredVideoEndPtsUs)
+        assertEquals(60, packetPts.size)
         assertEquals(inspected.requiredFirstVideoPtsUs, packetPts.first())
         assertTrue("Use independent presentation proof, not declared duration",
             inspected.requiredVideoEndPtsUs > packetPts.last())
