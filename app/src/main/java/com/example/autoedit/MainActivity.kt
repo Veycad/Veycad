@@ -397,6 +397,13 @@ class MainActivity : AppCompatActivity() {
             LocalDiagnostics.record(this, "tap_share")
             shareResult()
         }
+        findViewById<Button>(R.id.editMontageButton).setOnClickListener {
+            if (rendering || importing || saving || legacySaveEntry != null) return@setOnClickListener
+            val id = CompletedRenderStore.list(filesDir).firstOrNull { it.file == renderedFile }?.projectId
+                ?: return@setOnClickListener
+            stopPreviewPlayback()
+            startActivity(Intent(this, ManualMvpActivity::class.java).putExtra(ManualMvpActivity.EXTRA_PROJECT_ID, id))
+        }
         findViewById<Button>(R.id.myEditsButton).setOnClickListener {
             LocalDiagnostics.record(this, "tap_my_edits")
             showMyEdits()
@@ -716,6 +723,7 @@ class MainActivity : AppCompatActivity() {
         saveButton.isEnabled = !entry.saved && !saving
         saveButton.text = if (entry.saved) "✓  Сохранено" else "↓  Сохранить в галерею"
         resultSummary.text = entry.summary
+        findViewById<Button>(R.id.editMontageButton).visibility = if (entry.projectId != null) View.VISIBLE else View.GONE
         updateCaptureResultAction(entry.file)
         preparePreview(entry.file)
     }
@@ -1018,6 +1026,8 @@ class MainActivity : AppCompatActivity() {
     private fun showStoredEdit(file: File) {
         if (rendering || importing || saving || legacySaveEntry != null) return
         renderedFile = file
+        findViewById<Button>(R.id.editMontageButton).visibility =
+            if (CompletedRenderStore.list(filesDir).firstOrNull { it.file == file }?.projectId != null) View.VISIBLE else View.GONE
         renderedSaved = true
         resultOpenedFromLibrary = true
         myEditsContent.visibility = View.GONE

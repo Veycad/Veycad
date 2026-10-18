@@ -92,7 +92,10 @@ object HybridEditCommands {
             require(published == null || published == asset) { "Сохранённый исходник нельзя заменить другим файлом" }
             if (published == null) attached = project.copy(assets = project.assets + asset)
         }
-        commitRevision(attached, attached.current.copy(music = music))
+        if (attached === project && music == project.current.music) return@editValidation project
+        commitRevision(attached, attached.current.copy(music = music,
+            graph = attached.current.graph.copy(audioTrack =
+                MontageGraph.AudioTrack(music.assetId, music.gain, music.startUs))))
     }
 
     fun putText(project: HybridProject, item: TextItem): HybridProject = editValidation {

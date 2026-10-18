@@ -27,15 +27,21 @@ internal class EditSession internal constructor(
     }
     internal data class RenderSummary(
         val clipCount: Int, val beatHitRate: Float,
-        val passedQualityGate: Boolean, val issues: List<String>, val productSummary: String? = null
+        val passedQualityGate: Boolean, val issues: List<String>, val productSummary: String? = null,
+        val projectId: String? = null
     )
     private object NativeRenderEngine : RenderEngine {
         override fun render(request: VeycadAutomaticEditor.Request): RenderSummary {
             if (request.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) return GalleryMvpRenderer.render(request)
             val result = VeycadAutomaticEditor.render(request)
+            val projectId = if (request.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC)
+                CustomMusicProjectHandoff.publish(request.context, result.winner.alternative.graph,
+                    request.sources, request.musicFile,
+                    ProjectExportSettings(request.width, request.height, HighQualityFramePlan.DEFAULT_FPS,
+                        request.bitrate, 192_000), request.checkCancelled) else null
             return RenderSummary(result.winner.alternative.graph.clips.size,
                 result.winner.acceptance.metrics.beatHitRate, result.passedQualityGate,
-                result.winner.acceptance.issues.map { it.toString() })
+                result.winner.acceptance.issues.map { it.toString() }, projectId = projectId)
         }
     }
     private val app = context.applicationContext
@@ -306,7 +312,8 @@ internal class EditSession internal constructor(
                     entry = previous, draft = previousDraft, operationDetail = "Сохраняю готовый эдит…") }
                 val link = captureSessionId?.let { CompletedRenderStore.CaptureLink(it,
                     requireNotNull(captureTakeOrdinal), captureAutoRecommendation) }
-                val published = CompletedRenderStore.publish(app.filesDir, output, summary, link)
+                val published = CompletedRenderStore.publish(app.filesDir, output, summary, link,
+                    projectId = edit.projectId)
                 val linkError = link?.let {
                     runCatching { CaptureSessionStore(app.filesDir).attachResult(it.sessionId,
                         published.file.name, it.takeOrdinal, it.recommended) }.exceptionOrNull()

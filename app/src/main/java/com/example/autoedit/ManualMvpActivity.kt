@@ -3,6 +3,7 @@ package com.veycad.app
 import android.os.Bundle
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.content.res.ColorStateList
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -20,6 +21,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.UUID
@@ -28,6 +30,7 @@ import java.io.FileOutputStream
 
 /** Small saved-project editor. The store and common commands own every revision and history entry. */
 class ManualMvpActivity : AppCompatActivity() {
+    companion object { const val EXTRA_PROJECT_ID = "editable_project_id" }
     private val jobs = Executors.newSingleThreadExecutor()
     private lateinit var store: HybridProjectStore
     private lateinit var content: LinearLayout
@@ -44,6 +47,10 @@ class ManualMvpActivity : AppCompatActivity() {
     private var newProjectFps = 30
     private var renderJob: Future<*>? = null
     private var refreshAfterStop = false
+    private var musicPlayer: MediaPlayer? = null
+    private val musicPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importMusic(uri)
+    }
     private val videoPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) importVideos(uris)
     }
@@ -53,11 +60,15 @@ class ManualMvpActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         store = HybridProjectStore(filesDir)
         val prefs = getSharedPreferences("manual_mvp", MODE_PRIVATE)
-        projectId = savedInstanceState?.getString("project") ?: prefs.getString("project", null)
+        projectId = savedInstanceState?.getString("project") ?: intent.getStringExtra(EXTRA_PROJECT_ID)
+            ?: prefs.getString("project", null)
         clipId = savedInstanceState?.getString("clip") ?: prefs.getString("clip", null)
         newProjectFps = savedInstanceState?.getInt("newProjectFps") ?: prefs.getInt("newProjectFps", 30)
 
-        val scroll = ScrollView(this).apply { setFillViewport(true) }
+        val scroll = ScrollView(this).apply {
+            setFillViewport(true)
+            setBackgroundColor(ContextCompat.getColor(this@ManualMvpActivity, R.color.background))
+        }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(32))
@@ -93,6 +104,7 @@ class ManualMvpActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        stopMusic()
         if (renderJob != null) {
             renderJob?.cancel(true)
             renderJob = null
@@ -117,6 +129,8 @@ class ManualMvpActivity : AppCompatActivity() {
     private fun label(text: String, size: Int): TextView = TextView(this).apply {
         this.text = text
         textSize = size.toFloat()
+        setTextColor(ContextCompat.getColor(this@ManualMvpActivity,
+            if (size >= 16) R.color.text_primary else R.color.text_secondary))
         setPadding(0, dp(8), 0, dp(8))
     }
 
@@ -124,6 +138,9 @@ class ManualMvpActivity : AppCompatActivity() {
         this.text = text
         isAllCaps = false
         minHeight = dp(48)
+        backgroundTintList = null
+        setBackgroundResource(R.drawable.soft_surface)
+        setTextColor(ContextCompat.getColor(this@ManualMvpActivity, R.color.text_primary))
         setOnClickListener { if (!busy) action() }
     }
 
@@ -215,6 +232,7 @@ class ManualMvpActivity : AppCompatActivity() {
             return
         }
         val clips = editable.current.clips
+        showMusic(project)
         val selected = clips.firstOrNull { it.id == clipId } ?: clips.first()
         if (clipId != selected.id) {
             clipId = selected.id
@@ -305,6 +323,103 @@ class ManualMvpActivity : AppCompatActivity() {
 
     private fun common(command: ProjectCommand) = change { HybridEditCommands.apply(it, command) }
 
+    private fun isCustomMusic(project: HybridProject) = project.current.style.recipeId == MontageStyleCatalog.customMusic.id
+
+    private fun musicTime(us: Long): String = "%d:%02d.%d".format(us / 60_000_000L,
+        (us / 1_000_000L) % 60L, (us / 100_000L) % 10L)
+
+    private fun showMusic(project: HybridProject) {
+        if (!isCustomMusic(project)) return
+        val music = project.current.music
+        val asset = project.assets.single { it.id == music.assetId }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(16))
+            setBackgroundResource(R.drawable.panel_surface)
+        }
+        panel.addView(label("Под свою музыку", 20))
+        panel.addView(label(asset.displayName, 14))
+        val start = label("Начало трека: ${musicTime(music.startUs)}", 14)
+        panel.addView(start)
+        panel.addView(SeekBar(this).apply {
+            contentDescription = "Начало музыкального фрагмента"
+            progressTintList = ColorStateList.valueOf(ContextCompat.getColor(this@ManualMvpActivity, R.color.neon))
+            thumbTintList = progressTintList
+            max = ((asset.durationUs - 1_000_000L).coerceAtLeast(0L) / 100_000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            progress = (music.startUs / 100_000L).toInt()
+            minimumHeight = dp(48)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onStartTrackingTouch(bar: SeekBar) { stopMusic() }
+                override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
+                    if (fromUser) start.text = "Начало трека: ${musicTime(value * 100_000L)}"
+                }
+                override fun onStopTrackingTouch(bar: SeekBar) {
+                    val value = bar.progress * 100_000L
+                    if (!busy && value != music.startUs) common(ProjectCommand.ReplaceMusic(music.copy(startUs = value)))
+                }
+            })
+        })
+        panel.addView(button("Прослушать фрагмент") {
+            if (musicPlayer != null) stopMusic() else {
+                video?.pause()
+                val file = ProjectAssetStore(store.directory(project.id)).resolve(asset)
+                val player = MediaPlayer()
+                musicPlayer = player
+                try {
+                    player.setDataSource(file.path)
+                    player.setOnPreparedListener {
+                        if (musicPlayer === player) player.seekTo(music.startUs / 1_000L, MediaPlayer.SEEK_CLOSEST)
+                    }
+                    player.setOnSeekCompleteListener { if (musicPlayer === player) player.start() }
+                    player.setOnCompletionListener { stopMusic() }
+                    player.setOnErrorListener { _, _, _ -> stopMusic(); status.text = "Не удалось прослушать трек"; true }
+                    player.prepareAsync()
+                } catch (error: Exception) { stopMusic(); status.text = "Не удалось прослушать трек" }
+            }
+        })
+        panel.addView(button("Заменить трек") { stopMusic(); musicPicker.launch(arrayOf("audio/*", "application/ogg")) })
+        panel.addView(label("Клипам сохранятся твои правки. Для новых склеек по ритму создай автосборку с другим треком.", 12))
+        content.addView(panel)
+    }
+
+    private fun stopMusic() {
+        musicPlayer?.release()
+        musicPlayer = null
+    }
+
+    private fun importMusic(uri: Uri) {
+        if (busy) return
+        val id = projectId ?: return
+        invalidatePreview()
+        setBusy(true, "Анализирую новый трек…")
+        val sequence = ++generation
+        jobs.execute {
+            var imported: CustomMusicStore.Selection? = null
+            val result = runCatching {
+                val checkCancelled = { if (Thread.currentThread().isInterrupted) throw InterruptedException() }
+                val musicStore = CustomMusicStore(applicationContext)
+                val selected = musicStore.importFile(uri, checkCancelled).also { imported = it }
+                musicStore.analyze(selected, checkCancelled)
+                val previous = store.load(id)
+                val asset = ProjectAssetStore(store.directory(id)).import(selected.file,
+                    ProjectAsset.Kind.AUDIO, selected.durationUs).copy(displayName = selected.title)
+                checkCancelled()
+                val updated = HybridEditCommands.replaceMusic(previous,
+                    ProjectMusic(asset.id, 0L, 1f, 0L, 0L, true),
+                    // An identical file keeps its canonical saved metadata.
+                    previous.assets.firstOrNull { it.id == asset.id } ?: asset)
+                store.save(updated, previous.current.id)
+            }
+            imported?.file?.delete()
+            runOnUiThread {
+                if (isDestroyed || sequence != generation) return@runOnUiThread
+                setBusy(false)
+                refresh(result.fold(onSuccess = { "Трек заменён. Правки клипов сохранены." },
+                    onFailure = { "Трек не заменён: ${it.message.orEmpty()}" }))
+            }
+        }
+    }
+
     private fun renderVersion(publish: Boolean) {
         if (busy) return
         val id = projectId ?: return
@@ -328,19 +443,27 @@ class ManualMvpActivity : AppCompatActivity() {
                     if (Thread.currentThread().isInterrupted) throw InterruptedException("Рендер отменён")
                 }
                 checkCancelled()
-                val prepared = HybridPreviewPreparation.prepare(installed, settings, assets)
-                require(prepared.graph.audioTrack?.sourceId == musicAsset.id &&
-                    prepared.graph.audioTrack?.gain == 1f) {
-                    "Сохранённая музыка не совпадает с планом рендера"
-                }
                 val directory = File(cacheDir, "manual-renders").apply { mkdirs() }
                 val target = File(directory, "manual-${UUID.randomUUID()}.mp4")
                 output = target
-                val request = PreparedHybridExportAdapter.request(prepared, installed, target,
-                    audioFile = musicFile, context = applicationContext, checkCancelled = checkCancelled)
+                val request = if (isCustomMusic(installed)) {
+                    // Use the same full renderer as the automatic winner, retaining analyzed attachments.
+                    val graph = EditableMontageCompiler.compile(EditableMontageProject(installed, settings))
+                    val videos = requireNotNull(installed.selectedVideos).map { selection ->
+                        assets.resolve(installed.assets.single { it.id == selection.assetId })
+                    }
+                    MediaCodecSpeedRampRenderer.Request(graph = graph, sourceFiles = videos,
+                        outputFile = target, width = settings.width, height = settings.height,
+                        fps = settings.fps, bitrate = settings.bitrate, audioFile = musicFile,
+                        context = applicationContext, checkCancelled = checkCancelled)
+                } else {
+                    val prepared = HybridPreviewPreparation.prepare(installed, settings, assets)
+                    PreparedHybridExportAdapter.request(prepared, installed, target,
+                        audioFile = musicFile, context = applicationContext, checkCancelled = checkCancelled)
+                }
                 val frames = MediaCodecSpeedRampRenderer.render(request)
                 checkCancelled()
-                require(frames == prepared.framePlan.frames.size && target.isFile && target.length() > 0L) {
+                require(frames > 0 && target.isFile && target.length() > 0L) {
                     "Рендер не сохранил все кадры текущей версии"
                 }
                 requireVideoShape(target, settings)
@@ -349,7 +472,8 @@ class ManualMvpActivity : AppCompatActivity() {
                     require(latest.current.id == installed.current.id) { "Проект изменился во время экспорта" }
                     checkCancelled()
                     val entry = CompletedRenderStore.publish(filesDir, target,
-                        "Ручная версия ${installed.current.id} · базовый монтаж")
+                        "Ручная версия ${installed.current.id} · ${if (isCustomMusic(installed)) "Под свою музыку" else "базовый монтаж"}",
+                        projectId = installed.id)
                     published = entry
                     checkCancelled()
                     store.save(latest.copy(exports = latest.exports +
@@ -498,6 +622,7 @@ class ManualMvpActivity : AppCompatActivity() {
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: "Видео ${index + 1}"
 
     private fun stopPlayback() {
+        stopMusic()
         playbackGeneration++
         video?.apply {
             setOnPreparedListener(null)
@@ -589,8 +714,8 @@ class ManualMvpActivity : AppCompatActivity() {
         val revision = project.current
         val graph = revision.graph
         if (project.selectedVideos == null) return "у проекта нет проверенного порядка видео"
-        if (graph.frameAttachments.frames.isNotEmpty() || graph.frameAttachments.maskRefinements.isNotEmpty() ||
-            graph.sourceAttachments.any { it.timeline.frames.isNotEmpty() || it.timeline.maskRefinements.isNotEmpty() })
+        if (!isCustomMusic(project) && (graph.frameAttachments.frames.isNotEmpty() || graph.frameAttachments.maskRefinements.isNotEmpty() ||
+            graph.sourceAttachments.any { it.timeline.frames.isNotEmpty() || it.timeline.maskRefinements.isNotEmpty() }))
             return "этому автопроекту нужен анализ кадров, который пока не передаётся в рендер"
         if (revision.texts.isNotEmpty() || revision.textState.layers.isNotEmpty() ||
             revision.textState.captions.isNotEmpty() || revision.style.showAuthoredText)
@@ -600,9 +725,10 @@ class ManualMvpActivity : AppCompatActivity() {
             (settings.width to settings.height) !in setOf(720 to 1280, 1080 to 1920))
             return "нестандартное кадрирование пока не поддерживается"
         val music = revision.music
-        if (music != project.original.music || music.gain != 1f || music.startUs != 0L ||
+        if ((!isCustomMusic(project) && (music != project.original.music || music.startUs != 0L)) || music.gain != 1f ||
             music.fadeInUs != 0L || music.fadeOutUs != 0L || !music.repeat ||
-            graph.audioTrack?.sourceId != music.assetId || graph.audioTrack?.gain != music.gain)
+            graph.audioTrack?.sourceId != music.assetId || graph.audioTrack?.gain != music.gain ||
+            graph.audioTrack?.sourceStartUs != music.startUs)
             return "этот вариант настройки музыки пока не поддерживается"
         return null
     }
