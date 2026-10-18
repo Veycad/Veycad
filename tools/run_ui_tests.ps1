@@ -34,9 +34,12 @@ function Invoke-UiNative {
     $ErrorActionPreference = 'Continue'
     # Invocation errors must not inherit a previous successful native exit code.
     $global:LASTEXITCODE = $null
-    $uiLines = @(& $Executable @Arguments 2>&1 | ForEach-Object { $_.ToString() })
+    $uiLines = @(& $Executable @Arguments 2>&1 | ForEach-Object {
+        $uiLine = $_.ToString()
+        if ($EchoOutput) { Write-Host $uiLine }
+        $uiLine
+    })
     $uiExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { $LASTEXITCODE }
-    if ($EchoOutput) { $uiLines | ForEach-Object { Write-Host $_ } }
     [pscustomobject]@{ ExitCode = $uiExitCode; Output = ($uiLines -join "`n") }
 }
 
