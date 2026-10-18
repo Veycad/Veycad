@@ -6,6 +6,7 @@ report=build/reports/music-editor
 mkdir -p "$report"
 adb install -r app/build/outputs/apk/uiTest/app-universal-uiTest.apk
 adb install -r app/build/outputs/apk/androidTest/uiTest/app-uiTest-androidTest.apk
+adb shell run-as "$package" rm -rf app_music-editor-evidence
 adb shell svc wifi disable
 adb shell svc data disable
 adb logcat -c

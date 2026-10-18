@@ -35,6 +35,7 @@ class CustomMusicEditorDeviceTest {
     }
 
     @Test fun savedCustomMontageReopensAndEditsWithItsMusicOffset() {
+        fixture.launch()
         val project = savedProject()
         val store = HybridProjectStore(fixture.context.filesDir)
         assertEquals(2_000_000L, project.current.music.startUs)
@@ -59,6 +60,18 @@ class CustomMusicEditorDeviceTest {
             val trimmed = store.load(project.id)
             assertEquals(2_000_000L, trimmed.current.music.startUs)
             scenario.recreate()
+            fixture.waitUntil("reopened project installed") {
+                var ready = false
+                scenario.onActivity { activity ->
+                    fun has(view: android.view.View): Boolean = when (view) {
+                        is android.widget.TextView -> view.text.toString() == "Начало трека: 0:02.0"
+                        is android.view.ViewGroup -> (0 until view.childCount).any { has(view.getChildAt(it)) }
+                        else -> false
+                    }
+                    ready = has(activity.window.decorView)
+                }
+                ready
+            }
             onView(withText(containsString("Начало трека: 0:02.0"))).perform(scrollTo())
             screenshot("manual-music")
             onView(withText("Отменить")).perform(scrollTo(), click())

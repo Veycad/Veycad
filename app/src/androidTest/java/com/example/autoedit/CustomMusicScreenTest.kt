@@ -43,6 +43,12 @@ class CustomMusicScreenTest {
         ui.recreate()
         ui.awaitEnabled(R.id.renderButton)
         assertEquals(shifted.startUs, CustomMusicStore(ui.context).restore()!!.startUs)
+        onView(withId(R.id.musicFragmentPanel)).perform(scrollTo())
+        val screenshot = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        File(ui.context.getDir("music-editor-evidence", 0), "own-music-screen.png").outputStream().use {
+            screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+        screenshot.recycle()
         ui.click(R.id.renderButton)
         ui.waitUntil("custom audio request") { ui.renderer.currentRequest != null }
         assertEquals(MontageStyleCatalog.Recipe.CUSTOM_MUSIC, ui.renderer.currentRequest!!.recipe)
