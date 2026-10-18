@@ -9,13 +9,39 @@ import java.util.concurrent.TimeUnit
 internal class UiTestApplication : Application(), EditSession.Owner {
     val renderer = CapturingRenderEngine()
     private var ownedSession: EditSession? = null
+    private data class SourceKey(val path: String, val fingerprint: String)
+    private val inspectedSources = linkedMapOf<SourceKey, MediaSource>()
+    private val sourceInspector = EditSession.SourceInspector { id, file, name, checkCancelled ->
+        checkCancelled()
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                checkCancelled()
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val key = SourceKey(file.canonicalPath, digest.digest().joinToString("") { "%02x".format(it) })
+        val actual = inspectedSources[key] ?: MediaInputInspector(checkCancelled).inspect(id, file, name).also {
+            inspectedSources.keys.removeAll { previous -> previous.path == key.path }
+            while (inspectedSources.size >= GalleryImportPolicy.MAX_FILES) {
+                inspectedSources.remove(inspectedSources.keys.first())
+            }
+            inspectedSources[key] = it
+        }
+        checkCancelled()
+        actual.copy(id = id, file = file, displayName = name)
+    }
     override val editSession: EditSession
-        get() = ownedSession ?: EditSession(this, renderer).also { ownedSession = it }
+        get() = ownedSession ?: EditSession(this, renderer, sourceInspector).also { ownedSession = it }
 
     fun resetSession() {
         check(ownedSession?.state?.value?.busy != true) { "Cannot reset a running job" }
         ownedSession?.close()
         ownedSession = null
+        inspectedSources.clear()
         renderer.reset()
     }
 }

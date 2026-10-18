@@ -43,7 +43,7 @@ internal object EditableMontageImporter {
         }
         val payload = ManualMontageState(montageSnapshot(states), montageSnapshot(MontageEffectBindings.bind(winner, export.fps)))
         val revision = HybridRevision(1, null, winner.copy(manualMontageState = payload), clips,
-            ProjectMusic(music.id, 0, winner.audioTrack?.gain ?: 1f, 0, 0, true), emptyList(),
+            ProjectMusic(music.id, winner.audioTrack?.sourceStartUs ?: 0L, winner.audioTrack?.gain ?: 1f, 0, 0, true), emptyList(),
             ProjectStyle(MontageStyleCatalog.all.single { it.recipe == recipe }.id, 1, ProjectStyle.Mode.AUTHORED, false), emptySet())
         return EditableMontageProject(HybridProject(id, 1, export.fps, 2, assets.values.toList(),
             revision, revision, emptyList(), emptyList(), emptyList(), selectedVideos), export, captureLink)

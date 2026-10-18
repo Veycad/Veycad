@@ -80,7 +80,7 @@ class FeatureIntegrationTest {
         ui.click(R.id.newEditButton)
         ui.awaitDisplayed(R.id.directorContent)
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
-        ui.awaitText(R.id.selectStyleButton, "DUALITY")
+        ui.awaitText(R.id.selectStyleButton, "Диалог двух сцен")
         ui.awaitText(R.id.myEditsButton, "1")
         ui.click(R.id.myEditsButton)
         ui.awaitDisplayed(R.id.myEditsContent)
@@ -97,7 +97,7 @@ class FeatureIntegrationTest {
         pressBack()
         ui.awaitDisplayed(R.id.directorContent)
         ui.click(R.id.settingsButton)
-        ui.awaitText(R.id.settingsStyleValue, "DUALITY")
+        ui.awaitText(R.id.settingsStyleValue, "Диалог двух сцен")
         ui.awaitText(R.id.settingsQualityValue, "1080p")
     }
 

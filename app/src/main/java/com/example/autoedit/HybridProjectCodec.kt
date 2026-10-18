@@ -12,7 +12,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Primitive format: v5 authored maps/source facts; v6 manual graph payload. Schema stays 1. */
+/** Primitive format: v5 authored maps/source facts; v6 manual graph payload; v7 music source offset. Schema stays 1. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
     private val authoredMaps: AuthoredSourceMapStore = sidecars.authoredMaps()) {
     fun encode(project: HybridProject): ByteArray {
@@ -280,7 +280,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         fun graph(value: MontageGraph) = with(value) {
             out.writeInt(version); out.writeLong(sourceDurationMs); out.writeLong(outputDurationMs); enum(profile)
             list(clips) { clip(it) }
-            optional(audioTrack) { string(it.sourceId); out.writeFloat(it.gain) }
+            optional(audioTrack) { string(it.sourceId); out.writeFloat(it.gain); out.writeLong(it.sourceStartUs) }
             list(overlays) { overlay(it) }
             with(metadata) { out.writeInt(schemaVersion); out.writeLong(revision); nullableLong(parentRevision); string(generator) }
             list(parameterTracks) { track(it) }
@@ -376,7 +376,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
                 val clip = HybridClip(string(), string(), span(), sourceMap(format), clip())
                 when (format) {
                     1 -> clip
-                    2, 3, 4, 5, 6 -> clip.copy(originalFrameOffset = input.readInt())
+                    2, 3, 4, 5, 6, 7 -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -387,7 +387,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(locked.distinct().size == locked.size)
             val resetsSources = when (format) {
                 1, 2 -> false
-                3, 4, 5, 6 -> input.readBoolean()
+                3, 4, 5, 6, 7 -> input.readBoolean()
                 else -> error("Unsupported hybrid format")
             }
             val visuals = if (format >= 4) visuals() else ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false)
@@ -452,7 +452,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(version in 1..MontageGraph.CURRENT_VERSION)
             val source = input.readLong(); val duration = input.readLong(); val profile = enum<MontageGraph.Profile>()
             val clips = list { clip() }
-            val audio = optional { MontageGraph.AudioTrack(string(), input.readFloat()) }
+            val audio = optional { MontageGraph.AudioTrack(string(), input.readFloat(), if (format >= 7) input.readLong() else 0L) }
             val overlays = list { overlay(format) }
             val metadata = NleProjectMetadata(input.readInt(), input.readLong(), nullableLong(), string())
             val tracks = list { track() }
@@ -510,7 +510,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 6
+        private const val FORMAT_VERSION = 7
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024

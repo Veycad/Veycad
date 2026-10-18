@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MontageStyleCatalogTest {
+    @Test fun gallery_remains_internal_until_ui_and_export_gates() {
+        val gallery = MontageStyleCatalog.galleryMontage
+        assertEquals("gallery_montage", gallery.id)
+        assertEquals(MontageStyleCatalog.Recipe.GALLERY_MONTAGE, gallery.recipe)
+        assertFalse(gallery.available)
+        assertFalse(MontageStyleCatalog.all.contains(gallery))
+        assertEquals(MontageStyleCatalog.heartbeat, MontageStyleCatalog.restore(gallery.id))
+        assertThrows(IllegalStateException::class.java) { MontageStyleCatalog.requireRecipeAvailable(requireNotNull(gallery.recipe)) }
+    }
     @Test fun sigma_keeps_reference_director_and_stable_identity() {
         assertEquals("sigma", MontageStyleCatalog.sigma.id)
         assertEquals("Сигма", MontageStyleCatalog.sigma.title)
@@ -13,7 +22,7 @@ class MontageStyleCatalogTest {
         assertFalse(MontageStyleCatalog.upcoming.available)
         assertEquals("upcoming", MontageStyleCatalog.upcoming.id)
         assertEquals("Upcoming", MontageStyleCatalog.upcoming.title)
-        assertEquals(listOf("heartbeat", "fear_strobe", "duality_loop"),
+        assertEquals(listOf("heartbeat", "fear_strobe", "duality_loop", "custom_music"),
             MontageStyleCatalog.available.map { it.id })
         assertTrue(MontageStyleCatalog.heartbeat.available)
         assertEquals("heartbeat", MontageStyleCatalog.heartbeat.id)

@@ -124,7 +124,7 @@ class VeycadEngineCoreTest {
             "subjectTextureUv=(uIncomingTexMatrix*vec4(subjectRawUv,0.,1.)).xy"
         ))
         assertTrue(MediaCodecSpeedRampRenderer.TRANSITION_FRAGMENT_SHADER.contains(
-            "if(uForegroundMode<.5&&uLayerOpacity<.999)result.rgb=applyPost(result.rgb)"
+            "if(uTextOnly<.5&&uForegroundMode<.5&&uLayerOpacity<.999)result.rgb=applyPost(result.rgb)"
         ))
         assertTrue(MediaCodecSpeedRampRenderer.TRANSITION_FRAGMENT_SHADER.contains("vScreenTexCoord"))
         assertTrue(MediaCodecSpeedRampRenderer.TRANSITION_FRAGMENT_SHADER.contains("vSemanticTexCoord"))

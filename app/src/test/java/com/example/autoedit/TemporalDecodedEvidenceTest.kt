@@ -159,6 +159,31 @@ class TemporalDecodedEvidenceTest {
         }
     }
 
+    // Equal timestamps in different ordered sources do not prove an identical decoded texture.
+    @Test fun equalPtsAcrossExplicitSourceRolesDoNotTriggerSameSourceTemporalThresholds() {
+        temporalKinds.forEach { kind ->
+            val sample = frame(kind, primary = 1_000_000, secondary = 1_000_000)
+                .copy(sourceIndex = 7, secondarySourceIndex = 19, secondarySourceTimeUs = 1_000_000)
+            val summary = evaluate(sample)
+            assertTrue(summary.issues.toString(), summary.accepted)
+            assertEquals(1, summary.temporalLayerFrames)
+            assertFalse(evaluate(sample.copy(secondarySourceIndex = 7)).accepted)
+            assertFalse(evaluate(sample.copy(secondarySourceIndex = null)).accepted)
+        }
+    }
+
+    // Disabled manual transitions/layers must not be required by Inspector after planner omission.
+    @Test fun disabledManualIntentDoesNotProduceMissingTransitionOrLayerFailures() {
+        val original = graph(MontageGraph.OverlayKind.DOUBLE_EXPOSURE)
+        val disabled = original.copy(clips = original.clips.map { it.copy(transitionIn = MontageGraph.Transition.WHIP) },
+            manualOverrides = ManualRenderOverrides(setOf("explicitly-synthetic-hold"), setOf("explicitly-synthetic-layer")))
+        val sample = frame(MontageGraph.OverlayKind.FLASH, dualDecoder = false).copy(layerOpacity = 0f,
+            secondarySourceTimeUs = null, decodedSecondarySourceTimeUs = null)
+        val summary = VeykadRenderInspector.evaluate(disabled, 1, listOf(sample))
+        assertTrue(summary.issues.toString(), summary.accepted)
+        assertEquals(0, summary.authoredTransitionEvents)
+    }
+
     private fun evaluate(sample: VeykadRenderInspector.FrameEvidence) =
         VeykadRenderInspector.evaluate(graph(sample.layerKind), 1, listOf(sample))
 
