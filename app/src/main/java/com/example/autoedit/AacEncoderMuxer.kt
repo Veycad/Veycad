@@ -148,7 +148,7 @@ internal object AacEncoderMuxer {
             return timing
         } catch (caught: Throwable) { failure = caught; throw caught }
         finally {
-            android.util.Log.i("SourceAacTiming", "calibrationElapsedUs=${(System.nanoTime()-startedNs)/1000}; probePCM=2048 shorts; packet retention=0; codecs sequential")
+            android.util.Log.i("SourceAacTiming", "calibrationElapsedUs=${(System.nanoTime()-startedNs)/1000}; probePCM=2048 shorts; encoderPCM=2048 shorts; packet retention=0; codecs sequential")
             var cleanup: Throwable? = null
             for (file in listOfNotNull(raw,trimmed)) try { Files.deleteIfExists(file.toPath()) }
                 catch (caught: Throwable) { if (cleanup == null) cleanup=caught else cleanup.addSuppressed(caught) }
@@ -184,6 +184,8 @@ internal object AacEncoderMuxer {
     private class StreamingEncoder(private val file: File, val checkCancelled: () -> Unit,
         private val timing: SourceTiming) : PcmSink, AutoCloseable {
         private val config = Config(48_000, 2)
+        // Owned, constant-size input assembly. Caller PCM is borrowed only during write().
+        private val inputPcm = ShortArray(AAC_SAMPLES_PER_ACCESS_UNIT * config.channelCount)
         private val encoder = createEncoder(config, timing.codecName)
         private var packets = 0L
         private var muxer: MediaMuxer? = null
@@ -193,6 +195,9 @@ internal object AacEncoderMuxer {
         private var eos = false
         private var progress = System.nanoTime()
         private val info = MediaCodec.BufferInfo()
+        private var pendingFrames = 0
+        private var encodedInputFrames = 0L
+        // Authored duration excludes the last access unit's zero padding.
         var frames = 0L; private set
         var peakPacketBytes = 0; private set
 
@@ -218,14 +223,30 @@ internal object AacEncoderMuxer {
             var offset = 0
             while (offset < frames) {
                 checkProgress()
+                val count = minOf(frames - offset, AAC_SAMPLES_PER_ACCESS_UNIT - pendingFrames)
+                samples.copyInto(inputPcm, pendingFrames * 2, offset * 2, (offset + count) * 2)
+                pendingFrames += count
+                this.frames = Math.addExact(this.frames, count.toLong())
+                offset += count
+                if (pendingFrames == AAC_SAMPLES_PER_ACCESS_UNIT) queueAlignedInput()
+            }
+        }
+
+        private fun queueAlignedInput() {
+            while (true) {
+                checkProgress()
                 val index = encoder.dequeueInputBuffer(10_000)
                 if (index >= 0) {
                     val target = requireNotNull(encoder.getInputBuffer(index)).apply { clear(); order(ByteOrder.LITTLE_ENDIAN) }
-                    val count = minOf(frames - offset, target.remaining() / 4)
-                    check(count > 0) { "AAC input cannot fit a PCM frame" }
-                    repeat(count * 2) { target.putShort(samples[offset * 2 + it]) }
-                    encoder.queueInputBuffer(index, 0, count * 4, AudioExportPlan.presentationTimeUs(this.frames, 48_000), 0)
-                    this.frames += count; offset += count; progress = System.nanoTime()
+                    check(target.remaining() >= inputPcm.size * 2) { "AAC input cannot fit one complete access unit" }
+                    repeat(inputPcm.size) { target.putShort(inputPcm[it]) }
+                    encoder.queueInputBuffer(index, 0, inputPcm.size * 2,
+                        AudioExportPlan.presentationTimeUs(encodedInputFrames, 48_000), 0)
+                    encodedInputFrames = Math.addExact(encodedInputFrames, AAC_SAMPLES_PER_ACCESS_UNIT.toLong())
+                    pendingFrames = 0
+                    progress = System.nanoTime()
+                    drain()
+                    return
                 }
                 drain()
             }
@@ -270,13 +291,19 @@ internal object AacEncoderMuxer {
 
         fun finish() {
             check(!finished && frames > 0)
+            if (pendingFrames > 0) {
+                // C2 AAC timestamps a flush batch relative to its EOS input. Supply whole input
+                // units so EOS and every coded output stay on the same 1024-frame clock.
+                inputPcm.fill(0, pendingFrames * 2)
+                queueAlignedInput()
+            }
             var queued = false
             while (!eos) {
                 checkProgress()
                 if (!queued) {
                     val index = encoder.dequeueInputBuffer(10_000)
                     if (index >= 0) {
-                        encoder.queueInputBuffer(index, 0, 0, AudioExportPlan.presentationTimeUs(frames, 48_000), MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        encoder.queueInputBuffer(index, 0, 0, AudioExportPlan.presentationTimeUs(encodedInputFrames, 48_000), MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                         queued = true; progress = System.nanoTime()
                     }
                 }
@@ -291,6 +318,8 @@ internal object AacEncoderMuxer {
         }
 
         override fun close() {
+            inputPcm.fill(0)
+            pendingFrames = 0
             try { try { encoder.stop() } finally { encoder.release() } }
             finally { try { if (muxStarted) runCatching { muxer?.stop() } } finally { muxer?.release() } }
         }
