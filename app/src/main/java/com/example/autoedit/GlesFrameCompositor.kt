@@ -141,8 +141,8 @@ internal class GlesFrameCompositor(
     val incomingDecodeSurface: Surface get() { makeCurrent(); return incomingInput.surface }
     val outgoingDecodeSurface: Surface get() { makeCurrent(); return outgoingInput.surface }
     fun awaitDecoderFrame() = awaitIncomingDecoderFrame()
-    fun awaitIncomingDecoderFrame() { makeCurrent(); incomingInput.awaitFrame() }
-    fun awaitOutgoingDecoderFrame() { makeCurrent(); outgoingInput.awaitFrame() }
+    fun awaitIncomingDecoderFrame(checkCancelled: () -> Unit = {}) { makeCurrent(); incomingInput.awaitFrame(checkCancelled) }
+    fun awaitOutgoingDecoderFrame(checkCancelled: () -> Unit = {}) { makeCurrent(); outgoingInput.awaitFrame(checkCancelled) }
     fun updateTexture() = updateIncomingTexture()
     fun updateIncomingTexture() = incomingInput.update()
     fun updateOutgoingTexture() = outgoingInput.update()
