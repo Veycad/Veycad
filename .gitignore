@@ -34,6 +34,9 @@ outputs/
 app/src/testFixtures/golden-mp4/*.mp4
 *.mp4
 !app/src/main/res/raw/style_preview_*.mp4
+# Tiny synthetic color/tone fixtures for text-export regression tests only.
+!app/src/androidTest/assets/media/two-audio.mp4
+!app/src/androidTest/assets/media/offset-short-audio.mp4
 
 # Platform files
 .DS_Store

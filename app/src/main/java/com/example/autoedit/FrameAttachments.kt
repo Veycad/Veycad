@@ -2,6 +2,11 @@ package com.veycad.app
 
 import kotlin.math.abs
 
+/** Source identity is required: equal PTS from two videos must not share inferred planes. */
+data class SourceAttachments(val sourceIndex: Int, val timeline: FrameAttachmentTimeline) {
+    init { require(sourceIndex >= 0) }
+}
+
 /** Numeric, local-only per-frame ML products. No face template or original bitmap is retained. */
 data class FrameAttachments(
     val sourceTimeUs: Long,
@@ -30,13 +35,38 @@ data class FrameAttachments(
         require(!maskIsOpacity || mask != null) { "Opacity semantics require a mask plane" }
     }
 
-    data class Plane(val width: Int, val height: Int, val values: FloatArray, val confidence: Float) {
+    class Plane private constructor(val width: Int, val height: Int,
+        private val producerValues: FloatArray?, private val ownedValues: PreparedAttachmentStorage<FloatArray>?,
+        val confidence: Float) {
+        constructor(width: Int, height: Int, values: FloatArray, confidence: Float) :
+            this(width, height, values, null, confidence)
         constructor(width: Int, height: Int, values: List<Float>, confidence: Float) :
             this(width, height, values.toFloatArray(), confidence)
 
+        /** Producer arrays remain mutable. A prepared plane returns a detached caller-owned copy. */
+        val values: FloatArray get() = if (ownedValues == null) producerValues!! else ownedValues.get().copyOf()
+        /** Allocation-free reads, also enforcing the prepared lifetime after close. */
+        val size: Int get() = data().size
+        operator fun get(index: Int): Float = data()[index]
+        private fun data(): FloatArray = producerValues ?: ownedValues!!.get()
+        internal fun inputIdentity(): Any = producerValues ?: ownedValues!!.identity()
+        internal fun copyInput(): FloatArray = data().copyOf()
+
+        fun copy(width: Int = this.width, height: Int = this.height, values: FloatArray = this.values,
+            confidence: Float = this.confidence): Plane = Plane(width, height, values, confidence)
+        operator fun component1(): Int = width
+        operator fun component2(): Int = height
+        operator fun component3(): FloatArray = values
+        operator fun component4(): Float = confidence
+
+        internal companion object {
+            fun frozen(width: Int, height: Int, storage: PreparedAttachmentStorage<FloatArray>, confidence: Float) =
+                Plane(width, height, null, storage, confidence)
+        }
+
         init {
-            require(width > 0 && height > 0 && values.size == width * height)
-            require(values.all { it.isFinite() })
+            require(width > 0 && height > 0 && data().size.toLong() == width.toLong() * height)
+            require(data().all { it.isFinite() })
             require(confidence in 0f..1f)
         }
 
@@ -44,14 +74,16 @@ data class FrameAttachments(
         // and attachment interpolation, so retain the former List<Float> value semantics.
         override fun equals(other: Any?): Boolean = other is Plane &&
             width == other.width && height == other.height && confidence == other.confidence &&
-            values.contentEquals(other.values)
+            data().contentEquals(other.data())
 
         override fun hashCode(): Int {
             var result = width
             result = 31 * result + height
-            result = 31 * result + values.contentHashCode()
+            result = 31 * result + data().contentHashCode()
             return 31 * result + confidence.hashCode()
         }
+
+        override fun toString(): String = "Plane(width=$width, height=$height, values=${data()}, confidence=$confidence)"
     }
 
     data class FlowPlane(val width: Int, val height: Int, val vectors: List<Float>, val confidence: Float) {
