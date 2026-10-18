@@ -339,7 +339,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
-        findViewById<Button>(R.id.manualMvpButton).setOnClickListener { stopPreviewPlayback(); startActivity(Intent(this, ManualMvpActivity::class.java)) }
+        findViewById<Button>(R.id.manualMvpButton).setOnClickListener {
+            if (!rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null) {
+                stopPreviewPlayback()
+                startActivity(Intent(this, ManualMvpActivity::class.java))
+            }
+        }
         findViewById<Button>(R.id.importMusicButton).setOnClickListener {
             if (!rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null) musicPicker.launch(arrayOf("audio/*", "application/ogg"))
         }
@@ -490,6 +495,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateReadyState() {
         val ready = !rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null
+        findViewById<Button>(R.id.manualMvpButton).isEnabled = ready
+        findViewById<Button>(R.id.editMontageButton).isEnabled = ready
         findViewById<Button>(R.id.textEditorButton).isEnabled = ready
         findViewById<Button>(R.id.addResultTextButton).isEnabled = ready && renderedFile != null
         findViewById<Button>(R.id.galleryModeButton).isEnabled = ready

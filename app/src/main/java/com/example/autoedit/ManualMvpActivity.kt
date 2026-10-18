@@ -129,6 +129,7 @@ class ManualMvpActivity : AppCompatActivity() {
     private fun label(text: String, size: Int): TextView = TextView(this).apply {
         this.text = text
         textSize = size.toFloat()
+        if (size >= 20) typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
         setTextColor(ContextCompat.getColor(this@ManualMvpActivity,
             if (size >= 16) R.color.text_primary else R.color.text_secondary))
         setPadding(0, dp(8), 0, dp(8))
@@ -198,8 +199,12 @@ class ManualMvpActivity : AppCompatActivity() {
         stopPlayback()
         content.removeAllViews()
         content.addView(label("Довести монтаж", 26))
-        status = label(message ?: "Выберите сохранённый проект или создайте базовый тестовый монтаж.", 14)
+        val custom = selected?.let(::isCustomMusic) == true
+        status = label(message ?: if (custom) "Правки сохраняются автоматически" else
+            "Выберите сохранённый проект или создайте базовый тестовый монтаж.", 14)
         content.addView(status)
+        if (custom) content.addView(button("← К монтажу") { finish() })
+        if (!custom) {
         content.addView(label("Базовый тестовый монтаж · 1–2 ваших видео · без анализа ИИ", 16))
         content.addView(row(
             button("30 кадр/с") { chooseFps(30) }.apply { isEnabled = newProjectFps != 30 },
@@ -208,6 +213,7 @@ class ManualMvpActivity : AppCompatActivity() {
         content.addView(button("Выбрать видео для базового монтажа") {
             videoPicker.launch(arrayOf("video/*"))
         })
+        }
         if (selected != null) showEditor(selected) else {
             projectId = null
             clipId = null
@@ -216,7 +222,9 @@ class ManualMvpActivity : AppCompatActivity() {
         content.addView(label("Сохранённые проекты", 20))
         if (projects.isEmpty()) content.addView(label("Пока нет проектов ручной доводки.", 14))
         projects.forEach { project ->
-            content.addView(button("Открыть ${project.id} · ${project.fps} кадр/с") {
+            val title = if (isCustomMusic(project)) "♫ ${project.assets.single { it.id == project.current.music.assetId }.displayName}"
+                else "Открыть ${project.id} · ${project.fps} кадр/с"
+            content.addView(button(title) {
                 projectId = project.id
                 clipId = null
                 rememberSelection()
@@ -238,7 +246,9 @@ class ManualMvpActivity : AppCompatActivity() {
             clipId = selected.id
             rememberSelection()
         }
-        content.addView(label("Проект ${project.id} · версия ${project.current.id} · ${project.fps} кадр/с", 16))
+        val custom = isCustomMusic(project)
+        content.addView(label(if (custom) "${clips.size} фрагментов · версия ${project.current.id}" else
+            "Проект ${project.id} · версия ${project.current.id} · ${project.fps} кадр/с", 16))
         val currentPreview = previewFile?.takeIf { previewProjectId == project.id &&
             previewRevisionId == project.current.id && it.isFile && it.length() > 0L }
         val exported = project.exports.lastOrNull { it.revisionId == project.current.id }?.let {
@@ -260,13 +270,15 @@ class ManualMvpActivity : AppCompatActivity() {
         }
         clips.forEachIndexed { index, clip ->
             val marker = if (clip.id == selected.id) "● " else "○ "
-            content.addView(button("$marker${index + 1}. ${clip.origin.id} · ${clip.visible.count} кадров") {
+            content.addView(button(if (custom) "$marker${index + 1}. Фрагмент · ${musicTime(frameTimeUs(clip.visible.count, project.fps))}"
+                else "$marker${index + 1}. ${clip.origin.id} · ${clip.visible.count} кадров") {
                 clipId = clip.id
                 rememberSelection()
                 refresh()
             })
         }
-        content.addView(label("Выбран: ${selected.id}. Подрезка по одному выходному кадру.", 14))
+        content.addView(label(if (custom) "Выбран фрагмент ${clips.indexOf(selected) + 1}. Подрезка по одному кадру." else
+            "Выбран: ${selected.id}. Подрезка по одному выходному кадру.", 14))
         content.addView(row(
             button("Начало −1") { edit(TimelineCommand.Trim(selected.id, ClipEdge.START, selected.visible.start - 1)) },
             button("Начало +1") { edit(TimelineCommand.Trim(selected.id, ClipEdge.START, selected.visible.start + 1)) }
@@ -336,6 +348,8 @@ class ManualMvpActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(16))
             setBackgroundResource(R.drawable.panel_surface)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(16) }
         }
         panel.addView(label("Под свою музыку", 20))
         panel.addView(label(asset.displayName, 14))
@@ -455,6 +469,8 @@ class ManualMvpActivity : AppCompatActivity() {
                     MediaCodecSpeedRampRenderer.Request(graph = graph, sourceFiles = videos,
                         outputFile = target, width = settings.width, height = settings.height,
                         fps = settings.fps, bitrate = settings.bitrate, audioFile = musicFile,
+                        audioDurationUs = graph.editableTiming?.let { frameTimeUs(it.frameCount, settings.fps) }
+                            ?: (graph.outputDurationMs * 1_000L),
                         context = applicationContext, checkCancelled = checkCancelled)
                 } else {
                     val prepared = HybridPreviewPreparation.prepare(installed, settings, assets)
