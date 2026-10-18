@@ -94,11 +94,11 @@ internal object AacEncoderMuxer {
     }
 
     /** Existing AAC encoder owner, progressively drains each packet straight into a single-track
-     * M4A. No PCM timeline or AAC packet list; one 1024-frame input block waits for final EOS. */
+     * M4A. No PCM timeline or AAC packet list; one 1024-frame input block owns the final tail. */
     private data class SourceTiming(val codecName: String, val delayFrames: Int)
 
-    /** Own exactly one copied stereo block. Java EOS shares the last nonempty input's real PTS.
-     * The framework may split it into data and empty-EOS C2 work; this does not guarantee cadence. */
+    /** Own one copied stereo block; pad its final tail and queue empty EOS at the padded end.
+     * Accepted frames describe authored PCM; queued frames include only final zero padding. */
     internal class SourceInputBlocks(private val queue: (ShortArray, Int, Long, Boolean) -> Unit) {
         private val pending=ShortArray(2048)
         var retainedFrames=0; private set
@@ -110,7 +110,7 @@ internal object AacEncoderMuxer {
             require(count in 1..1024 && samples.size>=count*2)
             var offset=0
             while (offset<count) {
-                if (retainedFrames==1024) flush(false)
+                if (retainedFrames==1024) flush()
                 val copied=minOf(count-offset,1024-retainedFrames)
                 samples.copyInto(pending,retainedFrames*2,offset*2,(offset+copied)*2)
                 retainedFrames+=copied; acceptedFrames+=copied; offset+=copied
@@ -119,12 +119,15 @@ internal object AacEncoderMuxer {
         fun finish() {
             check(!ended && acceptedFrames>0)
             ended=true
-            flush(true)
-            check(queuedFrames==acceptedFrames)
+            pending.fill(0,retainedFrames*2)
+            retainedFrames=1024
+            flush()
+            queue(pending,0,queuedFrames,true)
+            check(queuedFrames>=acceptedFrames && queuedFrames-acceptedFrames<1024)
         }
-        private fun flush(last: Boolean) {
-            check(retainedFrames in 1..1024)
-            queue(pending,retainedFrames,queuedFrames,last)
+        private fun flush() {
+            check(retainedFrames==1024)
+            queue(pending,retainedFrames,queuedFrames,false)
             queuedFrames+=retainedFrames; retainedFrames=0
         }
         fun close() { ended=true; retainedFrames=0 }
@@ -491,7 +494,8 @@ internal object AacEncoderMuxer {
 
         private fun queueBlock(samples: ShortArray, count: Int, start: Long, last: Boolean) {
             check(!inputEosQueued && start==submittedFrames)
-            if (rawProbeFrames != null) check(inputWorks < 50) { "AAC diagnostic input work bound exceeded" }
+            check(if(last) count==0 else count==1024)
+            if (rawProbeFrames != null) check(inputWorks < 51) { "AAC diagnostic input work bound exceeded" }
             while (true) {
                 checkProgress()
                 val index = encoder.dequeueInputBuffer(10_000)
@@ -562,7 +566,8 @@ internal object AacEncoderMuxer {
             check(!finished && frames > 0)
             if (rawProbeFrames != null) check(frames == rawProbeFrames.toLong())
             input.finish()
-            check(inputEosQueued && submittedFrames==frames)
+            check(inputEosQueued && submittedFrames==input.queuedFrames)
+            check(submittedFrames>=frames && submittedFrames-frames<1024)
             while (!eos) {
                 checkProgress()
                 drain()

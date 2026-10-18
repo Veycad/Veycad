@@ -1,7 +1,6 @@
 package com.veycad.app
 
 import java.util.concurrent.CancellationException
-import kotlin.math.abs
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -9,7 +8,7 @@ class AacSourceInputBlocksTest {
     private data class Work(val start: Long, val count: Int, val eos: Boolean)
     private fun pts(frame: Long) = frame * 1_000_000 / 48_000
 
-    @Test fun full_final_block_is_copied_and_held_until_nonempty_eos() {
+    @Test fun full_final_block_is_copied_then_followed_by_empty_eos_at_its_end() {
         val work=mutableListOf<Work>()
         val blocks=AacEncoderMuxer.SourceInputBlocks { samples,count,start,eos ->
             assertTrue(samples.take(count*2).all { it==7.toShort() })
@@ -19,59 +18,76 @@ class AacSourceInputBlocksTest {
         blocks.append(samples,1024); samples.fill(99)
         assertTrue(work.isEmpty()); assertEquals(1024,blocks.retainedFrames)
         blocks.finish()
-        assertEquals(listOf(Work(0,1024,true)),work)
+        assertEquals(listOf(Work(0,1024,false),Work(1024,0,true)),work)
+        assertEquals(1024L,blocks.acceptedFrames)
         assertEquals(1024L,blocks.queuedFrames); assertEquals(0,blocks.retainedFrames)
         assertThrows(IllegalStateException::class.java) { blocks.finish() }
     }
 
-    @Test fun fragmented_full_and_partial_endpoints_queue_each_authored_sample_once() {
+    @Test fun fragmented_partial_tail_preserves_authored_pcm_and_zeroes_only_final_padding() {
         for (length in listOf(1,1023,1024,1025,48000,48128,49600,48800,51200)) {
             val work=mutableListOf<Work>()
             val blocks=AacEncoderMuxer.SourceInputBlocks { samples,count,start,eos ->
-                repeat(count*2) { assertEquals("length=$length sample=${start*2+it}",((start*2+it)%30000).toShort(),samples[it]) }
+                if (eos) assertEquals(0,count) else assertEquals(1024,count)
+                repeat(count*2) {
+                    val ordinal=start*2+it
+                    val expected=if(ordinal<length*2) (ordinal%30000).toShort() else 0.toShort()
+                    assertEquals("length=$length sample=$ordinal",expected,samples[it])
+                }
                 work+=Work(start,count,eos)
             }
             var accepted=0
             var writes=0
             while (accepted<length) {
                 val count=minOf(listOf(17,1024,300,1)[writes++%4],length-accepted)
-                blocks.append(ShortArray(count*2) { ((accepted*2+it)%30000).toShort() },count)
+                val borrowed=ShortArray(count*2) { ((accepted*2+it)%30000).toShort() }
+                blocks.append(borrowed,count); borrowed.fill(-1)
                 accepted+=count
                 assertEquals(accepted.toLong(),blocks.acceptedFrames)
                 assertTrue(blocks.retainedFrames in 1..1024)
                 assertEquals(blocks.acceptedFrames,blocks.queuedFrames+blocks.retainedFrames)
             }
             blocks.finish()
-            assertEquals(length.toLong(),blocks.queuedFrames)
-            assertEquals(length,work.sumOf { it.count })
-            assertEquals(1,work.count { it.eos }); assertTrue(work.last().eos)
+            val padded=((length+1023)/1024)*1024L
+            assertEquals(length.toLong(),blocks.acceptedFrames)
+            assertEquals(padded,blocks.queuedFrames)
+            assertEquals(padded,work.sumOf { it.count }.toLong())
+            assertEquals(1,work.count { it.eos })
             assertTrue(work.dropLast(1).all { it.count==1024 && !it.eos })
-            assertEquals(((length-1)/1024)*1024L,work.last().start)
-            assertEquals((length-1)%1024+1,work.last().count)
+            assertEquals(Work(padded,0,true),work.last())
+            assertEquals((0 until padded/1024).map { it*1024 },work.dropLast(1).map { it.start })
         }
     }
 
-    @Test fun api36_framework_splits_nonempty_eos_and_clamps_hidden_empty_work_to_pcm_end() {
-        // Characterization of TWO primary sources, not an executed codec: CCodecBufferChannel
-        // removes EOS from the data work and queues an empty work at the SAME Java timestamp.
-        // C2SoftAacEnc clamps that work to the preceding PCM end before advancing its flush PTS.
+    @Test fun partial_48000_frame_input_queues_eos_at_padded_endpoint_without_nonempty_eos() {
         val work=mutableListOf<Work>()
         val blocks=AacEncoderMuxer.SourceInputBlocks { _,count,start,eos -> work+=Work(start,count,eos) }
         repeat(46) { blocks.append(ShortArray(2048),1024) }
         blocks.append(ShortArray(1792),896); blocks.finish()
-        assertEquals(Work(47_104,896,true),work.last())
-        val dataPts=pts(work.last().start)
-        val hiddenEosPts=maxOf(dataPts,dataPts+pts(work.last().count.toLong()))
-        assertEquals(981_333L,dataPts)
-        assertEquals(999_999L,hiddenEosPts)
-        val observedFlush=listOf(dataPts,hiddenEosPts+pts(1024))
-        assertEquals(listOf(981_333L,1_021_332L),observedFlush) // actual e9f0db71 packets46/47
-        assertTrue(abs(observedFlush[1]-1_002_666L)>2)
-        // A full final data work already emitted an AU. Its next timestamp equals its end,
-        // so splitting EOS does not create this partial-work discontinuity.
-        val fullEnd=1_045_333L+pts(1024)
-        assertEquals(1_066_666L,fullEnd)
-        assertEquals(1_087_999L,fullEnd+pts(1024))
+        assertEquals(Work(47_104,1024,false),work[46])
+        assertEquals(Work(48_128,0,true),work[47])
+        assertEquals(981_333L,pts(work[46].start))
+        assertEquals(1_002_666L,pts(work.last().start))
+        assertEquals(48_000L,blocks.acceptedFrames)
+        assertEquals(48_128L,blocks.queuedFrames)
+    }
+
+    @Test fun failed_empty_eos_keeps_authored_and_padded_counts_and_cannot_be_retried() {
+        val cancellation=CancellationException("empty EOS cancelled")
+        val work=mutableListOf<Work>()
+        val blocks=AacEncoderMuxer.SourceInputBlocks { _,count,start,eos ->
+            if(eos) throw cancellation
+            work+=Work(start,count,eos)
+        }
+        blocks.append(shortArrayOf(7,7),1)
+        assertSame(cancellation,assertThrows(CancellationException::class.java) { blocks.finish() })
+        assertEquals(listOf(Work(0,1024,false)),work)
+        assertEquals(1L,blocks.acceptedFrames)
+        assertEquals(1024L,blocks.queuedFrames)
+        assertEquals(0,blocks.retainedFrames)
+        assertThrows(IllegalStateException::class.java) { blocks.finish() }
+        assertThrows(IllegalStateException::class.java) { blocks.append(shortArrayOf(7,7),1) }
+        blocks.close()
     }
 
     @Test fun diagnostic_timestamp_audit_retains_first_failure_and_never_accepts_it() {

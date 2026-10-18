@@ -49,19 +49,20 @@ and music together may open two decoders. Runtime measurements are required to a
 bounds on real codecs.
 
 Source encoding owns one additional 4096-byte stereo PCM block. It coalesces borrowed writes
-into 1024-frame blocks and holds the last full or partial block until `finish`, placing EOS on
-that nonempty work at its actual starting sample PTS. It does not pad PCM or restamp codec output.
-That Java input contract does not imply a nonempty C2 EOS work. The inspected API36
+into 1024-frame blocks, copies the last borrowed input, and zero-pads only the unused samples of
+the final partial block. `acceptedFrames` remains the authored duration; `queuedFrames` includes
+this final padding. Every data work contains exactly 1024 frames without EOS. A separate empty
+EOS work uses the padded endpoint. The encoder's packet timestamps and bytes are never restamped.
+The strict output timestamp audit remains at two microseconds, including diagnostic observations.
+
+The previous nonempty-EOS policy was disproved on API36. Its
 [CCodecBufferChannel](https://android.googlesource.com/platform/frameworks/av/+/android-16.0.0_r1/media/codec2/sfplugin/CCodecBufferChannel.cpp)
-splits a nonempty EOS buffer into data and an empty EOS work with the same timestamp. The AAC
-component clamps the empty work to the preceding PCM endpoint, then bases subsequent flush
-timestamps on it. The actual 48,000-frame probe ends with 896 frames at 981,333 us; the hidden
-work clamps to 999,999 us and its second flushed packet is at 1,021,332 us. The fix3 hypothesis
-that nonempty Java EOS alone restores AAC packet cadence was disproved by exact-head native
-evidence. These are encoder metadata observations, not evidence that PCM samples were lost.
-API35 equivalence is unproven.
-The public [MediaCodec EOS contract](https://developer.android.com/reference/android/media/MediaCodec#end-of-stream-handling)
-permits EOS on the final valid input buffer; it also says an empty EOS timestamp is ignored.
+splits a nonempty EOS buffer into data and an empty work at the same timestamp. For the partial
+48,000-frame probe, C2 clamped the hidden work to 999,999 us, then emitted packet47 at 1,021,332 us
+instead of 1,002,666 us. The observed full-block probe preserved cadence. Explicitly padding the
+last input supplies that same full-block contract without inventing packet metadata; authored
+presentation length still comes from the existing exact edit-list trim. Fresh exact-head native
+checks must verify both partial and full endpoints before this policy is accepted.
 
 Source AAC timing is measured for each selected encoder component with the exact 48 kHz,
 stereo, 192 kbps configuration. Two sequential one-second synthetic probes use the existing
@@ -79,6 +80,18 @@ input samples. Coded mdhd/stts, media bytes and chunk offsets remain intact so t
 derive both delay and trailing padding. Unsupported structures/overflow fail before field writes.
 The generated top-level `mdat` supports MediaMuxer's 16-byte extended-size header; its unsigned
 size must fit the file address range and remaining bytes. Other extended atom types are rejected.
+
+For a full decode from the beginning of a proven gapless AAC-LC track, the decoder additionally
+checks the AAC configuration, contiguous 1024-frame packet cadence, edit duration, delay and
+padding before using an owned PCM sample clock. Android's SkipCutBuffer can retain trailing
+padding samples across buffers while preserving the next packet timestamp: with padding128,
+896 returned frames precede a buffer stamped at frame1024. The correction derives timestamps
+from actual returned PCM counts and the validated origin; it neither changes AAC packets nor
+adds a calibration offset. It rejects unexpected decoder timestamps and requires the exact
+expected final PCM count. Generic source gaps and interior seeks retain the original decoder
+path rather than being flattened into this clock. Fresh native and independent host waveform
+checks remain required; a clock unit test alone does not establish container acceptance.
+
 Final mux preserves the extractor's already-negative audio PTS; it must not subtract delay again.
 `KEY_DURATION` can describe coded media duration including priming/padding; presentation duration
 comes from the edit, and acceptance separately checks actual decoded sample count and A/V end.
@@ -106,7 +119,8 @@ waveform evidence cannot pass preparation: the first timestamp failure is rethro
 trimmed probe or real composition. The default real/trimmed encoder guard remains at two
 microseconds, and the five-file host acceptance gate remains unchanged.
 
-Diagnostic work is bounded to 48,000 or 51,200 input frames, 50 input works, 256 output events,
+Diagnostic work is bounded to 48,000 or 51,200 input frames, 51 input works (including empty EOS),
+256 output events,
 256 packets/chunks, 262,144 decoded frames, 64 KiB per encoded packet and 2 MiB of encoded data
 or retained container. Encoder and diagnostic decode phases each have a 60-second limit in
 addition to existing stall/cancellation checks. The decode deadline starts before opening the
@@ -121,7 +135,8 @@ container/chunk ledgers, exact encoder/container CSD-0 hex (bounded to 256 bytes
 artifacts and cannot satisfy the five acceptance sidecars. Normal owned scratch files are still
 deleted on failure/cancellation. Failed/incomplete observations are not complete EOS or decode
 evidence; exact-head remote execution is required. No packet normalization is authorized by this
-checkpoint, and the known preparation-dependent native tests are expected to remain failing.
+checkpoint. Preparation-dependent native tests remain a required exact-head gate; the earlier
+diagnostic checkpoint failures are not acceptance evidence for the corrected input/PCM clocks.
 
 The UI runner retains generated WAV/M4A/MP4 evidence byte-for-byte using a binary stream and
 archives its SHA256. CI's separate FFmpeg native float AAC oracle checks the exact device-recorded
