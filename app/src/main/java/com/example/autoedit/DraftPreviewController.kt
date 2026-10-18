@@ -349,8 +349,8 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
     }
 
     private fun checkCurrent() {
-        if (!policy.seeks.isCurrent(requireNotNull(operation))) throw CancellationException("Obsolete preview operation")
-        input.request?.checkCancelled?.invoke()
+        val generation = requireNotNull(operation)
+        policy.checkCurrentOperation(generation, input.request?.checkCancelled ?: {})
     }
 
     private fun releaseGl() {

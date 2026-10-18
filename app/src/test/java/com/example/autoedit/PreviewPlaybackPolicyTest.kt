@@ -2,8 +2,57 @@ package com.veycad.app
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.CancellationException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class PreviewPlaybackPolicyTest {
+    // Removing the post-hook token check lets the obsolete operation enter the underlying
+    // presentation after invalidation. This isolates the controller's final authorization seam.
+    @Test fun invalidationInsideFinalCancellationHookPreventsUnderlyingPresentation() {
+        val policy = PreviewPlaybackPolicy()
+        val obsolete = policy.seek(0)
+        val hookEntered = CountDownLatch(1)
+        val releaseHook = CountDownLatch(1)
+        val presentations = AtomicInteger()
+        val target = object : RenderTarget {
+            override val size = OutputSize(360, 360)
+            override fun makeCurrent() = Unit
+            override fun resize(size: OutputSize) = Unit
+            override fun present(outputTimeUs: Long) { presentations.incrementAndGet() }
+            override fun close() = Unit
+        }
+        val worker = Executors.newSingleThreadExecutor()
+        try {
+            val attempt = worker.submit {
+                policy.checkCurrentOperation(obsolete) {
+                    hookEntered.countDown()
+                    check(releaseHook.await(5, TimeUnit.SECONDS))
+                }
+                target.present(0)
+            }
+            assertTrue(hookEntered.await(5, TimeUnit.SECONDS))
+            policy.seeks.invalidateSurface()
+            releaseHook.countDown()
+            val failure = assertThrows(ExecutionException::class.java) { attempt.get(5, TimeUnit.SECONDS) }
+            assertTrue(failure.cause is CancellationException)
+            assertEquals(0, presentations.get())
+            // The same boundary still permits a new operation; a permanently closed gate fails.
+            val current = policy.seek(0)
+            worker.submit {
+                policy.checkCurrentOperation(current) {}
+                target.present(0)
+            }.get(5, TimeUnit.SECONDS)
+            assertEquals(1, presentations.get())
+        } finally {
+            releaseHook.countDown()
+            worker.shutdownNow()
+        }
+    }
+
     // Removing generation checks lets a stale audio callback restart an obsolete project/surface.
     @Test fun obsoleteAudioAndFrameCallbacksCannotAuthorizePlayback() {
         val policy = PreviewPlaybackPolicy()

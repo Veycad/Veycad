@@ -1,5 +1,7 @@
 package com.veycad.app
 
+import java.util.concurrent.CancellationException
+
 /** Small control policy; no timeline, renderer, player, or Android ownership. */
 internal class PreviewPlaybackPolicy {
     val seeks = PreviewSeekQueue()
@@ -8,6 +10,15 @@ internal class PreviewPlaybackPolicy {
     private var resumeAfterScrub = false
     private var exact: PreviewGeneration? = null
     private var audio: PreviewGeneration? = null
+
+    /** The caller's hook may yield to invalidation. Recheck the SAME captured operation on return.
+     * Do not hold the policy monitor across external code: main must remain able to invalidate.
+     */
+    fun checkCurrentOperation(generation: PreviewGeneration, checkCancelled: () -> Unit) {
+        if (!seeks.isCurrent(generation)) throw CancellationException("Obsolete preview operation")
+        checkCancelled()
+        if (!seeks.isCurrent(generation)) throw CancellationException("Obsolete preview operation")
+    }
 
     @Synchronized fun seek(timeUs: Long): PreviewGeneration {
         exact = null; audio = null
