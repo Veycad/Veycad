@@ -38,3 +38,7 @@ target_compile_definitions(veycad_whisper PRIVATE
     VEYCAD_WHISPER_PATCH_SHA="${VEYCAD_WHISPER_PATCH_SHA}")
 target_link_libraries(veycad_whisper PRIVATE whisper android log)
 target_link_options(veycad_whisper PRIVATE "-Wl,-z,max-page-size=16384")
+
+add_library(veycad_preview_memory SHARED preview_memory.cpp)
+target_compile_features(veycad_preview_memory PRIVATE cxx_std_17)
+target_compile_options(veycad_preview_memory PRIVATE -Wall -Wextra -Werror)

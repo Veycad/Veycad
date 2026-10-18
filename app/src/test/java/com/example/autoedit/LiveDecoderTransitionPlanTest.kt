@@ -6,6 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LiveDecoderTransitionPlanTest {
+    @Test fun transitionKeepsNSourceIndicesAndClampsOnlyOutgoingSourceAtItsEof() {
+        val previous = listOf(frame(0, 800_000, -1f), frame(33_333, 900_000, -1f))
+            .map { it.copy(sourceIndex = 19) }
+        val current = listOf(frame(66_667, 2_000_000, 0f), frame(100_000, 2_040_000, .5f))
+            .map { it.copy(sourceIndex = 7) }
+        val window = requireNotNull(LiveDecoderTransitionPlan.forClip(previous, current, 950_000))
+        assertEquals(listOf(19, 19), window.outgoing.map { it.sourceIndex })
+        assertEquals(listOf(7, 7), window.incoming.map { it.sourceIndex })
+        assertEquals(listOf(900_000L, 949_999L), window.outgoing.map { it.sourceTimeUs })
+        assertEquals(listOf(2_000_000L, 2_040_000L), window.incoming.map { it.sourceTimeUs })
+    }
     @Test fun outgoing_decoder_continues_forward_instead_of_replaying_previous_tail() {
         val previous = (0 until 12).map { index -> frame(index * 33_333L, 1_000_000L + index * 40_000L, -1f) }
         val current = (0 until 10).map { index -> frame(
@@ -50,6 +61,43 @@ class LiveDecoderTransitionPlanTest {
         assertEquals(current, LiveDecoderTransitionPlan.remainingFrames(current, null))
         assertNull(LiveDecoderTransitionPlan.forClip(emptyList(), current, 960_000L))
         assertNull(LiveDecoderTransitionPlan.forClip(previous, current.drop(2), 960_000L))
+    }
+
+    @Test fun singletonRetainedPhaseIsDrawnAndNeverReplacedByBoundaryHoldAtBothFps() {
+        for (fps in listOf(30, 60)) for (type in listOf(MontageGraph.Transition.WHIP, MontageGraph.Transition.BLACKOUT)) {
+            val clock = ProjectClock(fps)
+            val previous = frame(0, 900_000, -1f).copy(clipIndex = 0, sourceIndex = 19)
+            val only = frame(clock.timeUs(1), 2_000_000, .5f).copy(clipIndex = 1, sourceIndex = 7, transitionIn = type)
+            val window = requireNotNull(LiveDecoderTransitionPlan.forClip(listOf(previous), listOf(only), 3_000_000))
+            // This offset is consumed by the actual renderer, not an independent fixture schedule.
+            assertEquals(0, LiveDecoderTransitionPlan.overlapStart(window, false))
+            assertEquals(listOf(previous, only), LiveDecoderTransitionPlan.drawFrames(listOf(previous, only)))
+            assertTrue(LiveDecoderTransitionPlan.remainingFrames(listOf(only), window).isEmpty())
+        }
+    }
+
+    @Test fun boundaryHoldIsLimitedToFirstGenericOverlapAndKeepsLegacyAndSigmaPolicies() {
+        for (fps in listOf(30, 60)) {
+            val clock = ProjectClock(fps)
+            val previous = frame(0, 900_000, -1f).copy(clipIndex = 0, sourceIndex = 19)
+            val incoming = (1..3).map { frame(clock.timeUs(it), 2_000_000 + it * 1000L, it / 4f)
+                .copy(clipIndex = 1, sourceIndex = 7) }
+            val planned = listOf(previous) + incoming
+            val drawn = LiveDecoderTransitionPlan.drawFrames(planned)
+            assertEquals(19, drawn[1].sourceIndex)
+            assertEquals(0, drawn[1].clipIndex)
+            assertEquals(previous.sourceTimeUs, drawn[1].sourceTimeUs)
+            assertEquals(incoming[0].outputTimeUs, drawn[1].outputTimeUs)
+            assertEquals(incoming.drop(1), drawn.drop(2))
+            assertEquals(planned, LiveDecoderTransitionPlan.drawFrames(planned, true))
+        }
+    }
+
+    @Test fun hardCutNeverBorrowsThePreviousClipEvenAtItsFirstFrame() {
+        val previous = frame(0, 900_000, -1f).copy(clipIndex = 0, sourceIndex = 19)
+        val current = (1..3).map { frame(it * 33_333L, 2_000_000, -1f)
+            .copy(clipIndex = 1, sourceIndex = 7, transitionIn = MontageGraph.Transition.HARD_CUT) }
+        assertEquals(listOf(previous) + current, LiveDecoderTransitionPlan.drawFrames(listOf(previous) + current))
     }
 
     private fun frame(outputUs: Long, sourceUs: Long, transitionProgress: Float) = HighQualityFramePlan.Frame(

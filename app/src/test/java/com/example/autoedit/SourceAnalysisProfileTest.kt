@@ -79,9 +79,20 @@ class SourceAnalysisProfileTest {
             assertNotEquals(editorialKey.fileName, fullKey.fileName)
             assertEquals(editorial, editorialKey.profile)
             assertEquals(full, fullKey.profile)
-            assertTrue(editorialKey.fileName.startsWith("v18-${editorial.cacheToken}-250000-"))
-            assertTrue(fullKey.fileName.startsWith("v18-${full.cacheToken}-250000-"))
+            assertTrue(editorialKey.fileName.startsWith("v19-${editorial.cacheToken}-250000-"))
+            assertTrue(fullKey.fileName.startsWith("v19-${full.cacheToken}-250000-"))
             assertNotEquals(fullKey.fileName, MediaFrameAnalysisCache.key(source, 500_000L, full).fileName)
+            // Same path, size and cadence: source content alone must invalidate both profiles.
+            source.writeBytes(byteArrayOf(12, 34, 57))
+            val changedEditorialKey = MediaFrameAnalysisCache.key(source, 250_000L, editorial)
+            val changedFullKey = MediaFrameAnalysisCache.key(source, 250_000L, full)
+            assertNotEquals(editorialKey.fileName, changedEditorialKey.fileName)
+            assertNotEquals(fullKey.fileName, changedFullKey.fileName)
+            assertNotEquals(changedEditorialKey.fileName, changedFullKey.fileName)
+            assertEquals(editorial, changedEditorialKey.profile)
+            assertEquals(full, changedFullKey.profile)
+            assertTrue(changedEditorialKey.fileName.startsWith("v19-${editorial.cacheToken}-250000-"))
+            assertTrue(changedFullKey.fileName.startsWith("v19-${full.cacheToken}-250000-"))
         } finally { source.delete() }
     }
 

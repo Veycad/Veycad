@@ -124,7 +124,13 @@ class TextExportDeviceTest {
             TextLayer("hook","Привет",0,1_000_000,
                 TextStyle(font=TextFont.MONO,animation=TextAnimation.SCALE,plate=TextPlate.ACCENT),TextLayerKind.TITLE)))
         val result=File(folder,"result.mp4")
-        TextVideoExporter.export(context,project,result,{}, {})
+        val progress = mutableListOf<Int>()
+        TextVideoExporter.export(context,project,result,{}, { progress += it })
+        // Dropping Request.onFrameProgress at the shared compositor seam leaves only stage updates.
+        assertTrue("Text export reports rendered frames, not only stage boundaries",
+            progress.count { it in 11..84 } >= 30)
+        assertTrue("Frame progress remains ordered", progress.zipWithNext().all { (a,b) -> a <= b })
+        assertEquals(100, progress.last())
         assertEquals("Compatible AAC packets are copied without another lossy encode",audioPackets(source),audioPackets(result))
         MediaMetadataRetriever().use { retriever ->
             retriever.setDataSource(result.path)

@@ -10,20 +10,26 @@ import java.io.File
 
 /** A real, decodable AVC clip generated on-device, independent of user footage. */
 internal object SyntheticVideo {
-    fun create(target: File, durationMs: Long = 3_000): File {
+    fun create(target: File, durationMs: Long = 3_000, width: Int = 160, height: Int = 240,
+        lumaBase: Int = 40, fps: Int = 30, iFrameIntervalSeconds: Int = 1,
+        lumaAt: ((x: Int, y: Int, frame: Int) -> Int)? = null): File {
         require(durationMs in 1_000..180_000)
-        if (target.isFile && target.length() > 0) {
+        require(width > 0 && height > 0 && width % 2 == 0 && height % 2 == 0 && lumaBase in 0..155)
+        require(fps in 1..60 && iFrameIntervalSeconds in 1..2)
+        require(width.toLong() * height <= Int.MAX_VALUE.toLong() * 2 / 3) { "Synthetic frame is too large" }
+        // Existing callers retain their cache. Non-default codec clocks/GOPs always regenerate.
+        if (lumaAt == null && lumaBase == 40 && fps == 30 && iFrameIntervalSeconds == 1 && target.isFile && target.length() > 0) {
             val valid = runCatching {
                 MediaMetadataRetriever().use { metadata ->
                     metadata.setDataSource(target.path)
-                    kotlin.math.abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - durationMs) <= 100
+                    kotlin.math.abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - durationMs) <= 100 &&
+                        metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() == width &&
+                        metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() == height
                 }
             }.getOrDefault(false)
             if (valid) return target
         }
         target.parentFile!!.mkdirs()
-        val width = 160
-        val height = 240
         val codec = MediaCodec.createEncoderByType("video/avc")
         val temporary = File(target.path + ".partial")
         val muxer = MediaMuxer(temporary.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
@@ -37,8 +43,8 @@ internal object SyntheticVideo {
             codec.configure(MediaFormat.createVideoFormat("video/avc", width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, color)
                 setInteger(MediaFormat.KEY_BIT_RATE, 200_000)
-                setInteger(MediaFormat.KEY_FRAME_RATE, 30)
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                setInteger(MediaFormat.KEY_FRAME_RATE, fps)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameIntervalSeconds)
             }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             codec.start()
             var frame = 0
@@ -52,16 +58,17 @@ internal object SyntheticVideo {
                 if (!inputEnded) {
                     val index = codec.dequeueInputBuffer(10_000)
                     if (index >= 0) {
-                        if (frame == (durationMs * 30 / 1_000).toInt()) {
-                            codec.queueInputBuffer(index, 0, 0, frame * 1_000_000L / 30,
+                        if (frame == (durationMs * fps / 1_000).toInt()) {
+                            codec.queueInputBuffer(index, 0, 0, frame * 1_000_000L / fps,
                                 MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputEnded = true
                         } else {
-                            val pixels = ByteArray(width * height * 3 / 2) { offset ->
-                                if (offset < width * height) (40 + frame % 100).toByte() else 128.toByte()
+                            val pixels = ByteArray((width.toLong() * height * 3 / 2).toInt()) { offset ->
+                                if (offset < width * height) (lumaAt?.invoke(offset % width, offset / width, frame)
+                                    ?: (lumaBase + frame % 100)).also { require(it in 0..255) }.toByte() else 128.toByte()
                             }
                             codec.getInputBuffer(index)!!.apply { clear(); put(pixels) }
-                            codec.queueInputBuffer(index, 0, pixels.size, frame * 1_000_000L / 30, 0)
+                            codec.queueInputBuffer(index, 0, pixels.size, frame * 1_000_000L / fps, 0)
                             frame++
                         }
                     }

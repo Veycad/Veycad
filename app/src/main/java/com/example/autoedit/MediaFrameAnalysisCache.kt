@@ -134,6 +134,7 @@ internal object MediaFrameAnalysisCache {
             writeInt(it.cameraCells); writeInt(it.cameraQuadrants); writeLong(it.intervalUs)
         }
         writeBoolean(value.faceInferenceSucceeded)
+        writeOptional(value.detectedFaceCount) { writeInt(it) }
         writeBoolean(value.gestureEvidenceAvailable)
         writeOptional(value.cameraMeasurement) {
             writeFloat(it.x); writeFloat(it.y); writeFloat(it.confidence)
@@ -166,6 +167,7 @@ internal object MediaFrameAnalysisCache {
             readInt(), readFloat(), readInt(), readInt(), readLong())
         },
         faceInferenceSucceeded = readBoolean(),
+        detectedFaceCount = readOptional { readInt() },
         gestureEvidenceAvailable = readBoolean(),
         cameraMeasurement = readOptional {
             VisualEventMap.CameraMeasurement(readFloat(), readFloat(), readFloat(), readInt(), readInt(),
@@ -200,6 +202,8 @@ internal object MediaFrameAnalysisCache {
         writeOptional(value.maskBlendTarget) { writePlane(it) }
         writeFloat(value.maskBlendProgress)
         writeBoolean(value.maskIsOpacity)
+        writeBoolean(value.faceInferenceSucceeded)
+        writeOptional(value.detectedFaceCount) { writeInt(it) }
     }
 
     private fun DataInputStream.readAttachment() = FrameAttachments(
@@ -215,7 +219,9 @@ internal object MediaFrameAnalysisCache {
         },
         maskBlendTarget = readOptional { readPlane() },
         maskBlendProgress = readFloat(),
-        maskIsOpacity = readBoolean()
+        maskIsOpacity = readBoolean(),
+        faceInferenceSucceeded = readBoolean(),
+        detectedFaceCount = readOptional { readInt() }
     )
 
     private fun DataOutputStream.writePlane(value: FrameAttachments.Plane) {
@@ -262,7 +268,7 @@ internal object MediaFrameAnalysisCache {
     private fun directory(context: Context) = File(context.cacheDir, DIRECTORY).apply { mkdirs() }
 
     private const val MAGIC = 0x56414E4C
-    internal const val VERSION = 18 // Explicit profile/header and completed assessment coverage; older caches have no capability contract.
+    internal const val VERSION = 19 // All-face count and independent face-inference success in observations/attachments.
     private const val DIRECTORY = "full-video-analysis"
     private const val MAXIMUM_ENTRIES = 3
     private const val MAXIMUM_FRAMES = 4_000
