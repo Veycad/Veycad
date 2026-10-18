@@ -98,6 +98,12 @@ android {
             buildConfigField("boolean", "GALLERY_MVP", "true")
             matchingFallbacks += "debug"
         }
+        create("musicEditor") {
+            initWith(getByName("integrated"))
+            applicationIdSuffix = ".musiceditor"
+            versionNameSuffix = "-music-editor"
+            resValue("string", "app_name", "Veykad · своя музыка")
+        }
         create("mvp") {
             initWith(getByName("debug"))
             isDebuggable = true

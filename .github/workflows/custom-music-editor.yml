@@ -33,9 +33,11 @@ jobs:
           ./gradlew --no-daemon --console=plain :app:testDebugUnitTest --tests '*CustomMusicEditorIntegrationTest' --tests '*CustomAudioTest' --tests '*HybridProjectCodecTest'
       - name: Build the installable APK
         run: |
-          ./gradlew --no-daemon --console=plain :app:assembleIntegrated :app:assembleUiTest :app:assembleUiTestAndroidTest -PsourceSha="$(git rev-parse HEAD)"
+          ./gradlew --no-daemon --console=plain :app:assembleMusicEditor :app:assembleUiTest :app:assembleUiTestAndroidTest -PsourceSha="$(git rev-parse HEAD)"
           mkdir -p build/reports/music-editor
-          cp app/build/outputs/apk/integrated/app-universal-integrated.apk build/reports/music-editor/Veycad-custom-music-editor.apk
+          cp app/build/outputs/apk/musicEditor/app-universal-musicEditor.apk build/reports/music-editor/Veycad-custom-music-editor.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging build/reports/music-editor/Veycad-custom-music-editor.apk > build/reports/music-editor/apk-info.txt
+          grep -q "package: name='com.veycad.app.musiceditor'" build/reports/music-editor/apk-info.txt
           git rev-parse HEAD > build/reports/music-editor/source-sha.txt
           sha256sum build/reports/music-editor/*.apk > build/reports/music-editor/sha256.txt
       - name: Enable emulator acceleration
