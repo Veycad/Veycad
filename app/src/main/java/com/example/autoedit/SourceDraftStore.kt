@@ -14,6 +14,8 @@ internal class SourceDraftStore(filesDir: File, private val io: Io = DiskIo) {
     private val base = filesDir.canonicalFile
     internal val root = File(base, "source-draft")
     data class Input(val displayName: String, val open: () -> InputStream)
+    data class LegacyState(val firstName: String?, val secondName: String?, val cleanupIncomplete: Boolean)
+    data class Restored(val snapshot: Snapshot, val warning: String?)
     enum class Phase { FILES_PREPARED, MANIFEST_COMMITTED }
     interface Io {
         fun copyAndSync(input: InputStream, target: File)
@@ -63,6 +65,31 @@ internal class SourceDraftStore(filesDir: File, private val io: Io = DiskIo) {
             return snapshot
         } catch (failure: IOException) { throw failure }
         catch (failure: Exception) { throw IOException("Не удалось прочитать выбор исходников. Выберите видео заново.", failure) }
+    }
+    fun restore(legacy: LegacyState): Restored {
+        read()?.let { return Restored(it, null) }
+        checkedRoot(create = true)
+        val restored = SourceDraftRecovery.legacy(this, legacy)
+        io.replaceManifest(child("current.json"), SourceDraftManifest.encode(restored.snapshot))
+        return restored
+    }
+    fun invalidate(lease: MediaWorkCoordinator.Lease): Snapshot {
+        lease.requireCleanupActive()
+        checkedRoot(create = true)
+        val empty = Snapshot(UUID.randomUUID(), SourceDraftManifest.Origin.IMPORT, emptyList())
+        try { io.replaceManifest(child("current.json"), SourceDraftManifest.encode(empty)) }
+        catch (failure: Exception) {
+            val actual = try { read() } catch (readFailure: Exception) { failure.addSuppressed(readFailure); throw failure }
+            if (actual != empty) throw failure
+        }
+        return empty
+    }
+    fun collectObsolete(lease: MediaWorkCoordinator.Lease, previouslyOwned: Set<String> = emptySet()): List<String> {
+        lease.requireCleanupActive()
+        return try {
+            val current = read() ?: throw IOException("Выбор исходников не подтверждён")
+            SourceDraftRecovery.collect(this, current, previouslyOwned)
+        } catch (failure: Exception) { listOf(failure.message ?: "Не удалось проверить исходники для уборки") }
     }
     fun <T> replace(inputs: List<Input>, expectedCount: Int, beforeCommit: () -> T): ReplaceResult<T> {
         val id = UUID.randomUUID()

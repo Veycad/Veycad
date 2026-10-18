@@ -122,7 +122,7 @@ class SourceDraftStoreTest {
     }
     @Test fun sourceAndRootLinksCannotEscape() {
         val base = temporary.newFolder(); val old = seed(base)
-        if (System.getProperty("os.name").startsWith("Windows")) {
+        if (System.getProperty("os.name").orEmpty().startsWith("Windows")) {
             val linkedBase = temporary.newFolder()
             val link = File(linkedBase, "source-draft")
             val process = ProcessBuilder("cmd.exe", "/c", "mklink", "/J", link.path, File(base, "source-draft").path)
