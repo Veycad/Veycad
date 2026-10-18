@@ -75,15 +75,26 @@ class ManualMvpScreenTest {
         assertEquals(59, store.load(id).current.clips[1].span.length)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { currentManual()?.recreate() }
         fixture.waitUntil("selection reopened") { hasManualText("● 2. B ·") }
-        onView(withText(containsString("● 2. B ·"))).check(matches(isDisplayed()))
+        onView(withText(containsString("● 2. B ·"))).perform(scrollTo()).check(matches(isDisplayed()))
         assertEquals(listOf("A1", "B", "A2"), store.load(id).current.clips.map { it.id })
         InstrumentationRegistry.getInstrumentation().runOnMainSync { currentManual()?.finish() }
     }
 
     private fun hasManualText(prefix: String): Boolean {
         val activity = currentManual() ?: return false
+        // Refresh rebuilds the controls asynchronously. Text can enter the tree before
+        // its first layout, when scrollTo would receive an empty drawing rectangle.
+        fun laidOut(view: View): Boolean {
+            var current: View? = view
+            while (current != null) {
+                if (!current.isAttachedToWindow || !current.isLaidOut ||
+                    current.width <= 0 || current.height <= 0 || current.isLayoutRequested) return false
+                current = current.parent as? View
+            }
+            return true
+        }
         fun find(view: View): Boolean = when (view) {
-            is TextView -> view.text.toString().startsWith(prefix)
+            is TextView -> view.text.toString().startsWith(prefix) && laidOut(view)
             is ViewGroup -> (0 until view.childCount).any { find(view.getChildAt(it)) }
             else -> false
         }
