@@ -55,7 +55,9 @@ internal class EditSession internal constructor(
         val entry: CompletedRenderStore.Entry? = null,
         val draft: Draft? = null,
         val error: String? = null,
-        val operationDetail: String? = null
+        val operationDetail: String? = null,
+        // Set only for successful publication by this render; previous/latest results have no identity.
+        val exportOperationId: String? = null
     )
 
     data class Draft(val files: List<File>, val names: List<String>, val music: BuiltInMusicCatalog.Selection)
@@ -156,7 +158,8 @@ internal class EditSession internal constructor(
         captureSessionId: String? = null,
         continuingCapturePreparation: Boolean = false,
         captureTakeOrdinal: Int? = null,
-        captureAutoRecommendation: Boolean = false
+        captureAutoRecommendation: Boolean = false,
+        exportOperationId: String? = null
     ) {
         require(captureSessionId == null || captureTakeOrdinal != null)
         if (state.value?.busy == true && !(continuingCapturePreparation && captureSessionId != null &&
@@ -223,6 +226,7 @@ internal class EditSession internal constructor(
             main.post {
                 val completed = result.getOrNull()
                 mutableState.value = State(entry = completed?.first ?: previous,
+                    exportOperationId = if (completed != null) exportOperationId else null,
                     error = result.exceptionOrNull()?.message ?: completed?.second?.let {
                         "Эдит сохранён. Связь с дублем восстановится при следующем запуске приложения."
                     })
