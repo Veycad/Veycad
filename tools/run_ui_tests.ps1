@@ -98,6 +98,10 @@ function Invoke-UiPhase {
     if (Test-Path -LiteralPath $uiLatestXml) { Remove-Item -LiteralPath $uiLatestXml }
     # Delete exactly one report owned by the isolated app before instrumentation.
     Invoke-UiAdb @('shell', 'run-as', $uiPackage, 'rm', '-f', 'files/ui-test-results.xml') | Out-Null
+    if ($Name -eq 'screens') {
+        # Fresh evidence for this run; later per-test resets must retain it for collection.
+        Invoke-UiAdb @('shell', 'run-as', $uiPackage, 'rm', '-rf', '--', 'files/source-audio-native-evidence') | Out-Null
+    }
     $uiResult = Invoke-UiNative -Executable $uiAdb -EchoOutput -Arguments @(
         '-s', $Serial, 'shell', 'am', 'instrument', '-w', '-r',
         '-e', 'listener', 'com.veycad.app.UiXmlRunListener',
