@@ -3,17 +3,21 @@ package com.veycad.app
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
+import android.graphics.Rect
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.FileProvider
 import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.UiController
+import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
-import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
+import androidx.test.espresso.matcher.ViewMatchers.isDisplayingAtLeast
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -29,11 +33,12 @@ class ManualMvpScreenTest {
     @get:Rule val fixture = UiTestFixtureRule()
 
     @Test fun pickerTrimReorderUndoAndRecreateKeepSavedSelection() {
+        // Launch resets EditSession and clears abandoned pending renders.
+        fixture.launch()
         val file = SyntheticVideo.create(File(fixture.context.filesDir, "pending-renders/manual-input.mp4"))
         val uri = FileProvider.getUriForFile(fixture.context, "${fixture.context.packageName}.files", file)
         intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(
             Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().apply { data = uri }))
-        fixture.launch()
         fixture.click(R.id.manualMvpButton)
         onView(withText("Выбрать видео для базового монтажа")).perform(scrollTo(), click())
         fixture.waitUntil("basic project created", 30_000) {
@@ -59,15 +64,48 @@ class ManualMvpScreenTest {
         assertEquals(59, store.load(id).current.clips[1].span.length)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { currentManual()?.recreate() }
         fixture.waitUntil("selection reopened") { hasManualText("● 2. B ·") }
-        onView(withText(containsString("● 2. B ·"))).check(matches(isDisplayed()))
+        onView(withText(containsString("● 2. B ·"))).perform(scrollTo()).check(matches(isDisplayed()))
         assertEquals(listOf("A1", "B", "A2"), store.load(id).current.clips.map { it.id })
         InstrumentationRegistry.getInstrumentation().runOnMainSync { currentManual()?.finish() }
     }
 
+    private fun scrollTo(): ViewAction = object : ViewAction {
+        override fun getConstraints() = androidx.test.espresso.action.ViewActions.scrollTo().constraints
+        override fun getDescription() = "scroll manual control into its ScrollView viewport"
+
+        override fun perform(controller: UiController, view: View) {
+            if (isDisplayingAtLeast(90).matches(view)) return
+            var parent = view.parent
+            while (parent !is ScrollView) parent = parent.parent
+            val content = parent.getChildAt(0) as ViewGroup
+            val rectangle = Rect()
+            view.getDrawingRect(rectangle)
+            content.offsetDescendantRectToMyCoords(view, rectangle)
+            // Request on the actual scroll parent: API 36 can leave an offscreen
+            // descendant unchanged through View.requestRectangleOnScreen's ancestor walk.
+            parent.requestChildRectangleOnScreen(content, rectangle, true)
+            controller.loopMainThreadUntilIdle()
+            check(isDisplayingAtLeast(90).matches(view)) {
+                "Manual control remains outside the viewport after scrolling: $rectangle; scrollY=${parent.scrollY}"
+            }
+        }
+    }
+
     private fun hasManualText(prefix: String): Boolean {
         val activity = currentManual() ?: return false
+        // Refresh rebuilds the controls asynchronously. Text can enter the tree before
+        // its first layout, when scrollTo would receive an empty drawing rectangle.
+        fun laidOut(view: View): Boolean {
+            var current: View? = view
+            while (current != null) {
+                if (!current.isAttachedToWindow || !current.isLaidOut ||
+                    current.width <= 0 || current.height <= 0 || current.isLayoutRequested) return false
+                current = current.parent as? View
+            }
+            return true
+        }
         fun find(view: View): Boolean = when (view) {
-            is TextView -> view.text.toString().startsWith(prefix)
+            is TextView -> view.text.toString().startsWith(prefix) && laidOut(view)
             is ViewGroup -> (0 until view.childCount).any { find(view.getChildAt(it)) }
             else -> false
         }
