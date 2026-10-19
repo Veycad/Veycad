@@ -8,6 +8,10 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
+import androidx.test.espresso.action.ViewActions.swipeUp
+import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.isDisplayingAtLeast
+import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.platform.app.InstrumentationRegistry
 import org.hamcrest.Matchers.containsString
@@ -57,7 +61,7 @@ class CustomMusicEditorDeviceTest {
                 ready
             }
             screenshot("manual-music-opened")
-            onView(withText("Конец −1")).perform(scrollTo(), click())
+            tapAfterSwiping("Конец −1")
             fixture.waitUntil("trim stored with music") { store.load(project.id).current.id > project.current.id }
             val trimmed = store.load(project.id)
             assertEquals(2_000_000L, trimmed.current.music.startUs)
@@ -77,7 +81,7 @@ class CustomMusicEditorDeviceTest {
             }
             onView(withText(containsString("Начало трека: 0:02.0"))).perform(scrollTo())
             screenshot("manual-music")
-            onView(withText("Отменить")).perform(scrollTo(), click())
+            tapAfterSwiping("Отменить")
             fixture.waitUntil("undo keeps music") { store.load(project.id).current.clips == project.current.clips }
             assertEquals(2_000_000L, store.load(project.id).current.graph.audioTrack!!.sourceStartUs)
         }
@@ -120,5 +124,22 @@ class CustomMusicEditorDeviceTest {
             output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
         }
+    }
+
+    /** Exercise the real user's gesture on the long music editor, including controls in rows. */
+    private fun tapAfterSwiping(text: String) {
+        repeat(12) {
+            val visible = try {
+                onView(withText(text)).check(matches(isDisplayingAtLeast(90)))
+                true
+            } catch (_: AssertionError) { false }
+            if (visible) {
+                onView(withText(text)).perform(click())
+                return
+            }
+            onView(isRoot()).perform(swipeUp())
+        }
+        screenshot("unreachable-control")
+        throw AssertionError("Не удалось прокрутить до действия: $text")
     }
 }
