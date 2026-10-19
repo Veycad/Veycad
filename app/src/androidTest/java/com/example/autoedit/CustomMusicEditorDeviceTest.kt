@@ -96,7 +96,7 @@ class CustomMusicEditorDeviceTest {
         val output = File(evidence, "edited-offset.mp4")
         val frames = MediaCodecSpeedRampRenderer.render(MediaCodecSpeedRampRenderer.Request(
             graph = graph, sourceFiles = files, outputFile = output, width = 720, height = 1280,
-            fps = 30, audioFile = music, context = fixture.context))
+            fps = 30, bitrate = 5_000_000, audioFile = music, context = fixture.context))
         assertTrue(frames > 0 && output.length() > 0L)
         val extractor = MediaExtractor()
         try {
