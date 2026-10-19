@@ -23,9 +23,10 @@ object PreparedHybridExportAdapter {
             "Prepared export MVP does not render editable text or captions"
         }
         val music = revision.music
+        val audioTrack = prepared.graph.audioTrack
         require(music == installedProject.original.music && music.startUs == 0L && music.gain == 1f &&
             music.fadeInUs == 0L && music.fadeOutUs == 0L && music.repeat &&
-            (prepared.graph.audioTrack == null || prepared.graph.audioTrack.gain == 1f)) {
+            (audioTrack == null || audioTrack.gain == 1f)) {
             "Prepared export MVP requires unchanged unity-gain looping music without offsets or fades"
         }
         require(installedProject.selectedVideos == prepared.sources.map { it.selection }) {
