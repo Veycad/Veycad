@@ -7,6 +7,7 @@ data class ProjectAsset(val id: String, val fileName: String, val kind: Kind,
     /** Null means legacy metadata has not been inspected, never synthetic geometry. */
     val videoMetadata: VideoSourceMetadata? = null) {
     enum class Kind { VIDEO, AUDIO }
+    val timeBounds = SourceTimeBounds(durationUs, videoMetadata?.firstVideoPtsUs, videoMetadata?.videoEndPtsUs)
     init {
         require(id.isNotBlank() && durationUs > 0 && contentHash.isNotBlank() && displayName.isNotBlank())
         requireProjectFileName(fileName)
@@ -53,9 +54,12 @@ class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
     /** Event on this revision only: an explicit core reset selected the original source windows. */
     val restoresAutomaticSources: Boolean = false,
     val visualSettings: ProjectVisualSettings = ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false),
-    val textState: HybridTextState = HybridTextState()) {
+    val textState: HybridTextState = HybridTextState(),
+    sourceBackings: Map<String, HybridSourceBacking> = emptyMap()) {
     val clips: List<HybridClip> = snapshotList(clips)
     val texts: List<TextItem> = snapshotList(texts)
+    /** Empty for legacy revisions. Commands establish selection without rewriting old revisions. */
+    val sourceBackings: Map<String, HybridSourceBacking> = Collections.unmodifiableMap(LinkedHashMap(sourceBackings))
     /** A cut is identified by the incoming (right) clip; the first clip has no cut. */
     val lockedCutIds: Set<String> = Collections.unmodifiableSet(LinkedHashSet(lockedCutIds))
 
@@ -68,6 +72,7 @@ class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
         require(this.texts.map { it.id }.toSet().size == this.texts.size)
         require(this.texts.all { it.span.endExclusive <= this.clips.last().span.endExclusive })
         require(this.lockedCutIds.all { cutId -> this.clips.drop(1).any { it.id == cutId } })
+        require(this.sourceBackings.values.all { it.selectedRevisionId <= id })
     }
 
     fun copy(id: Long = this.id, parentId: Long? = this.parentId, graph: MontageGraph = this.graph,
@@ -75,10 +80,11 @@ class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
         texts: List<TextItem> = this.texts, style: ProjectStyle = this.style,
         lockedCutIds: Set<String> = this.lockedCutIds,
         restoresAutomaticSources: Boolean = this.restoresAutomaticSources,
-        visualSettings: ProjectVisualSettings = this.visualSettings, textState: HybridTextState = this.textState) =
-        HybridRevision(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources, visualSettings, textState)
+        visualSettings: ProjectVisualSettings = this.visualSettings, textState: HybridTextState = this.textState,
+        sourceBackings: Map<String, HybridSourceBacking> = this.sourceBackings) =
+        HybridRevision(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources, visualSettings, textState, sourceBackings)
 
-    private fun values() = listOf(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources, visualSettings, textState)
+    private fun values() = listOf(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources, visualSettings, textState, sourceBackings)
     override fun equals(other: Any?): Boolean = other is HybridRevision && values() == other.values()
     override fun hashCode(): Int = values().hashCode()
     override fun toString(): String = "HybridRevision(id=$id, parentId=$parentId, clips=$clips, music=$music, texts=$texts, style=$style, lockedCutIds=$lockedCutIds, restoresAutomaticSources=$restoresAutomaticSources, graph=$graph)"
@@ -109,6 +115,8 @@ class HybridProject(val id: String, val schemaVersion: Int, val fps: Int,
         require(nextRevisionId > 0 && revisions.all { it.id < nextRevisionId })
         require(this.exports.all { it.revisionId < nextRevisionId })
         val byId = this.assets.associateBy { it.id }
+        val backingBudget = HybridSourceWindow.ComparisonBudget()
+        val validated = java.util.IdentityHashMap<SourceTimeMap, MutableSet<Pair<HybridSourceBacking, Int>>>()
         this.selectedVideos?.let { selections ->
             require(selections.isNotEmpty() && selections.map { it.id }.distinct().size == selections.size)
             require(selections.all { selection -> byId[selection.assetId]?.let {
@@ -117,6 +125,7 @@ class HybridProject(val id: String, val schemaVersion: Int, val fps: Int,
             } == true }) { "Selected videos require inspected physical metadata" }
         }
         for (revision in revisions) {
+            require(revision.sourceBackings.keys.all { key -> revision.clips.any { it.id == key } })
             val durationUs = ProjectClock(fps).timeUs(revision.clips.last().span.endExclusive)
             require(revision.textState.layers.all { it.endUs <= durationUs } &&
                 revision.textState.captions.all { it.endUs <= durationUs }) { "Text ends after the project" }
@@ -130,6 +139,11 @@ class HybridProject(val id: String, val schemaVersion: Int, val fps: Int,
             require(!revision.restoresAutomaticSources || revision.clips == original.clips) {
                 "An automatic source reset must contain the complete original clips"
             }
+            if (revision.restoresAutomaticSources && revision.sourceBackings.isNotEmpty()) {
+                require(revision.sourceBackings.size == revision.clips.size && revision.sourceBackings.values.all {
+                    it.automatic && it.slipUs == 0L && it.selectedRevisionId == revision.id
+                }) { "Reset event contradicts its durable source selection" }
+            }
             for (clip in revision.clips) {
                 val asset = byId[clip.assetId]
                 require(asset != null && asset.kind == ProjectAsset.Kind.VIDEO)
@@ -139,8 +153,24 @@ class HybridProject(val id: String, val schemaVersion: Int, val fps: Int,
                         "Clip sourceIndex does not match its immutable selection binding"
                     }
                 }
-                require(clip.sourceMap.points.last().sourceTimeUs <= asset.durationUs)
-                require(clip.sourceMap.sample(clip.span.length - 1) < asset.durationUs)
+                asset.timeBounds.requireRequest(clip.sourceMap.points.last().sourceTimeUs, exclusiveBoundary = true)
+                asset.timeBounds.requireRequest(clip.sourceMap.sample(clip.span.length - 1))
+                revision.sourceBackings[clip.id]?.let { backing ->
+                    // Identity is clip-specific even when several clips share map/phase samples.
+                    require(backing.assetId == clip.assetId) { "Selected backing belongs to another asset" }
+                    asset.timeBounds.requireRequest(backing.map.points.last().sourceTimeUs, exclusiveBoundary = true)
+                    asset.timeBounds.requireRequest(backing.map.sample(backing.map.points.last().localFrame - 1))
+                    if (validated.getOrPut(clip.sourceMap) { hashSetOf() }.add(backing to clip.originalFrameOffset)) {
+                        backing.validate(clip, backingBudget)
+                    }
+                    if (backing.automatic) {
+                        val baseline = original.clips.firstOrNull { it.id == clip.id }
+                        require(baseline != null && baseline.assetId == backing.assetId &&
+                            baseline.originalFrameOffset == backing.phaseStart && baseline.sourceMap == backing.map) {
+                            "Automatic backing must identify the immutable original curve"
+                        }
+                    }
+                }
             }
             val musicAsset = byId[revision.music.assetId]
             require(musicAsset != null && musicAsset.kind == ProjectAsset.Kind.AUDIO)
