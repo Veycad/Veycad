@@ -16,6 +16,7 @@ internal class SourceDraftStore(filesDir: File, private val io: Io = DiskIo) {
     data class Input(val displayName: String, val open: () -> InputStream)
     data class LegacyState(val firstName: String?, val secondName: String?, val cleanupIncomplete: Boolean)
     data class Restored(val snapshot: Snapshot, val warning: String?)
+    class UncertainInvalidation(cause: Throwable) : IOException("Не удалось подтвердить сброс исходников. Файлы сохранены; выберите видео заново.", cause)
     enum class Phase { FILES_PREPARED, MANIFEST_COMMITTED }
     interface Io {
         fun copyAndSync(input: InputStream, target: File)
@@ -79,7 +80,9 @@ internal class SourceDraftStore(filesDir: File, private val io: Io = DiskIo) {
         val empty = Snapshot(UUID.randomUUID(), SourceDraftManifest.Origin.IMPORT, emptyList())
         try { io.replaceManifest(child("current.json"), SourceDraftManifest.encode(empty)) }
         catch (failure: Exception) {
-            val actual = try { read() } catch (readFailure: Exception) { failure.addSuppressed(readFailure); throw failure }
+            val actual = try { read() } catch (readFailure: Exception) {
+                failure.addSuppressed(readFailure); throw UncertainInvalidation(failure)
+            }
             if (actual != empty) throw failure
         }
         return empty
@@ -130,19 +133,22 @@ internal class SourceDraftStore(filesDir: File, private val io: Io = DiskIo) {
         } catch (failure: Exception) {
             if (commitAttempted) {
                 // An exception is not proof that atomicWrite failed before the replacement.
-                val current = try { read() } catch (readFailure: Exception) {
-                    failure.addSuppressed(readFailure)
-                    removeOwned(created.filter { it.parentFile != root || it.name.startsWith(".staging-") })
-                        .forEach { failure.addSuppressed(IOException(it)) }
-                    return ReplaceResult.Uncertain(failure)
-                }
-                if (current?.batchId == id && candidate == current && prepared.isNotEmpty()) {
-                    val warnings = removeOwned(created.filter { it.parentFile != root || it.name.startsWith(".staging-") })
-                    return ReplaceResult.Published(current, prepared.single(), listOf(failure.message ?: "Ошибка после фиксации") + warnings)
-                }
+                // Exact unchanged bytes also prove rejection when the OLD document was corrupt.
                 val unchanged = try { previousBytes != null && io.readManifest(child("current.json")).contentEquals(previousBytes) }
                     catch (_: Exception) { false }
-                if (!unchanged) return ReplaceResult.Uncertain(failure)
+                if (!unchanged) {
+                    val current = try { read() } catch (readFailure: Exception) {
+                        failure.addSuppressed(readFailure)
+                        removeOwned(created.filter { it.parentFile != root || it.name.startsWith(".staging-") })
+                            .forEach { failure.addSuppressed(IOException(it)) }
+                        return ReplaceResult.Uncertain(failure)
+                    }
+                    if (current?.batchId == id && candidate == current && prepared.isNotEmpty()) {
+                        val warnings = removeOwned(created.filter { it.parentFile != root || it.name.startsWith(".staging-") })
+                        return ReplaceResult.Published(current, prepared.single(), listOf(failure.message ?: "Ошибка после фиксации") + warnings)
+                    }
+                    return ReplaceResult.Uncertain(failure)
+                }
             }
             removeOwned(created).forEach { failure.addSuppressed(IOException(it)) }
             return ReplaceResult.Rejected(failure)

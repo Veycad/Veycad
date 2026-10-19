@@ -120,6 +120,15 @@ class SourceDraftStoreTest {
         assertTrue(old.entries.all { File(pointer.parentFile, it.fileName).exists() })
         assertTrue(SourceDraftStore(base).replace(inputs(), 2) { Unit } is SourceDraftStore.ReplaceResult.Published)
     }
+    @Test fun unchangedCorruptPointerProvesReplacementWasRejected() {
+        val base = temporary.newFolder(); seed(base)
+        File(base, "source-draft/current.json").writeText("broken")
+        val io = object : SourceDraftStore.Io by SourceDraftStore.DiskIo {
+            override fun replaceManifest(target: File, bytes: ByteArray) { throw IOException("before replace") }
+        }
+        assertTrue(SourceDraftStore(base, io).replace(inputs(), 2) { Unit } is SourceDraftStore.ReplaceResult.Rejected)
+        assertEquals(3, File(base, "source-draft").listFiles()!!.size)
+    }
     @Test fun sourceAndRootLinksCannotEscape() {
         val base = temporary.newFolder(); val old = seed(base)
         if (System.getProperty("os.name").orEmpty().startsWith("Windows")) {

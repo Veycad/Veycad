@@ -15,7 +15,11 @@ internal class EditSession internal constructor(
     context: Context,
     private val renderEngine: RenderEngine = NativeRenderEngine,
     private val coordinator: MediaWorkCoordinator = MediaWorkCoordinator.process,
-    private val executor: java.util.concurrent.ExecutorService = Executors.newSingleThreadExecutor()
+    private val executor: java.util.concurrent.ExecutorService = Executors.newSingleThreadExecutor(),
+    private val sourceStore: SourceDraftStore = SourceDraftStore(context.applicationContext.filesDir),
+    private val selectMusic: (MontageStyleCatalog.Style) -> BuiltInMusicCatalog.Selection = {
+        BuiltInMusicCatalog.select(context.applicationContext, it.id)
+    }
 ) {
     internal interface Owner { val editSession: EditSession }
     internal fun interface RenderEngine {
@@ -38,6 +42,11 @@ internal class EditSession internal constructor(
     private val mediaWork = MediaWorkDispatch(coordinator, executor) { main.post(it) }
     private var recovered = false
     private var draftGeneration = 0L
+    private var confirmedDraft: Draft? = null
+    @Volatile private var sourceSelectionConfirmed = false
+    @Volatile private var sourceGcPending = false
+    private val sourceGcLock = Any()
+    private val previouslyOwnedSources = mutableSetOf<String>()
     private val preferences = app.getSharedPreferences("edit_session", Context.MODE_PRIVATE)
     private val mutableState = MutableLiveData(State(
         entry = CompletedRenderStore.latest(app.filesDir),
@@ -63,10 +72,61 @@ internal class EditSession internal constructor(
         val cleaning: Boolean = false,
         val draftGeneration: Long = 0,
         val cleanupReport: TemporaryFileCleanup.Report? = null,
-        val cleanupScope: TemporaryFileCleanup.Scope? = null
+        val cleanupScope: TemporaryFileCleanup.Scope? = null,
+        val sourceSelectionConfirmed: Boolean = false
     )
 
     data class Draft(val files: List<File>, val names: List<String>, val music: BuiltInMusicCatalog.Selection)
+
+    fun restoreDraft(style: MontageStyleCatalog.Style) {
+        withMediaWork {
+            val before = state.value ?: State()
+            if (before.busy) {
+                if (sourceSelectionConfirmed) publish(before.copy(draft = confirmedDraft))
+                return
+            }
+            try {
+                val restored = sourceStore.restore(legacySources())
+                confirmedDraft = makeDraft(restored.snapshot, style)
+                sourceSelectionConfirmed = confirmedDraft != null
+                sourceGcPending = confirmedDraft != null
+                publish(before.copy(draft = confirmedDraft, error = restored.warning))
+            } catch (failure: Exception) {
+                sourceSelectionConfirmed = false
+                confirmedDraft = null
+                publish(before.copy(draft = null, error = failure.message))
+            }
+        }
+    }
+
+    private fun legacySources(): SourceDraftStore.LegacyState {
+        val prefs = app.getSharedPreferences("source_draft", Context.MODE_PRIVATE)
+        return SourceDraftStore.LegacyState(prefs.getString("display_name", null),
+            prefs.getString("display_name_2", null), prefs.getBoolean("cleanup_incomplete", false))
+    }
+
+    private fun makeDraft(snapshot: SourceDraftManifest.Snapshot, style: MontageStyleCatalog.Style): Draft? {
+        if (snapshot.entries.isEmpty()) return null
+        val files = snapshot.entries.map { sourceStore.child(it.fileName) }
+        val names = snapshot.entries.map { it.displayName }
+        val retained = confirmedDraft
+        val music = retained?.takeIf { it.files == files && it.names == names && it.music.styleId == style.id }?.music
+            ?: selectMusic(style)
+        return Draft(files, names, music)
+    }
+
+    private fun tryCollectSourceObsolete() {
+        if (!sourceGcPending) return
+        val lease = coordinator.tryBeginCleanup() ?: return
+        lease.use {
+            val owned = synchronized(sourceGcLock) { previouslyOwnedSources.toSet() }
+            val errors = sourceStore.collectObsolete(it, owned)
+            if (errors.isEmpty()) synchronized(sourceGcLock) {
+                previouslyOwnedSources.removeAll(owned)
+                sourceGcPending = false
+            }
+        }
+    }
 
     /** Capture selection and rendering use the same owned worker and durable result publication. */
     fun prepareCapture(id: String, requestedTake: Int? = null, width: Int = 720, height: Int = 1_280,
@@ -112,42 +172,72 @@ internal class EditSession internal constructor(
 
     fun importVideos(uris: List<android.net.Uri>, style: MontageStyleCatalog.Style) {
         withMediaWork {
-
             if (state.value?.busy == true) return
-            val previous = state.value?.entry
-            publish(State(busy = true, importing = true, entry = previous))
-            mediaWork.execute {
-                val directory = RenderWorkspace.sourceDraftDirectory(app.filesDir)
-                val stamp = UUID.randomUUID().toString()
-                val targets = uris.indices.map { File(directory, "source-$it-$stamp.mp4") }
-                val result = runCatching {
-                    val names = uris.mapIndexed { index, uri ->
-                        app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
-                            null, null, null)?.use { cursor ->
-                            if (cursor.moveToFirst()) cursor.getString(0) else null
-                        } ?: "Видео ${index + 1}"
-                    }
-                    uris.zip(targets).forEach { (uri, target) ->
-                        val temporary = File(target.path + ".partial")
-                        try {
-                            app.contentResolver.openInputStream(uri)?.use { input ->
-                                temporary.outputStream().use { input.copyTo(it) }
-                            } ?: error("Не удалось прочитать выбранный файл")
-                            check(temporary.length() > 0) { "Выбранный файл пуст" }
-                            check(temporary.renameTo(target)) { "Не удалось импортировать видео" }
-                        } finally { temporary.delete() }
-                    }
-                    val music = BuiltInMusicCatalog.select(app, style.id)
-                    app.getSharedPreferences("source_draft", Context.MODE_PRIVATE).edit()
-                        .remove("cleanup_incomplete")
-                        .putString("display_name", names[0])
-                        .putString("display_name_2", names.getOrNull(1)).commit()
-                    directory.listFiles()?.filter { it !in targets }?.forEach(File::delete)
-                    Draft(targets, names, music)
+            val unique = uris.distinct()
+            val original = state.value ?: State()
+            if (style.sourceCount !in 1..2 || unique.size != style.sourceCount) {
+                publish(original.copy(error = "Выберите ${style.sourceCount} видео"))
+                return
+            }
+            val previousSnapshot = try {
+                sourceStore.restore(legacySources()).snapshot
+            } catch (failure: Exception) {
+                // An invalid existing document can be replaced by a complete new selection.
+                // Missing bootstrap (including a failed first write) must stop before staging.
+                if (!File(app.filesDir, "source-draft/current.json").isFile) {
+                    publish(original.copy(error = failure.message)); return
                 }
-                if (result.isFailure) targets.forEach(File::delete)
-                mediaWork.post { publish(State(entry = previous, draft = result.getOrNull(),
-                    error = result.exceptionOrNull()?.message)) }
+                sourceSelectionConfirmed = false
+                null
+            }
+            val previousDraft = try { previousSnapshot?.let { makeDraft(it, style) } }
+            catch (failure: Exception) { publish(original.copy(error = failure.message)); return }
+            confirmedDraft = previousDraft
+            sourceSelectionConfirmed = previousDraft != null
+            val before = original.copy(draft = previousDraft)
+            publish(before.copy(busy = true, importing = true, error = null))
+            mediaWork.executeAfterRelease(::tryCollectSourceObsolete) {
+                val result = try {
+                    val inputs = unique.mapIndexed { index, uri ->
+                        val name = app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                            null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Видео ${index + 1}"
+                        SourceDraftStore.Input(name) {
+                            app.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Не удалось прочитать выбранный файл")
+                        }
+                    }
+                    sourceStore.replace(inputs, style.sourceCount) { selectMusic(style) }
+                } catch (failure: Exception) { SourceDraftStore.ReplaceResult.Rejected(failure) }
+                if (result is SourceDraftStore.ReplaceResult.Published) {
+                    synchronized(sourceGcLock) { previouslyOwnedSources += previousSnapshot?.entries.orEmpty().map { it.fileName } }
+                    sourceGcPending = true
+                }
+                mediaWork.postAfterRelease(::tryCollectSourceObsolete) {
+                    val next = when (result) {
+                        is SourceDraftStore.ReplaceResult.Published -> {
+                            confirmedDraft = Draft(result.snapshot.entries.map { sourceStore.child(it.fileName) },
+                                result.snapshot.entries.map { it.displayName }, result.prepared)
+                            sourceSelectionConfirmed = true
+                            val mirrorFailure = runCatching {
+                                val names = result.snapshot.entries.map { it.displayName }
+                                check(app.getSharedPreferences("source_draft", Context.MODE_PRIVATE).edit()
+                                    .remove("cleanup_incomplete").putString("display_name", names[0])
+                                    .putString("display_name_2", names.getOrNull(1)).commit()) { "Не удалось обновить подписи совместимости" }
+                            }.exceptionOrNull()
+                            before.copy(draft = confirmedDraft, error = (result.warnings + listOfNotNull(mirrorFailure?.message))
+                                .takeIf { it.isNotEmpty() }?.joinToString("; "))
+                        }
+                        is SourceDraftStore.ReplaceResult.Rejected -> before.copy(error = result.failure.message)
+                        is SourceDraftStore.ReplaceResult.Uncertain -> {
+                            sourceSelectionConfirmed = false
+                            confirmedDraft = null
+                            before.copy(draft = null, error = "Не удалось подтвердить выбор видео. Откройте экран заново или выберите видео повторно.")
+                        }
+                    }
+                    // A failing observer must never reach the transaction's rollback path.
+                    try { publish(next) } catch (failure: Exception) {
+                        LocalDiagnostics.record(app, "source_import_observer_failed", mapOf("error" to (failure.message ?: "observer")))
+                    }
+                }
             }
         }
     }
@@ -168,6 +258,10 @@ internal class EditSession internal constructor(
     ) {
         withMediaWork {
             require(captureSessionId == null || captureTakeOrdinal != null)
+            if (captureSessionId == null && !sourceSelectionConfirmed) {
+                publish((state.value ?: State()).copy(error = "Выбор исходников не подтверждён. Выберите видео заново."))
+                return
+            }
             if (state.value?.busy == true && !(continuingCapturePreparation && captureSessionId != null &&
                 state.value?.operationDetail != null)) return
             synchronized(cancelLock) { cancelled = false; publishing = false }
@@ -264,20 +358,31 @@ internal class EditSession internal constructor(
                 var touchedDraft = false
                 val result = runCatching {
                     val draftPrefs = app.getSharedPreferences("source_draft", Context.MODE_PRIVATE)
+                    sourceStore.invalidate(lease)
+                    touchedDraft = true
+                    sourceSelectionConfirmed = false
+                    confirmedDraft = null
+                    // A failed marker write must not resume an older GC on the next restore.
+                    sourceGcPending = false
+                    synchronized(sourceGcLock) { previouslyOwnedSources.clear() }
                     check(draftPrefs.edit().putBoolean("cleanup_incomplete", true).commit()) {
                         "Не удалось сохранить состояние очистки"
                     }
-                    touchedDraft = true
                     val report = TemporaryFileCleanup.clear(app.filesDir, app.cacheDir, scope, lease)
                     if (report.draft == TemporaryFileCleanup.DraftDisposition.REMOVED)
                         check(draftPrefs.edit().clear().commit()) { "Не удалось завершить очистку черновика" }
                     report
                 }
+                if (result.exceptionOrNull() is SourceDraftStore.UncertainInvalidation) {
+                    sourceSelectionConfirmed = false
+                    confirmedDraft = null
+                    sourceGcPending = false
+                }
                 if (!main.post {
                     try {
                         if (touchedDraft) draftGeneration++
                         val report = result.getOrNull()
-                        publish(State(entry = before.entry, draft = if (touchedDraft) null else before.draft,
+                        publish(State(entry = before.entry, draft = if (touchedDraft || !sourceSelectionConfirmed) null else before.draft,
                             cleanupReport = report, cleanupScope = scope, error = result.exceptionOrNull()?.message
                                 ?: report?.takeIf { it.failures.isNotEmpty() }?.let {
                                     "Часть временных файлов не удалена. Повторите очистку позже."
@@ -347,10 +452,11 @@ internal class EditSession internal constructor(
     }
 
     private fun publish(value: State) {
-        mutableState.value = value.copy(draftGeneration = draftGeneration)
+        mutableState.value = value.copy(draftGeneration = draftGeneration, sourceSelectionConfirmed = sourceSelectionConfirmed)
     }
 
     private fun recoverIfIdle() {
+        tryCollectSourceObsolete()
         if (recovered) return
         val lease = coordinator.tryBeginCleanup() ?: return
         lease.use {
@@ -376,7 +482,7 @@ internal class EditSession internal constructor(
             preferences.edit().putBoolean("running", running).commit()
             runCatching { publish(before) }
             throw failure
-        } finally { lease.close() }
+        } finally { lease.close(); runCatching { tryCollectSourceObsolete() } }
     }
 
     internal fun close() {

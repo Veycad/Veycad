@@ -201,6 +201,14 @@ class MainActivity : AppCompatActivity() {
                 updateSourceDisplay()
                 updateMusicDisplay()
             }
+            if (!state.sourceSelectionConfirmed) {
+                sourceFile = null
+                secondarySourceFile = null
+                sourceDisplayNames = emptyList()
+                musicSelection = null
+                updateSourceDisplay()
+                updateMusicDisplay()
+            }
             importing = state.importing
             rendering = state.busy && !state.saving && !state.importing && !state.cleaning
             saving = state.saving
@@ -480,7 +488,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateReadyState() {
-        val ready = !rendering && !importing && !saving && legacySaveEntry == null
+        val ready = !rendering && !importing && !saving && session.state.value?.cleaning != true && legacySaveEntry == null
         findViewById<Button>(R.id.textEditorButton).isEnabled = ready
         findViewById<Button>(R.id.addResultTextButton).isEnabled = ready && renderedFile != null
         findViewById<Button>(R.id.galleryModeButton).isEnabled = ready
@@ -494,7 +502,7 @@ class MainActivity : AppCompatActivity() {
         val sourcesReady = sourceFile?.isFile == true &&
             (montageStyle.sourceCount == 1 || secondarySourceFile?.isFile == true)
         val musicReady = musicSelection?.let { it.styleId == montageStyle.id && it.file.isFile } == true
-        renderButton.isEnabled = if (autoCapture) ready else ready && montageStyle.available && sourcesReady && musicReady
+        renderButton.isEnabled = if (autoCapture) ready else ready && session.state.value?.sourceSelectionConfirmed == true && montageStyle.available && sourcesReady && musicReady
         renderButton.text = if (autoCapture) getString(R.string.capture_open) else "Создать монтаж"
         findViewById<TextView>(R.id.renderHint).text = when {
             importing -> "Добавляю исходники…"
@@ -503,6 +511,7 @@ class MainActivity : AppCompatActivity() {
             autoCapture -> if (CaptureScript.forStyle(montageStyle.id) == null) getString(R.string.capture_style_missing)
                 else getString(R.string.capture_prototype)
             !montageStyle.available -> montageStyle.unavailableLabel
+            sourcesReady && session.state.value?.sourceSelectionConfirmed != true -> "Подтверди выбор видео заново"
             !sourcesReady -> if (montageStyle.sourceCount == 2) "Сначала добавь два видео" else "Сначала добавь видео"
             !musicReady -> "Подбираю музыку…"
             else -> "Всё готово к монтажу"
@@ -998,34 +1007,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restoreSourceDraft() {
-        if (getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE).getBoolean("cleanup_incomplete", false)) return
-        val drafts = RenderWorkspace.sourceDraftDirectory(filesDir).listFiles()
-            ?.filter { it.isFile && it.extension.lowercase() in setOf("mp4", "mov", "m4v", "webm", "mkv", "3gp") }
-            ?.sortedBy { it.name }
-            .orEmpty()
-        if (drafts.isEmpty()) return
-        val preferences = getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE)
-        val restored = MontageStylePresentation.restoredSources(drafts, montageStyle)
-        runCatching { BuiltInMusicCatalog.select(this, montageStyle.id) }.onSuccess { music ->
-            sourceFile = restored[0]
-            secondarySourceFile = restored.getOrNull(1)
-            musicSelection = music
-            sourceDisplayNames = listOfNotNull(
-                preferences.getString(SOURCE_DRAFT_NAME, null) ?: restored[0].name,
-                restored.getOrNull(1)?.let {
-                    preferences.getString(SOURCE_DRAFT_SECOND_NAME, null) ?: it.name
-                }
-            )
-            updateSourceDisplay()
-            findViewById<TextView>(R.id.musicSelection).text =
-                "♫ ${music.track.title} · ${music.track.bpm} BPM"
-            updateReadyState()
-            LocalDiagnostics.record(this, "source_draft_restored", mapOf(
-                "source_count" to restored.size.toString(),
-                "bytes" to restored.sumOf(File::length).toString(),
-                "music" to music.track.id
-            ))
-        }
+        session.restoreDraft(montageStyle)
     }
 
     private fun showFailure(error: Throwable) {
@@ -1036,9 +1018,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val SPLASH_DURATION_MS = 650L
-        private const val SOURCE_DRAFT_PREFS = "source_draft"
-        private const val SOURCE_DRAFT_NAME = "display_name"
-        private const val SOURCE_DRAFT_SECOND_NAME = "display_name_2"
         private const val SETTINGS_PREFS = "app_settings"
         private const val PREF_QUALITY = "render_quality"
         private const val PREF_AUTO_SAVE = "auto_save"

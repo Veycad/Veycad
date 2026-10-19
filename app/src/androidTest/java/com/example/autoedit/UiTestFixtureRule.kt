@@ -122,12 +122,14 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         while (launched) {
             var busy = false
             instrumentation.runOnMainSync { busy = app.editSession.state.value?.busy == true }
-            if (!busy) break
+            if (!busy && MediaWorkCoordinator.process.snapshot() == MediaWorkCoordinator.Snapshot(0, false)) break
             if (SystemClock.elapsedRealtime() >= deadline) throw AssertionError("Session did not become idle")
             SystemClock.sleep(25)
         }
         instrumentation.waitForIdleSync()
     }
+    fun selectedSources(): List<File> = SourceDraftStore(context.filesDir).read()?.entries.orEmpty()
+        .map { File(context.filesDir, "source-draft/${it.fileName}") }
     fun waitUntil(description: String, timeoutMs: Long = 15_000, condition: () -> Boolean) {
         if (!launched) error("Launch activity before waiting for $description")
         onView(isRoot()).perform(object : ViewAction {

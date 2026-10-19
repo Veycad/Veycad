@@ -6,6 +6,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaWorkDispatchTest {
+    @Test fun earlyCallbackCannotCollectWorkerSources() {
+        val owner = MediaWorkCoordinator()
+        val workers = ArrayDeque<Runnable>()
+        val dispatch = MediaWorkDispatch(owner, Executor { workers.add(it) }, { it.run(); true })
+        var cleanups = 0
+        val collect = { owner.tryBeginCleanup()?.use { cleanups++ }; Unit }
+        dispatch.executeAfterRelease(collect) {
+            dispatch.postAfterRelease(collect) { assertNull(owner.tryBeginCleanup()) }
+            assertEquals(0, cleanups)
+        }
+        workers.removeFirst().run()
+        assertEquals(1, cleanups)
+        assertEquals(MediaWorkCoordinator.Snapshot(0, false), owner.snapshot())
+    }
+    @Test fun failingReleaseHookDoesNotHideObserverFailureOrLeakLease() {
+        val owner = MediaWorkCoordinator()
+        val callbacks = ArrayDeque<Runnable>()
+        val dispatch = MediaWorkDispatch(owner, Executor { it.run() }, { callbacks.add(it); true })
+        dispatch.postAfterRelease({ error("gc") }) { throw IllegalArgumentException("observer") }
+        val failure = assertThrows(IllegalArgumentException::class.java) { callbacks.removeFirst().run() }
+        assertEquals("observer", failure.message)
+        assertEquals(MediaWorkCoordinator.Snapshot(0, false), owner.snapshot())
+    }
     @Test fun queuedWorkAndItsCallbackBothBlockCleanup() {
         val owner = MediaWorkCoordinator()
         val workers = ArrayDeque<Runnable>()

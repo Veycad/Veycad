@@ -45,7 +45,7 @@ class DirectorScreenTest {
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
         onView(withId(R.id.renderHint)).check(matches(withText("Всё готово к монтажу")))
         onView(withId(R.id.progressPanel)).check(matches(not(isDisplayed())))
-        val draft = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty()
+        val draft = ui.selectedSources()
         assertEquals(1, draft.size)
         assertTrue(draft.single().isFile)
         assertTrue(draft.single().length() > 0L)
@@ -56,12 +56,12 @@ class DirectorScreenTest {
     @Test fun replacing_an_import_removes_only_the_previous_draft_and_updates_its_display_name() {
         ui.launch()
         ui.importVideos("first.mp4")
-        val previous = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().single()
+        val previous = ui.selectedSources().single()
         ui.importVideos("replacement.mp4")
         onView(withId(R.id.videoSelection)).check(matches(withText("replacement.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
         assertFalse("Successful replacement must not retain an obsolete source", previous.exists())
-        val current = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty()
+        val current = ui.selectedSources()
         assertEquals(1, current.size)
         assertTrue(current.single().length() > 0L)
         assertArrayEquals(File(ui.context.getDir("ui-imports", 0), "replacement.mp4").readBytes(), current.single().readBytes())
@@ -84,7 +84,7 @@ class DirectorScreenTest {
         val names = ui.context.getSharedPreferences("source_draft", Context.MODE_PRIVATE)
         assertEquals("first-scene.mp4", names.getString("display_name", null))
         assertEquals("second-scene.mp4", names.getString("display_name_2", null))
-        val imported = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty()
+        val imported = ui.selectedSources()
         assertEquals(2, imported.size)
         assertArrayEquals(File(ui.context.getDir("ui-imports", 0), "first-scene.mp4").readBytes(),
             imported.single { it.name.startsWith("source-0-") }.readBytes())
@@ -120,7 +120,7 @@ class DirectorScreenTest {
         ui.launch()
         ui.selectStyle("FEAR")
         ui.importVideos("motion.mp4")
-        val source = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().single()
+        val source = ui.selectedSources().single()
         ui.recreate()
         ui.awaitDisplayed(R.id.directorContent)
         ui.awaitText(R.id.musicSelection, "122 BPM")
@@ -128,7 +128,7 @@ class DirectorScreenTest {
         onView(withId(R.id.videoSelection)).check(matches(withText("motion.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
         assertTrue(source.exists())
-        assertEquals(source, RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().single())
+        assertEquals(source, ui.selectedSources().single())
     }
 
     @Test fun opening_the_empty_collection_and_returning_does_not_discard_a_ready_source() {
@@ -146,12 +146,12 @@ class DirectorScreenTest {
     @Test fun cancelling_single_video_selection_preserves_the_existing_ready_draft() {
         ui.launch()
         ui.importVideos("portrait.mp4")
-        val source = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().single()
+        val source = ui.selectedSources().single()
         ui.cancelVideoPicker()
         ui.awaitIdle()
         onView(withId(R.id.videoSelection)).check(matches(withText("portrait.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
-        assertEquals(source, RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().single())
+        assertEquals(source, ui.selectedSources().single())
     }
 
     @Test fun duality_rejects_wrong_unique_source_counts_without_importing_partial_drafts() {
@@ -166,8 +166,7 @@ class DirectorScreenTest {
             onView(withId(R.id.videoSelection)).check(matches(withText("2 видео · каждое от 6 секунд")))
             onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
             onView(withId(R.id.selectVideoButton)).check(matches(isEnabled()))
-            assertTrue("Rejected selection must not create source files", RenderWorkspace.sourceDraftDirectory(ui.context.filesDir)
-                .listFiles().orEmpty().isEmpty())
+            assertTrue("Rejected selection must not create source files", ui.selectedSources().isEmpty())
         }
     }
 
@@ -179,7 +178,7 @@ class DirectorScreenTest {
         ui.returnVideos(listOf(secondary, primary, secondary), waitForReady = true)
         onView(withId(R.id.videoSelection)).check(matches(withText("1 · secondary.mp4\n2 · primary.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
-        assertEquals(2, RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().size)
+        assertEquals(2, ui.selectedSources().size)
         val names = ui.context.getSharedPreferences("source_draft", Context.MODE_PRIVATE)
         assertEquals("secondary.mp4", names.getString("display_name", null))
         assertEquals("primary.mp4", names.getString("display_name_2", null))
@@ -189,25 +188,25 @@ class DirectorScreenTest {
         ui.launch()
         ui.selectStyle("DUALITY")
         ui.importVideos("first.mp4", "second.mp4")
-        val sources = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().toSet()
+        val sources = ui.selectedSources().toSet()
         ui.cancelVideoPicker()
         ui.awaitIdle()
         onView(withId(R.id.videoSelection)).check(matches(withText("1 · first.mp4\n2 · second.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
-        assertEquals(sources, RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().toSet())
+        assertEquals(sources, ui.selectedSources().toSet())
     }
 
     @Test fun an_unreadable_import_does_not_destroy_the_previous_draft_or_leave_partial_files() {
         ui.launch()
         ui.importVideos("portrait.mp4")
-        val source = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().single()
+        val source = ui.selectedSources().single()
         val missing = ui.videoUri("unreadable.mp4").buildUpon().appendPath("missing.mp4").build()
         ui.returnVideos(listOf(missing))
         ui.awaitIdle()
         onView(withId(R.id.videoSelection)).check(matches(withText("portrait.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
         onView(withId(R.id.progressPanel)).check(matches(not(isDisplayed())))
-        assertEquals(source, RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().single())
+        assertEquals(source, ui.selectedSources().single())
         assertEquals("portrait.mp4", ui.context.getSharedPreferences("source_draft", Context.MODE_PRIVATE)
             .getString("display_name", null))
     }
