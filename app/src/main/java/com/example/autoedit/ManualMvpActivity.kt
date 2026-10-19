@@ -9,6 +9,7 @@ import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.ScrollView
@@ -63,14 +64,17 @@ class ManualMvpActivity : AppCompatActivity() {
             setPadding(dp(20), dp(20), dp(20), dp(32))
         }
         scroll.addView(content)
-        setContentView(scroll)
-        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+        // ScrollView's rectangle-on-screen calculation uses its full measured
+        // height, so system-bar padding must shrink it from an outer container.
+        val viewport = FrameLayout(this).apply { addView(scroll) }
+        setContentView(viewport)
+        ViewCompat.setOnApplyWindowInsetsListener(viewport) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or
                 WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
-        ViewCompat.requestApplyInsets(scroll)
+        ViewCompat.requestApplyInsets(viewport)
         title = "Довести монтаж"
         status = label("Открываю проекты…", 14)
         refresh()
