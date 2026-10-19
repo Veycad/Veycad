@@ -169,8 +169,10 @@ function Invoke-UiPhase {
 
 $uiSucceeded = $false
 $uiFailureMessage = $null
+$uiRestart = $null
 Push-Location -LiteralPath $uiProjectRoot
 try {
+    & (Join-Path $uiProjectRoot 'tools/test_ui_runner.ps1')
     if ($Serial -notmatch '^emulator-(\d+)$' -or [int]$Matches[1] -lt 5556 -or [int]$Matches[1] % 2 -ne 0) {
         throw 'Use a dedicated emulator on an even port >=5556; the owner emulator-5554 is excluded.'
     }
@@ -245,7 +247,17 @@ try {
     Invoke-UiPhase -Name 'permissions' -SelectionArgument 'class' -Expected $uiPermissionExpected
     Invoke-UiPhase -Name 'screens' -SelectionArgument 'notClass' -Expected $uiOrdinaryExpected
     $uiSucceeded = $uiPhases.Count -eq 2 -and @($uiPhases | Where-Object { -not $_.passed }).Count -eq 0
+    if ($uiSucceeded) {
+        $uiRestartRun = Invoke-UiNative -Executable (Get-Process -Id $PID).Path -EchoOutput -Arguments @(
+            '-NoProfile', '-File', (Join-Path $uiProjectRoot 'tools/run_atomic_import_restart_tests.ps1'),
+            '-Serial', $Serial, '-AvdName', $AvdName, '-SdkRoot', $SdkRoot
+        )
+        if ($uiRestartRun.ExitCode -ne 0) { throw 'Atomic import process restart checks failed.' }
+        $uiRestart = Get-Content -LiteralPath (Join-Path $uiProjectRoot 'build/reports/ui-tests/atomic-import-restart.json') -Raw | ConvertFrom-Json
+        $uiSucceeded = $uiRestart.passed -eq $true -and @($uiRestart.phases).Count -eq 2
+    }
 } catch {
+    $uiSucceeded = $false
     $uiFailureMessage = $_.Exception.Message
     Write-Host "UI verification failed: $uiFailureMessage"
 } finally {
@@ -273,6 +285,7 @@ try {
         serial = $Serial; avd = $AvdName; package = $uiPackage; run_id = $uiRunId
         run = $(if ($null -eq $uiTotalRun) { 0 } else { $uiTotalRun })
         passed = $uiSucceeded; error = $uiFailureMessage; phases = $uiPhases.ToArray()
+        atomic_import_restart = $uiRestart
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $uiSummaryFile -Encoding UTF8
 }
 if (-not $uiSucceeded) { exit 1 }
