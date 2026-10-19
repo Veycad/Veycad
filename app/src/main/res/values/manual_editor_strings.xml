@@ -1,0 +1,43 @@
+<resources>
+    <item name="manualPreviouslyEnabled" type="id" />
+    <string name="manual_title">Довести монтаж</string>
+    <string name="manual_back">Назад</string>
+    <string name="manual_intro">Черновик сохранён. Поправь кадры, выбери формат и сохрани свою версию.</string>
+    <string name="manual_opening">Открываю сохранённый монтаж…</string>
+    <string name="manual_open_failed">Не удалось открыть проекты. Повтори попытку.</string>
+    <string name="manual_retry">Повторить просмотр</string>
+    <string name="manual_new">Новый черновик</string>
+    <string name="manual_supported">Добавь 1–2 видео AVC. Базовый монтаж без анализа ИИ: подрезка, порядок клипов и вспышка. Пока без текста, умного кадрирования и размытого фона.</string>
+    <string name="manual_import">Добавить видео</string>
+    <string name="manual_saved">Сохранённые проекты</string>
+    <string name="manual_empty">Здесь появятся твои черновики.</string>
+    <string name="manual_project">Черновик %1$d · %2$d кадр/с</string>
+    <string name="manual_revision">Версия %1$d · %2$d кадр/с</string>
+    <string name="manual_unsupported">Этому проекту нужны возможности, которые пока недоступны в черновом просмотре: анализ ИИ, текст или другое кадрирование.</string>
+    <string name="manual_export">Сохранить версию · %1$s · 1080</string>
+    <string name="manual_share">Поделиться сохранённой версией</string>
+    <string name="manual_format">Формат</string>
+    <string name="manual_format_hint">Формат применяется ко всему монтажу. Кадрирование каждого формата сохраняется отдельно.</string>
+    <string name="manual_selected">Выбрано</string>
+    <string name="manual_not_selected">Не выбрано</string>
+    <string name="manual_aspect_description">Формат %1$s</string>
+    <string name="manual_frame">Кадр текущего монтажа</string>
+    <string name="manual_preparing">Подготавливаю просмотр…</string>
+    <string name="manual_clock">%1$s / %2$s</string>
+    <string name="manual_seek">Позиция в монтаже</string>
+    <string name="manual_play">Воспроизвести</string>
+    <string name="manual_pause">Пауза</string>
+    <string name="manual_previous_cut">Предыдущий стык</string>
+    <string name="manual_next_cut">Следующий стык</string>
+    <string name="manual_preview_failed">Не удалось показать кадр. Повтори просмотр; если ошибка останется, проверь исходные видео.</string>
+    <string name="manual_preview_unavailable">Не удалось открыть черновик: исходник недоступен или проект использует неподдерживаемые эффекты, текст либо кадрирование.</string>
+    <string name="manual_playing">Черновик · воспроизведение</string>
+    <string name="manual_paused">Черновик · пауза</string>
+    <string name="manual_exporting">Сохраняю видео… При выходе экспорт остановится, черновик останется.</string>
+    <string name="manual_exported">Новая версия сохранена. Ею можно поделиться.</string>
+    <string name="manual_export_failed">Не удалось сохранить видео. Повтори попытку.</string>
+    <string name="manual_export_summary">Ручная версия %1$d · базовый монтаж</string>
+    <string name="manual_saving">Сохраняю правку…</string>
+    <string name="manual_saved_change">Правка сохранена</string>
+    <string name="manual_change_failed">Правка недоступна для этого клипа. Попробуй другую границу или действие.</string>
+</resources>

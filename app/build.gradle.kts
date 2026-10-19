@@ -7,6 +7,10 @@ plugins {
     id("com.android.application")
 }
 
+val previewSourceSha = providers.environmentVariable("GIT_SHA").orNull?.also {
+    require(it.matches(Regex("[0-9a-f]{40}"))) { "GIT_SHA must be a complete source commit" }
+} ?: "local-unverified"
+
 // Network access is build-time only. The application contains the verified model in assets.
 val speechAssets = layout.buildDirectory.dir("generated/speechAssets")
 val prepareSpeechAssets by tasks.registering {
@@ -60,6 +64,8 @@ android {
         versionCode = 17
         versionName = "0.1.16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "SOURCE_SHA", "\"$previewSourceSha\"")
+        buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "false")
         externalNativeBuild.cmake {
             arguments += listOf("-DFETCHCONTENT_BASE_DIR=" + File(System.getProperty("user.home"), ".cache/veycad-speech/cmake").path.replace('\\','/'))
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -67,6 +73,13 @@ android {
     }
 
     buildTypes {
+        create("manualMvp") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            matchingFallbacks += "debug"
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
+        }
         create("cameraPilot") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".camera"
@@ -77,6 +90,7 @@ android {
             initWith(getByName("debug"))
             applicationIdSuffix = if (providers.gradleProperty("textDeviceTest").orNull == "true") ".texttest" else ".uitest"
             matchingFallbacks += "debug"
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
         }
     }
     testBuildType = "uiTest"

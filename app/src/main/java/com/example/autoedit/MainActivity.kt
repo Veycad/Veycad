@@ -315,6 +315,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
+        findViewById<Button>(R.id.manualMvpButton).apply {
+            visibility = if (BuildConfig.LIVE_PREVIEW_ENABLED) View.VISIBLE else View.GONE
+            setOnClickListener { stopPreviewPlayback(); startActivity(Intent(this@MainActivity, ManualMvpActivity::class.java)) }
+        }
         findViewById<Button>(R.id.textEditorButton).setOnClickListener { stopPreviewPlayback(); TextEditActivity.open(this) }
         findViewById<Button>(R.id.addResultTextButton).setOnClickListener {
             renderedFile?.let { stopPreviewPlayback(); TextEditActivity.open(this,it) }
@@ -455,6 +459,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateReadyState() {
         val ready = !rendering && !importing && !saving && legacySaveEntry == null
+        findViewById<Button>(R.id.manualMvpButton).isEnabled = ready
         findViewById<Button>(R.id.textEditorButton).isEnabled = ready
         findViewById<Button>(R.id.addResultTextButton).isEnabled = ready && renderedFile != null
         findViewById<Button>(R.id.galleryModeButton).isEnabled = ready
