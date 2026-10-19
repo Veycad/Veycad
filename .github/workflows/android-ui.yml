@@ -48,8 +48,8 @@ jobs:
       - name: Verify retained AAC with independent unclamped float decoder
         if: always()
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
+          bash tools/install_source_aac_oracle.sh
+          export PATH="$PWD/build/tools/source-aac-oracle/bin:$PATH"
           python3 tools/verify_source_aac.py build/reports/ui-tests/runs
       - name: Save UI reports and device failures
         if: always()
@@ -60,3 +60,4 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
             build/reports/ui-tests/
+            build/reports/source-aac-oracle/
