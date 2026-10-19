@@ -44,7 +44,8 @@ class ManualMvpScreenTest {
                 .filterIsInstance<ManualMvpActivity>().distinct().forEach { it.finish() }
         }
         val deadline = android.os.SystemClock.elapsedRealtime() + 30_000
-        while (Thread.getAllStackTraces().keys.any { it.isAlive && it.name.startsWith("Veycad-preview-") }) {
+        while (Thread.getAllStackTraces().keys.any { it.isAlive &&
+                (it.name.startsWith("Veycad-preview-") || it.name == "Veycad-manual-jobs") }) {
             assertTrue("Preview owners must stop before fixture cleanup", android.os.SystemClock.elapsedRealtime() < deadline)
             android.os.SystemClock.sleep(25)
         }
@@ -140,6 +141,8 @@ class ManualMvpScreenTest {
         instrumentation.runOnMainSync { current()!!.recreate() }
         fixture.waitUntil("paused after recreate", 30_000) { ready() }
         assertEquals(position, view<SeekBar>("preview-seek")!!.progress)
+        recreateBehindHeldConsumer(exportQueued = false)
+        recreateBehindHeldConsumer(exportQueued = true)
         finishEditor()
         fixture.click(R.id.manualMvpButton)
         fixture.waitUntil("paused after reopen", 30_000) { ready() }
@@ -218,6 +221,65 @@ class ManualMvpScreenTest {
 
     private fun ready() = view<TextView>("preview-state")?.text == "Черновик · пауза" &&
         view<Button>("play")?.isEnabled == true
+    /** Hold actual owner executors, not a renderer substitute or a production test-only hook. */
+    private fun recreateBehindHeldConsumer(exportQueued: Boolean) {
+        var old: ManualMvpActivity? = null
+        instrumentation.runOnMainSync { old = current() }
+        val previous = requireNotNull(old)
+        val borrowed = requireNotNull(field<Any>(previous, "binding"))
+        val prepared = requireNotNull(field<PreparedHybridPreview>(borrowed, "prepared"))
+        val executor = if (exportQueued) requireNotNull(field<java.util.concurrent.ExecutorService>(previous, "jobs"))
+            else requireNotNull(field<java.util.concurrent.ExecutorService>(
+                requireNotNull(field<DraftPreviewController>(previous, "controller")), "worker"))
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        executor.execute {
+            entered.countDown()
+            val deadline = android.os.SystemClock.elapsedRealtime() + 30_000
+            var interrupted = false
+            try {
+                while (release.count > 0 && android.os.SystemClock.elapsedRealtime() < deadline) {
+                    try { release.await(25, java.util.concurrent.TimeUnit.MILLISECONDS) }
+                    catch (_: InterruptedException) { interrupted = true }
+                }
+            } finally { if (interrupted) Thread.currentThread().interrupt() }
+        }
+        assertTrue("Old native/job boundary entered", entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        try {
+            if (exportQueued) {
+                tapTag("export")
+                fixture.waitUntil("native ack transferred prepared to queued export", 10_000) {
+                    field<Any>(previous, "binding") == null && field<Any>(previous, "controller") == null
+                }
+            }
+            instrumentation.runOnMainSync { previous.recreate() }
+            fixture.waitUntil("replacement resumed behind old consumer", 10_000) { current()?.let { it !== previous } == true }
+            var replacement: ManualMvpActivity? = null
+            instrumentation.runOnMainSync { replacement = current() }
+            // Drain both worker -> main -> worker dispatch hops. A replacement that starts
+            // preparation without admission cannot hide behind an unprocessed callback.
+            repeat(2) {
+                val drained = java.util.concurrent.CountDownLatch(1)
+                field<java.util.concurrent.ExecutorService>(requireNotNull(replacement), "jobs")!!.execute { drained.countDown() }
+                assertTrue(drained.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                instrumentation.waitForIdleSync()
+            }
+            instrumentation.runOnMainSync {
+                assertNull("No replacement native controller before old completion", field<Any>(requireNotNull(replacement), "controller"))
+                assertNull("No replacement preparation before old completion", field<Any>(requireNotNull(replacement), "binding"))
+                assertFalse(ready())
+            }
+            assertTrue("Old prepared lifetime remains valid while consumer is held", prepared.framePlan.frames.isNotEmpty())
+        } finally { release.countDown() }
+        fixture.waitUntil("one paused replacement after old cleanup", 30_000) { ready() }
+        assertTrue("Old prepared closed after actual cleanup", runCatching { prepared.framePlan }.isFailure)
+        fixture.waitUntil("one native preview owner", 10_000) {
+            Thread.getAllStackTraces().keys.count { it.isAlive && it.name == "Veycad-preview-GL" } == 1
+        }
+    }
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> field(owner: Any, name: String): T? = owner.javaClass.getDeclaredField(name)
+        .apply { isAccessible = true }.get(owner) as T?
     private fun current(): ManualMvpActivity? = ActivityLifecycleMonitorRegistry.getInstance()
         .getActivitiesInStage(Stage.RESUMED).filterIsInstance<ManualMvpActivity>().firstOrNull()
     private fun <T : View> view(tag: String): T? {
@@ -228,7 +290,10 @@ class ManualMvpScreenTest {
         return found
     }
     private fun tapTag(tag: String) = onView(withTagValue(`is`(tag))).perform(scrollTo(), click())
-    private fun finishEditor() { instrumentation.runOnMainSync { current()?.finish() }; instrumentation.waitForIdleSync() }
+    private fun finishEditor() {
+        instrumentation.runOnMainSync { current()?.onBackPressedDispatcher?.onBackPressed() }
+        fixture.waitUntil("Back returns only after editor cleanup", 30_000) { current() == null }
+    }
     private fun shell(command: String): String = instrumentation.uiAutomation.executeShellCommand(command)
         .use { descriptor -> java.io.FileInputStream(descriptor.fileDescriptor).bufferedReader().readText() }
     private fun capture(name: String) {

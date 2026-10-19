@@ -20,20 +20,25 @@ import android.widget.SeekBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.content.FileProvider
 import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import java.util.UUID
 import java.io.File
 import java.io.FileOutputStream
 
 /** Published manual editor; the common store owns revisions and the prepared plan owns output time. */
 class ManualMvpActivity : AppCompatActivity() {
-    private val jobs = Executors.newSingleThreadExecutor()
+    private val jobs = Executors.newSingleThreadExecutor { Thread(it, "Veycad-manual-jobs") }
+    private var admission: ManualEditorAdmission.Request? = null
+    private var operationLease: ManualEditorAdmission.Lease? = null
+    private var retiringLease: ManualEditorAdmission.Lease? = null
+    private var retirementScheduled = false
+    private var leaving = false
     private lateinit var store: HybridProjectStore
     private lateinit var content: LinearLayout
     private lateinit var status: TextView
@@ -42,7 +47,7 @@ class ManualMvpActivity : AppCompatActivity() {
     private var busy = false
     @Volatile private var generation = 0
     private var newProjectFps = 30
-    private var renderJob: Future<*>? = null
+    @Volatile private var exportThread: Thread? = null
     private var started = false
     private var destroyed = false
     private var lastShownUs = 0L
@@ -87,7 +92,7 @@ class ManualMvpActivity : AppCompatActivity() {
     private val videoPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
             pendingImports = uris
-            if (started && !busy) drainImports()
+            if (started && !busy && operationLease != null && !leaving) drainImports()
         }
     }
     private fun drainImports() {
@@ -119,10 +124,23 @@ class ManualMvpActivity : AppCompatActivity() {
         }
         ViewCompat.requestApplyInsets(scroll)
         title = getString(R.string.manual_title)
-        status = label(getString(R.string.manual_opening), 14)
+        content.addView(label(getString(R.string.manual_title), 28))
+        status = label(getString(R.string.manual_opening), 14).apply { tag = "preview-state" }.also(content::addView)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = leaveAfterCleanup()
+        })
     }
 
-    override fun onStart() { super.onStart(); started = true; busy = false; refresh() }
+    override fun onStart() { super.onStart(); started = true; busy = false; requestAdmission() }
+    private fun requestAdmission() {
+        if (!started || destroyed || leaving || stopping || retirementScheduled || admission != null || operationLease != null) return
+        admission = ManualEditorAdmission.acquire { lease ->
+            admission = null
+            if (!started || destroyed) { lease.release(); return@acquire }
+            operationLease = lease
+            refresh()
+        }
+    }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("project", projectId); outState.putString("clip", clipId)
         outState.putInt("newProjectFps", newProjectFps); outState.putLong("position", lastShownUs)
@@ -131,17 +149,52 @@ class ManualMvpActivity : AppCompatActivity() {
     override fun onStop() {
         started = false
         generation++
-        renderJob?.cancel(true)
         rememberSelection()
-        stopPreview { /* onStart will reopen paused at the last actually shown frame. */ }
+        stopForLifecycle()
         super.onStop()
     }
     override fun onDestroy() {
         destroyed = true
         generation++
-        renderJob?.cancel(true)
-        stopPreview { jobs.execute { runOnUiThread { jobs.shutdown() } } }
+        stopForLifecycle()
         super.onDestroy()
+    }
+    private fun stopForLifecycle() {
+        admission?.cancel(); admission = null
+        operationLease?.let { retiringLease = it; operationLease = null }
+        // A queued export is never Future.cancel'ed: its body must run its finally cleanup.
+        // A running export is interrupted, but admission remains held until the worker drains.
+        exportThread?.interrupt()
+        stopPreview { finishRetirement() }
+    }
+    private fun leaveAfterCleanup() {
+        if (leaving) return
+        leaving = true
+        generation++
+        rememberSelection()
+        setBusy(true, getString(R.string.manual_stopping))
+        stopForLifecycle()
+    }
+    private fun finishRetirement() {
+        if (retirementScheduled || jobs.isShutdown) return
+        retirementScheduled = true
+        val lease = retiringLease
+        retiringLease = null
+        jobs.execute {
+            runOnUiThread {
+                // Earlier worker results can post stale-prepared disposal back to jobs.
+                // This second fence includes those disposals, not just export completion.
+                jobs.execute {
+                    runOnUiThread {
+                        lease?.release()
+                        retirementScheduled = false
+                        if (destroyed) jobs.shutdown()
+                        else if (leaving) finish()
+                        else if (started) requestAdmission()
+                    }
+                }
+            }
+        }
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density + .5f).toInt()
@@ -156,7 +209,7 @@ class ManualMvpActivity : AppCompatActivity() {
         this.text = text; isAllCaps = false; minHeight = dp(48)
         setTextColor(getColor(R.color.text_primary))
         backgroundTintList = ColorStateList.valueOf(getColor(R.color.surface_high))
-        setOnClickListener { if (!busy && started && !destroyed) action() }
+        setOnClickListener { if (!busy && started && !destroyed && !leaving && operationLease != null) action() }
     }
     private fun row(vararg buttons: Button): LinearLayout = LinearLayout(this).apply {
         // At large font sizes stack long edit actions. Aspect controls explicitly use a 2x2 grid.
@@ -173,7 +226,7 @@ class ManualMvpActivity : AppCompatActivity() {
     private fun setBusy(value: Boolean, message: String? = null) {
         busy = value
         fun update(view: View) {
-            if (view is Button || view is SeekBar) {
+            if ((view is Button || view is SeekBar) && view.tag != "manual-back") {
                 if (value) { view.setTag(R.id.manualPreviouslyEnabled, view.isEnabled); view.isEnabled = false }
                 else { (view.getTag(R.id.manualPreviouslyEnabled) as? Boolean)?.let { view.isEnabled = it }
                     view.setTag(R.id.manualPreviouslyEnabled, null) }
@@ -211,7 +264,7 @@ class ManualMvpActivity : AppCompatActivity() {
     }
 
     private fun refresh(message: String? = null) {
-        if (!started || destroyed) return
+        if (!started || destroyed || operationLease == null) return
         exporting = false
         val sequence = ++generation
         setBusy(true, getString(R.string.manual_opening))
@@ -248,7 +301,10 @@ class ManualMvpActivity : AppCompatActivity() {
     private fun showProjects(projects: List<HybridProject>, selected: HybridProject?, editable: EditableMontageProject?, message: String?) {
         content.removeAllViews()
         texture = null; play = null; seek = null; previewStatus = null; export = null; retry = null
-        content.addView(button(getString(R.string.manual_back)) { finish() })
+        content.addView(button(getString(R.string.manual_back)) { leaveAfterCleanup() }.apply {
+            tag = "manual-back"
+            setOnClickListener { leaveAfterCleanup() }
+        })
         content.addView(label(getString(R.string.manual_title), 28))
         status = label(message ?: getString(R.string.manual_intro), 14).also(content::addView)
         status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
@@ -577,11 +633,12 @@ class ManualMvpActivity : AppCompatActivity() {
         stopPreview(keepPrepared = true) {
             if (destroyed || !started || sequence != generation) return@stopPreview
             binding = null // The export job exclusively owns this prepared lifetime until finally.
-            renderJob = jobs.submit {
+            jobs.execute {
+                exportThread = Thread.currentThread()
                 val target = frozen.request.outputFile
                 var published: CompletedRenderStore.Entry? = null
                 var linked = false
-                val result = runCatching {
+                val result = try { runCatching {
                     checkCurrent(sequence)
                     target.parentFile!!.mkdirs()
                     val frames = MediaCodecSpeedRampRenderer.render(frozen.request)
@@ -597,13 +654,18 @@ class ManualMvpActivity : AppCompatActivity() {
                     store.save(latest.copy(exports = latest.exports + ProjectExportRef(latest.current.id,
                         entry.file.name, frozen.prepared.exportSettings)), expectedRevisionId = latest.current.id)
                     linked = true
+                } } finally {
+                    try {
+                        target.delete()
+                        if (!linked) published?.let { entry -> entry.file.delete(); File(entry.file.parentFile, "${entry.file.name}.properties").delete() }
+                    } finally {
+                        frozen.prepared.close()
+                        exportThread = null
+                    }
                 }
-                target.delete()
-                if (!linked) published?.let { entry -> entry.file.delete(); File(entry.file.parentFile, "${entry.file.name}.properties").delete() }
-                frozen.prepared.close()
                 runOnUiThread {
                     if (destroyed || !started || sequence != generation) return@runOnUiThread
-                    renderJob = null; setBusy(false)
+                    setBusy(false)
                     refresh(getString(if (result.isSuccess) R.string.manual_exported else R.string.manual_export_failed))
                 }
             }

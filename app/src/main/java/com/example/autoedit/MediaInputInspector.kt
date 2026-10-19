@@ -14,9 +14,20 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
     fun inspect(id: String, file: File, name: String): MediaSource =
         inspect(id, file, name, fingerprint = null, checkCancelled = checkCancelled)
 
+    /** Published manual import contract: one inspection supplies geometry and proven raw timing. */
+    fun inspectForProject(id: String, file: File, name: String): Pair<MediaSource, VideoSourceMetadata> {
+        val inspected = inspectMetadata(id, file, name, null, checkCancelled, forProject = true)
+        return inspected.source to VideoSourceMetadata.fromInspected(inspected.source, inspected.pixelAspectRatio)
+    }
+
     /** Import can supply the SHA-256 accumulated while copying, avoiding a second file read. */
     internal fun inspect(id: String, file: File, name: String, fingerprint: String?,
-        checkCancelled: () -> Unit): MediaSource {
+        checkCancelled: () -> Unit): MediaSource =
+        inspectMetadata(id, file, name, fingerprint, checkCancelled, forProject = false).source
+
+    private data class Inspection(val source: MediaSource, val pixelAspectRatio: Float)
+    private fun inspectMetadata(id: String, file: File, name: String, fingerprint: String?,
+        checkCancelled: () -> Unit, forProject: Boolean): Inspection {
         var cancellation: Throwable? = null
         val check = {
             try { checkCancelled() } catch (failure: Throwable) {
@@ -50,15 +61,37 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
             require(width > 0 && height > 0) { "Некорректные размеры видеодорожки" }
             val rotation = format.optionalInt(MediaFormat.KEY_ROTATION) ?: 0
             require(rotation in setOf(0, 90, 180, 270)) { "Некорректный поворот видеодорожки" }
+            val pixelAspectRatio = if (forProject) {
+                val sarWidth = format.optionalInt("sar-width")
+                val sarHeight = format.optionalInt("sar-height")
+                require((sarWidth == null) == (sarHeight == null)) { "Неполные данные SAR видеодорожки" }
+                if (sarWidth == null && sarHeight == null) 1f else {
+                    require(sarWidth != null && sarWidth > 0 && sarHeight != null && sarHeight > 0) {
+                        "Некорректный SAR видеодорожки"
+                    }
+                    sarWidth.toFloat() / sarHeight
+                }
+            } else 1f
             extractor.selectTrack(videoTrack)
             val samples = scanSamples(extractor, check)
             val durationUs = samples.durationUs(format)
+            // Legacy inspection retains its existing unknown raw-boundary semantics.
+            val presentationBounds = if (forProject) Mp4PresentationBounds.read(file,
+                format.optionalInt(MediaFormat.KEY_TRACK_ID), samples.firstPtsUs, samples.lastPtsUs, samples.count, check) else null
             probeDecoder(extractor, format, samples.firstPtsUs, check)
             val digest = fingerprint ?: hash(file, check)
             check()
             require(file.length() == initialSize) { "Файл изменился во время проверки" }
-            return MediaSource(id, file, name, durationUs, initialSize, rotation, width, height,
-                requireNotNull(format.getString(MediaFormat.KEY_MIME)), transfer, hasAudio, digest)
+            val source = MediaSource(id, file, name, durationUs, initialSize, rotation, width, height,
+                requireNotNull(format.getString(MediaFormat.KEY_MIME)), transfer, hasAudio, digest,
+                firstVideoPtsUs = if (forProject) samples.firstPtsUs else null, videoEndPtsUs = presentationBounds?.endPtsUs)
+            if (forProject) {
+                require(source.isBaselineInput) { "Для проекта пока поддерживается только AVC/SDR" }
+                require(source.firstVideoPtsUs != null && source.videoEndPtsUs != null) {
+                    "Границы времени этой видеодорожки пока не поддерживаются"
+                }
+            }
+            return Inspection(source, pixelAspectRatio)
         } catch (failure: Exception) {
             cancellation?.let { throw it }
             throw IllegalArgumentException("$name: ${failure.message ?: "не удалось проверить видео"}", failure)
@@ -67,7 +100,7 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
         }
     }
 
-    private data class Samples(val firstPtsUs: Long, val lastPtsUs: Long, val penultimatePtsUs: Long?) {
+    private data class Samples(val firstPtsUs: Long, val lastPtsUs: Long, val penultimatePtsUs: Long?, val count: Long) {
         fun durationUs(format: MediaFormat): Long {
             val declared = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else null
             return mediaInputDurationUs(firstPtsUs, lastPtsUs, penultimatePtsUs, declared,
@@ -79,8 +112,10 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
         var first = Long.MAX_VALUE
         var last = -1L
         var penultimate: Long? = null
+        var count = 0L
         while (extractor.sampleTrackIndex >= 0) {
             check()
+            count = Math.addExact(count, 1L)
             val pts = extractor.sampleTime
             require(pts >= 0) { "Некорректные PTS видео" }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -99,7 +134,7 @@ class MediaInputInspector(private val checkCancelled: () -> Unit = {}) {
             if (!extractor.advance()) break
         }
         require(last >= 0) { "Видеодорожка не содержит кадров" }
-        return Samples(first, last, penultimate)
+        return Samples(first, last, penultimate, count)
     }
 
     private fun probeDecoder(extractor: MediaExtractor, format: MediaFormat, firstPtsUs: Long,

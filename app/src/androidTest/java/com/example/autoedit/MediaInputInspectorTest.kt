@@ -42,6 +42,16 @@ class MediaInputInspectorTest {
         val expectedHash = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
             .joinToString("") { "%02x".format(it) }
         assertEquals(expectedHash, source.fingerprint)
+        val (projectSource, metadata) = MediaInputInspector().inspectForProject("project-selection", file, "Travel.txt")
+        assertEquals("project-selection", projectSource.id)
+        assertEquals(source.fingerprint, projectSource.fingerprint)
+        assertEquals(source.durationUs, projectSource.durationUs)
+        assertEquals(0L, projectSource.firstVideoPtsUs)
+        assertTrue(requireNotNull(projectSource.videoEndPtsUs) in 2_950_000L..3_050_000L)
+        assertEquals(SourceGeometry(160, 240, 0, 1f), metadata.geometry)
+        // The compatibility path must not change the established gallery API's timing contract.
+        assertNull(source.firstVideoPtsUs)
+        assertNull(source.videoEndPtsUs)
     }
 
     @Test fun allQuarterTurnMetadataIsRetainedWithoutSwappingEncodedDimensions() {
@@ -71,6 +81,9 @@ class MediaInputInspectorTest {
         assertVideoTiming(held, firstPtsUs = 0L, lastPtsUs = 480_000L, durationUs = 600_000L)
         val source = MediaInputInspector().inspect("held", held, held.name)
         assertEquals(600_000L, source.durationUs)
+        val (projectSource, _) = MediaInputInspector().inspectForProject("held-project", held, held.name)
+        assertEquals(0L, projectSource.firstVideoPtsUs)
+        assertEquals(600_000L, projectSource.videoEndPtsUs)
         GalleryImportPolicy.validate(MediaSourceSet(listOf(source)))
     }
 
