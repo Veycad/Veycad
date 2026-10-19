@@ -47,7 +47,8 @@ class CustomMusicEditorDeviceTest {
                 var ready = false
                 scenario.onActivity { activity ->
                     fun has(view: android.view.View): Boolean = when (view) {
-                        is android.widget.TextView -> view.text.toString() == "Конец −1"
+                        is android.widget.TextView -> view.text.toString() == "Конец −1" &&
+                            view.isLaidOut && view.width > 0 && view.height > 0
                         is android.view.ViewGroup -> (0 until view.childCount).any { has(view.getChildAt(it)) }
                         else -> false
                     }
@@ -55,6 +56,7 @@ class CustomMusicEditorDeviceTest {
                 }
                 ready
             }
+            screenshot("manual-music-opened")
             onView(withText("Конец −1")).perform(scrollTo(), click())
             fixture.waitUntil("trim stored with music") { store.load(project.id).current.id > project.current.id }
             val trimmed = store.load(project.id)
@@ -64,7 +66,8 @@ class CustomMusicEditorDeviceTest {
                 var ready = false
                 scenario.onActivity { activity ->
                     fun has(view: android.view.View): Boolean = when (view) {
-                        is android.widget.TextView -> view.text.toString() == "Начало трека: 0:02.0"
+                        is android.widget.TextView -> view.text.toString() == "Начало трека: 0:02.0" &&
+                            view.isLaidOut && view.width > 0 && view.height > 0
                         is android.view.ViewGroup -> (0 until view.childCount).any { has(view.getChildAt(it)) }
                         else -> false
                     }
