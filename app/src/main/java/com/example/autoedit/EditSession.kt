@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -48,11 +47,13 @@ internal class EditSession internal constructor(
     private val sourceGcLock = Any()
     private val previouslyOwnedSources = mutableSetOf<String>()
     private val preferences = app.getSharedPreferences("edit_session", Context.MODE_PRIVATE)
-    private val mutableState = MutableLiveData(State(
+    private val mutableState = ObserverSafeLiveData(State(
         entry = CompletedRenderStore.latest(app.filesDir),
         error = if (preferences.getBoolean("running", false))
             "Работа была прервана системой. Исходники и предыдущий монтаж сохранены; можно повторить." else null
-    ))
+    )) { failure ->
+        LocalDiagnostics.record(app, "edit_session_observer_failed", mapOf("error" to (failure.message ?: "observer")))
+    }
     val state: LiveData<State> = mutableState
     private val cancelLock = Any()
     @Volatile private var cancelled = false
@@ -233,10 +234,7 @@ internal class EditSession internal constructor(
                             before.copy(draft = null, error = "Не удалось подтвердить выбор видео. Откройте экран заново или выберите видео повторно.")
                         }
                     }
-                    // A failing observer must never reach the transaction's rollback path.
-                    try { publish(next) } catch (failure: Exception) {
-                        LocalDiagnostics.record(app, "source_import_observer_failed", mapOf("error" to (failure.message ?: "observer")))
-                    }
+                    publish(next)
                 }
             }
         }

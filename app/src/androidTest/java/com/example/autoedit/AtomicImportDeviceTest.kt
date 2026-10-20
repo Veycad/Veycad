@@ -177,15 +177,71 @@ class AtomicImportDeviceTest {
     @Test fun observerFailureAfterCommitPreservesSelection() {
         ui.launch(); ui.importVideos("old.mp4")
         var hit = false
+        val delivered = mutableListOf<List<String>>()
         val observer = androidx.lifecycle.Observer<EditSession.State> { value ->
             if (!value.busy && value.draft?.names == listOf("new.mp4")) { hit = true; throw IllegalArgumentException("observer") }
         }
-        main { app.editSession.state.observeForever(observer) }
+        val healthy = androidx.lifecycle.Observer<EditSession.State> { value ->
+            if (!value.busy) value.draft?.names?.let { delivered += it }
+        }
+        main {
+            app.editSession.state.observeForever(observer)
+            app.editSession.state.observeForever(healthy)
+        }
         try {
             ui.returnVideos(listOf(ui.videoUri("new.mp4"))); ui.awaitIdle()
             assertTrue(hit); assertEquals(listOf("new.mp4"), names())
+            assertTrue(delivered.contains(listOf("new.mp4")))
             assertTrue(app.editSession.state.value!!.sourceSelectionConfirmed); assertIdle()
-        } finally { main { app.editSession.state.removeObserver(observer) } }
+            ui.returnVideos(listOf(ui.videoUri("later.mp4"))); ui.awaitIdle()
+            assertTrue(delivered.contains(listOf("later.mp4")))
+            onView(withId(R.id.videoSelection)).check(matches(withText("later.mp4")))
+            onView(withId(R.id.renderButton)).check(matches(isEnabled()))
+            ui.recreate()
+            onView(withId(R.id.videoSelection)).check(matches(withText("later.mp4")))
+            onView(withId(R.id.renderButton)).check(matches(isEnabled())); assertIdle()
+        } finally { main {
+            app.editSession.state.removeObserver(observer)
+            app.editSession.state.removeObserver(healthy)
+        } }
+    }
+    @Test fun observerIsolationKeepsLifecycleAndRemovalSemantics() {
+        main {
+            class Owner : androidx.lifecycle.LifecycleOwner {
+                val registry = androidx.lifecycle.LifecycleRegistry(this)
+                override val lifecycle: androidx.lifecycle.Lifecycle get() = registry
+            }
+            var failures = 0
+            val live = ObserverSafeLiveData(0) { failures++; throw IOException("diagnostics failure") }
+            val delivered = mutableListOf<Int>()
+            val bad = androidx.lifecycle.Observer<Int> { if (it == 1) throw IllegalArgumentException("observer") }
+            val healthy = androidx.lifecycle.Observer<Int> { delivered += it }
+            val owner = Owner().apply { registry.currentState = androidx.lifecycle.Lifecycle.State.CREATED }
+            live.observe(owner, bad)
+            live.observe(owner, bad) // The same registration is idempotent.
+            live.observeForever(healthy)
+            assertThrows(IllegalArgumentException::class.java) { live.observeForever(bad) }
+            owner.registry.currentState = androidx.lifecycle.Lifecycle.State.STARTED
+            live.value = 1
+            assertEquals(1, failures); assertEquals(listOf(0, 1), delivered)
+            owner.registry.currentState = androidx.lifecycle.Lifecycle.State.DESTROYED
+            // Destruction must release the original registration, including the wrapper map.
+            live.observe(owner, bad) // A destroyed owner is ignored.
+            live.observeForever(bad)
+            assertEquals(2, failures)
+            live.removeObserver(bad)
+            live.value = 2
+            assertEquals(listOf(0, 1, 2), delivered)
+            live.removeObserver(healthy)
+            assertFalse(live.hasObservers())
+            val nextOwner = Owner().apply { registry.currentState = androidx.lifecycle.Lifecycle.State.STARTED }
+            live.observe(nextOwner, bad)
+            live.removeObservers(nextOwner)
+            assertFalse(live.hasObservers())
+            live.observeForever(bad)
+            live.removeObserver(bad)
+            assertFalse(live.hasObservers())
+        }
     }
     @Test fun ambiguousLegacyRemainsOnDiskUntilReselection() {
         val root = File(ui.context.filesDir, "source-draft").apply { mkdirs() }
