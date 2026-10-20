@@ -16,10 +16,16 @@ metadata; no physical media inspection or timing measurement is claimed.
 
 Root verified both actual RED failures and the independent genuine capture.
 `binding.json` and `capture-verification.json` bind that result to exact source
-blobs and output hashes. `capture-source.kt`, inputs, provenance, log, original
+blobs and output hashes. `capture-source.txt`, inputs, provenance, log, original
 global inventory and per-ZIP inventories are unchanged outputs. Original
 inventories use literal `\t` separators; `SHA256SUMS.tsv` uses actual tabs and
 hashes this curated resource set (excluding itself and local Git attributes).
+
+`capture-source.txt` contains the exact bytes originally captured as
+`capture-source.kt`; only the resource filename changed because Android Gradle
+Plugin 9.1.1 excludes `**/*.kt` from Java resources. Its original byte length,
+SHA-256 and Git blob remain unchanged. Original capture inventory/provenance
+retain the original `.kt` filename; the curated checksum list uses `.txt`.
 
 `store-history.zip` and `store-final.zip` are complete authoritative stores,
 including exact hidden `projects/.store.lock`, original CURRENT/UUID manifests,

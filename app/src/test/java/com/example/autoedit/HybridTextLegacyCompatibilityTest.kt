@@ -121,7 +121,7 @@ class HybridTextLegacyCompatibilityTest {
 
     private fun unpack(resource: String): File = temporary.newFolder().also { root ->
         val names = hashSetOf<String>()
-        ZipInputStream(javaClass.getResourceAsStream(resource)!!).use { zip ->
+        ZipInputStream(openResource(resource)).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
                 require(names.add(entry.name) && !entry.isDirectory)
@@ -143,7 +143,10 @@ class HybridTextLegacyCompatibilityTest {
         }
     }
 
-    private fun read(path: String) = javaClass.getResourceAsStream(path)!!.use { it.readBytes() }
+    private fun openResource(path: String) = checkNotNull(javaClass.getResourceAsStream(path)) {
+        "Missing packaged fixture resource: $path"
+    }
+    private fun read(path: String) = openResource(path).use { it.readBytes() }
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     private fun inventory(root: File) = root.walkTopDown().filter { it.isFile }.associate {
         it.relativeTo(root).invariantSeparatorsPath to sha256(it.readBytes())

@@ -15,10 +15,16 @@ encoder, not previously archived project bytes and not header-swapped fixtures.
   `aef2f44558c2b362b87ff08244425c1cddcd48de57264808639f040040e38ce4`.
 
 `binding.json` and `capture-verification.json` preserve root's run binding and
-completed byte/ZIP checks. `capture-source.kt`, inputs, provenance, capture log
+completed byte/ZIP checks. `capture-source.txt`, inputs, provenance, capture log
 and original `inventory.tsv` are unchanged capture outputs. The inventory uses
 literal `\t` separators. `SHA256SUMS.tsv` uses actual tabs and hashes this curated
 resource set (excluding itself and the local Git attributes).
+
+`capture-source.txt` contains the exact bytes originally captured as
+`capture-source.kt`; only the resource filename changed because Android Gradle
+Plugin 9.1.1 excludes `**/*.kt` from Java resources. Its original byte length,
+SHA-256 and Git blob remain unchanged. Original capture inventory/provenance
+retain the original `.kt` filename; the curated checksum list uses `.txt`.
 
 `store-history.zip` and `store-final.zip` are authoritative complete stores;
 both contain the exact `projects/.store.lock`, original UUID pointers/manifests,
