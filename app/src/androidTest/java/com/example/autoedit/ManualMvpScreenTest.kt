@@ -131,7 +131,7 @@ class ManualMvpScreenTest {
         onView(withTagValue(`is`("preview-seek"))).perform(scrollTo(), scrub(25), scrub(100), scrub(61))
         fixture.waitUntil("60 fps exact scrub", 30_000) { ready() && view<SeekBar>("preview-seek")?.progress == 61 }
         assertEquals("Воспроизвести", view<Button>("play")!!.text.toString())
-        capture("editor-paused-after-seek")
+        capture("editor-paused-after-seek", expectedFrame = 61)
         tapTag("play")
         fixture.waitUntil("actual playback started", 30_000) { view<Button>("play")?.text == "Пауза" }
         capture("editor-playing")
@@ -178,7 +178,16 @@ class ManualMvpScreenTest {
         val previousScale = shell("settings get system font_scale").trim()
         try {
             shell("settings put system font_scale 2.0")
-            shell("wm size 720x1280")
+            // This CI device uses density=1: 720 physical pixels would be a tablet width.
+            shell("wm size 320x640")
+            fixture.waitUntil("narrow large-font Main recreation and splash settled", 30_000) {
+                val main = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                    .filterIsInstance<MainActivity>().singleOrNull() ?: return@waitUntil false
+                main.resources.configuration.let { it.fontScale == 2f && it.screenWidthDp == 320 } &&
+                    main.hasWindowFocus() && !main.window.decorView.isLayoutRequested &&
+                    main.findViewById<View>(R.id.splashContent).visibility == View.GONE &&
+                    main.findViewById<View>(R.id.manualMvpButton).isShown
+            }
             fixture.click(R.id.manualMvpButton)
             fixture.waitUntil("readable error", 30_000) { view<TextView>("preview-state")?.text?.startsWith("Не удалось") == true }
             onView(withTagValue(`is`("aspect-FEED_4_5"))).perform(scrollTo())
@@ -296,36 +305,97 @@ class ManualMvpScreenTest {
     }
     private fun shell(command: String): String = instrumentation.uiAutomation.executeShellCommand(command)
         .use { descriptor -> java.io.FileInputStream(descriptor.fileDescriptor).bufferedReader().readText() }
-    private fun capture(name: String) {
+    private data class CaptureState(val status: String?, val clock: String?, val frame: Int?,
+        val playing: Boolean, val paused: Boolean, val patterned: Boolean,
+        val surfaceBounds: android.graphics.Rect?, val configuration: String)
+    /** Called on main: record the same actual state around bitmap acquisition, not later metadata. */
+    private fun captureState(): CaptureState {
+        val activity = current()
+        val bounds = android.graphics.Rect().takeIf {
+            view<View>("preview-surface")?.getGlobalVisibleRect(it) == true
+        }
+        return CaptureState(view<TextView>("preview-state")?.text?.toString(),
+            activity?.let { field<TextView>(it, "clock")?.text?.toString() },
+            view<SeekBar>("preview-seek")?.progress, view<Button>("play")?.text == "Пауза",
+            ready(), surfaceHasPattern(), bounds, "fontScale=${activity?.resources?.configuration?.fontScale}\n" +
+                "density=${activity?.resources?.displayMetrics?.density}\n" +
+                "orientation=${activity?.resources?.configuration?.orientation}\n")
+    }
+    private fun capture(name: String, expectedFrame: Int? = null) {
         instrumentation.waitForIdleSync()
+        val playingCapture = name == "editor-playing"
+        val pausedCapture = name.startsWith("editor-") && !playingCapture &&
+            name != "editor-exporting" && !name.endsWith("-error")
+        if (pausedCapture) fixture.waitUntil("paused $name before scrolling", 30_000) {
+            ready() && (expectedFrame == null || view<SeekBar>("preview-seek")?.progress == expectedFrame)
+        }
+        lateinit var expected: CaptureState
+        instrumentation.runOnMainSync { expected = captureState() }
         // Include actual Surface pixels in every ready-player capture. Controls can be reached
         // independently by scrolling; landscape never changes the project's aspect itself.
-        if (ready() || view<Button>("play")?.text == "Пауза" || name.startsWith("editor-export"))
+        if (pausedCapture || playingCapture || name.startsWith("editor-export"))
             onView(withTagValue(`is`("preview-surface"))).perform(scrollTo())
         val directory = fixture.context.getExternalFilesDir("preview-evidence")!!.apply { mkdirs() }
-        val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
-        File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        var configuration = ""
-        instrumentation.runOnMainSync {
-            val activity = current()
-            configuration = "fontScale=${activity?.resources?.configuration?.fontScale}\n" +
-                "density=${activity?.resources?.displayMetrics?.density}\nstate=${view<TextView>("preview-state")?.text}\n"
+        val deadline = android.os.SystemClock.elapsedRealtime() + 30_000
+        fun settled(state: CaptureState) = when {
+            pausedCapture -> state.paused && state.patterned && state.frame == expected.frame && state.clock == expected.clock
+            playingCapture -> state.playing && state.patterned
+            else -> true
         }
-        File(directory, "$name.txt").writeText("source=${BuildConfig.SOURCE_SHA}\n" +
-            "screen=${bitmap.width}x${bitmap.height}\n" + configuration +
-            "aspect=${store.list().firstOrNull()?.current?.visualSettings?.aspect}\n")
-        bitmap.recycle()
+        repeat(5) { attempt ->
+            val remaining = deadline - android.os.SystemClock.elapsedRealtime()
+            assertTrue("Capture $name did not settle within 30 seconds", remaining > 0)
+            lateinit var before: CaptureState
+            fixture.waitUntil("post-scroll $name state, output clock and Surface pixels", remaining) {
+                before = captureState()
+                settled(before)
+            }
+            // ScreenCapture can time out under emulator GPU load. Retry acquisition only;
+            // never replace the image with a drawn/mock bitmap or skip the evidence.
+            val bitmap = instrumentation.uiAutomation.takeScreenshot()
+            lateinit var after: CaptureState
+            instrumentation.runOnMainSync { after = captureState() }
+            val stable = settled(after) && before.status == after.status &&
+                before.configuration == after.configuration &&
+                before.surfaceBounds == after.surfaceBounds &&
+                (playingCapture || (before.clock == after.clock && before.frame == after.frame))
+            val screenshotHasFrame = bitmap != null && (!(pausedCapture || playingCapture) ||
+                before.surfaceBounds?.let { hasPattern(bitmap, it) } == true)
+            if (bitmap != null && stable && screenshotHasFrame) {
+                try {
+                    assertTrue("Capture $name has no pixels", bitmap.width > 0 && bitmap.height > 0)
+                    File(directory, "$name.png").outputStream().use {
+                        assertTrue("Capture $name PNG encoding failed", bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                    }
+                    File(directory, "$name.txt").writeText("source=${BuildConfig.SOURCE_SHA}\n" +
+                        "screen=${bitmap.width}x${bitmap.height}\n${before.configuration}state=${before.status}\n" +
+                        "clockBefore=${before.clock}\nclockAfter=${after.clock}\n" +
+                        "frameBefore=${before.frame}\nframeAfter=${after.frame}\nattempts=${attempt + 1}\n" +
+                        "aspect=${store.list().firstOrNull()?.current?.visualSettings?.aspect}\n")
+                    return
+                } finally { bitmap.recycle() }
+            }
+            bitmap?.recycle()
+            android.os.SystemClock.sleep(250)
+        }
+        throw AssertionError("Capture $name did not produce a real bitmap with stable state after five attempts")
+    }
+    private fun surfaceHasPattern(): Boolean {
+        val bitmap = view<android.view.TextureView>("preview-surface")?.bitmap ?: return false
+        return try { hasPattern(bitmap, android.graphics.Rect(0, 0, bitmap.width, bitmap.height)) }
+        finally { bitmap.recycle() }
+    }
+    private fun hasPattern(bitmap: Bitmap, bounds: android.graphics.Rect): Boolean {
+        val visible = android.graphics.Rect(bounds)
+        if (!visible.intersect(0, 0, bitmap.width, bitmap.height)) return false
+        val values = (1..8).flatMap { x -> (1..8).map { y ->
+            android.graphics.Color.red(bitmap.getPixel(visible.left + visible.width() * x / 9,
+                visible.top + visible.height() * y / 9))
+        } }
+        return values.max() - values.min() > 8
     }
     private fun assertSurfacePixels() {
-        fixture.waitUntil("patterned pixels reached the real Surface", 30_000) {
-            val bitmap = view<android.view.TextureView>("preview-surface")?.bitmap ?: return@waitUntil false
-            val values = (1..8).flatMap { x -> (1..8).map { y ->
-                android.graphics.Color.red(bitmap.getPixel(bitmap.width * x / 9, bitmap.height * y / 9))
-            } }
-            val patterned = values.max() - values.min() > 8
-            bitmap.recycle()
-            patterned
-        }
+        fixture.waitUntil("patterned pixels reached the real Surface", 30_000) { surfaceHasPattern() }
     }
     private fun scrub(frame: Int) = object : ViewAction {
         override fun getConstraints(): Matcher<View> = isAssignableFrom(SeekBar::class.java)
