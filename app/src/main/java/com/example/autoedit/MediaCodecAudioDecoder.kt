@@ -70,10 +70,14 @@ internal object MediaCodecAudioDecoder {
                     val format = extractor.getTrackFormat(track)
                     if (extractor.sampleTime > firstPacketUs && format.containsKey(MediaFormat.KEY_ENCODER_DELAY))
                         format.setInteger(MediaFormat.KEY_ENCODER_DELAY, 0)
+                    // Interior seeks keep the generic preroll/raw-PTS contract. The independent
+                    // preflight closes before opening the decoder and never moves this cursor.
+                    val gaplessClock = if (extractor.sampleTime == firstPacketUs)
+                        continuousGaplessAacClock(file, track, format, firstPacketUs, checkCancelled) else null
                     codec = MediaCodec.createDecoderByType(requireNotNull(format.getString(MediaFormat.KEY_MIME)))
                     codec.configure(format, null, null, 0)
                     codec.start()
-                    stream = DecoderStream(extractor, codec, metrics, checkCancelled)
+                    stream = DecoderStream(extractor, codec, metrics, checkCancelled, gaplessClock)
                     stream.prime()
                     stream
                 }
@@ -88,8 +92,55 @@ internal object MediaCodecAudioDecoder {
         }
     }
 
+    private fun continuousGaplessAacClock(file: File, track: Int, format: MediaFormat,
+        firstPacketUs: Long, checkCancelled: () -> Unit): GaplessAacClock? {
+        if (format.getString(MediaFormat.KEY_MIME) != MediaFormat.MIMETYPE_AUDIO_AAC ||
+            !format.containsKey(MediaFormat.KEY_ENCODER_DELAY) || !format.containsKey(MediaFormat.KEY_ENCODER_PADDING)) return null
+        val rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        val channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        val delay = format.getInteger(MediaFormat.KEY_ENCODER_DELAY)
+        val padding = format.getInteger(MediaFormat.KEY_ENCODER_PADDING)
+        if (delay < 0 || delay % 1024 != 0 || padding !in 0..1023 || channels !in 1..2) return null
+        val asc = format.getByteBuffer("csd-0")?.duplicate() ?: return null
+        if (asc.remaining() != 2) return null
+        val bits = ((asc.get().toInt() and 255) shl 8) or (asc.get().toInt() and 255)
+        val rates = intArrayOf(96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350)
+        val rateIndex = (bits ushr 7) and 15
+        // AAC-LC, explicit channel configuration, 1024-frame GA syntax; no extensions.
+        if ((bits ushr 11) != 2 || rateIndex !in rates.indices || rates[rateIndex] != rate ||
+            ((bits ushr 3) and 15) != channels || (bits and 7) != 0) return null
+        val originUs = Math.addExact(firstPacketUs, AudioExportPlan.presentationTimeUs(delay.toLong(), rate))
+        if (originUs < 0) return null
+        val proof = MediaExtractor()
+        try {
+            proof.setDataSource(file.absolutePath)
+            proof.selectTrack(track)
+            var packets = 0L
+            while (proof.sampleTime != -1L) {
+                checkCancelled()
+                if (proof.sampleFlags and (MediaExtractor.SAMPLE_FLAG_ENCRYPTED or MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME) != 0) return null
+                val expectedUs = Math.addExact(firstPacketUs,
+                    AudioExportPlan.presentationTimeUs(Math.multiplyExact(packets, 1024L), rate))
+                if (proof.sampleTime < expectedUs - 2 || proof.sampleTime > expectedUs + 2) return null
+                packets = Math.addExact(packets, 1L)
+                if (!proof.advance()) break
+            }
+            val frames = Math.subtractExact(Math.subtractExact(Math.multiplyExact(packets, 1024L), delay.toLong()), padding.toLong())
+            if (frames <= 0 || !format.containsKey(MediaFormat.KEY_DURATION)) return null
+            val durationUs = format.getLong(MediaFormat.KEY_DURATION)
+            // The coded count minus real gapless metadata is authoritative. A fractional
+            // microsecond may be projected down or up by the container/extractor.
+            val durationNumerator = Math.multiplyExact(frames, 1_000_000L)
+            val floorDurationUs = durationNumerator / rate
+            val ceilDurationUs = Math.addExact(floorDurationUs, if (durationNumerator % rate == 0L) 0L else 1L)
+            if (durationUs !in floorDurationUs..ceilDurationUs) return null
+            return GaplessAacClock(rate, originUs, padding, frames)
+        } finally { proof.release() }
+    }
+
     private class DecoderStream(val extractor: MediaExtractor, val decoder: MediaCodec,
-        val metrics: StreamMetrics, val checkCancelled: () -> Unit) : PcmStream {
+        val metrics: StreamMetrics, val checkCancelled: () -> Unit,
+        private val gaplessClock: GaplessAacClock?) : PcmStream {
         private var signature: Triple<Int, Int, Int>? = null
         private var first: PcmChunk? = null
         private var inputEnded = false
@@ -97,6 +148,7 @@ internal object MediaCodecAudioDecoder {
         private var closed = false
         private var lastProgressNs = System.nanoTime()
         private val info = MediaCodec.BufferInfo()
+        private var clockDiagnostics = 0
         override val format: PcmFormat get() = requireNotNull(signature).let { PcmFormat(it.first, if (it.second <= 2) it.second else 1) }
         init { metrics.opened() }
 
@@ -157,14 +209,25 @@ internal object MediaCodecAudioDecoder {
                                 val bytes = requireNotNull(decoder.getOutputBuffer(index)).duplicate()
                                 bytes.position(info.offset); bytes.limit(info.offset + info.size)
                                 val actual = requireNotNull(signature)
-                                val chunk = DecodedPcmBuffer.convert(bytes, actual.first, actual.second, actual.third, info.presentationTimeUs)
+                                val width = when (actual.third) { 2 -> 2; 3 -> 1; else -> 4 }
+                                check(info.size % (actual.second * width) == 0) { "Partial decoded PCM frame" }
+                                val ptsUs = if (gaplessClock != null) {
+                                    check(actual.first == gaplessClock.sampleRate) { "Gapless AAC output sample rate changed" }
+                                    gaplessClock.accept(info.presentationTimeUs, info.size / (actual.second * width)).also {
+                                        if (clockDiagnostics++ < 3) android.util.Log.i("SourceAacTiming",
+                                            "gaplessPCM codecPts=${info.presentationTimeUs} pcmPts=$it frames=${info.size / (actual.second * width)}")
+                                    }
+                                } else info.presentationTimeUs
+                                val chunk = DecodedPcmBuffer.convert(bytes, actual.first, actual.second, actual.third, ptsUs)
                                 metrics.buffer(info.size)
+                                if (outputEnded) gaplessClock?.finish()
                                 if (chunk != null) return chunk
                             }
                         } finally { decoder.releaseOutputBuffer(index, false); lastProgressNs = System.nanoTime() }
                     }
                 }
             }
+            gaplessClock?.finish()
             return null
         }
 
