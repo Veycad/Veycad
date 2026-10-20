@@ -24,7 +24,7 @@ class TextEditStoreTest {
             val unreadableBytes=file.readBytes()
             var fallbackCreated=false
             // Same load-or-create boundary used when opening/importing a video.
-            val failure=assertThrows(IllegalStateException::class.java) {
+            val failure=assertThrows("Повреждённое поле: $brokenField",IllegalStateException::class.java) {
                 val loaded=store.load(source.path) ?: original.copy(layers=emptyList()).also { fallbackCreated=true }
                 store.save(loaded)
             }

@@ -58,14 +58,23 @@ class TextEditStore(private val directory: File) {
             Files.move(partial.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
     }
+    /** Only absent drafts or a valid marker for a replaced source return null. */
     @Synchronized fun load(sourcePath: String): TextEditProject? {
         try {
             val file = target(sourcePath)
             if (!file.exists()) return null
             val p = Properties().apply { file.inputStream().use { load(it) } }
             fun get(k: String) = p.getProperty(k) ?: error("Missing $k")
-            if (get("identity") != identity(sourcePath)) return null
             require(get("version") == "1") { "Unsupported text draft version" }
+            val savedIdentity=get("identity")
+            val prefix=File(sourcePath).canonicalPath+"|"
+            require(savedIdentity.startsWith(prefix)) { "Invalid text draft source marker" }
+            val parts=savedIdentity.substring(prefix.length).split('|')
+            val length=parts.getOrNull(0)?.toLongOrNull()
+            val modified=parts.getOrNull(1)?.toLongOrNull()
+            require(parts.size==2 && length!=null && length>=0 && modified!=null &&
+                savedIdentity=="$prefix$length|$modified") { "Invalid text draft source marker" }
+            if (savedIdentity != identity(sourcePath)) return null
             fun style(k: String) = TextStyle(TextPosition.valueOf(get("$k.position")), TextFont.valueOf(get("$k.font")),
                 get("$k.size").toFloat(), get("$k.color").toInt(), get("$k.plate").toBooleanStrict(), TextAnimation.valueOf(get("$k.animation")),
                 p.getProperty("$k.background")?.let { TextPlate.valueOf(it) })
