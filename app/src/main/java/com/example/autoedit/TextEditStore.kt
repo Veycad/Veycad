@@ -58,21 +58,30 @@ class TextEditStore(private val directory: File) {
             Files.move(partial.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
     }
-    @Synchronized fun load(sourcePath: String): TextEditProject? = runCatching {
-        val p = Properties().apply { target(sourcePath).inputStream().use { load(it) } }
-        fun get(k: String) = p.getProperty(k) ?: error("Missing $k")
-        if (get("version") != "1" || get("identity") != identity(sourcePath)) return null
-        fun style(k: String) = TextStyle(TextPosition.valueOf(get("$k.position")), TextFont.valueOf(get("$k.font")),
-            get("$k.size").toFloat(), get("$k.color").toInt(), get("$k.plate").toBoolean(), TextAnimation.valueOf(get("$k.animation")),
-            p.getProperty("$k.background")?.let { TextPlate.valueOf(it) })
-        TextEditProject(sourcePath, get("duration").toLong(), get("width").toInt(), get("height").toInt(),
-            List(get("layers").toInt().also { require(it in 0..1000) }) { i ->
-                TextLayer(get("l.$i.id"), get("l.$i.text"), get("l.$i.start").toLong(), get("l.$i.end").toLong(), style("l.$i.style"),
-                    TextLayerKind.valueOf(p.getProperty("l.$i.kind","LEGACY")))
-            }, List(get("captions").toInt().also { require(it in 0..100000) }) { i ->
-                CaptionCue(get("c.$i.id"), get("c.$i.text"), get("c.$i.start").toLong(), get("c.$i.end").toLong(),
-                    p.getProperty("c.$i.confidence")?.toDouble(),p.getProperty("c.$i.reviewed","false").toBoolean(),
-                    p.getProperty("c.$i.calibrated","false").toBoolean())
-            }, style("captionStyle"), get("edited").toBoolean(), get("language"),p.getProperty("origin","0").toLong())
-    }.getOrNull()
+    @Synchronized fun load(sourcePath: String): TextEditProject? {
+        try {
+            val file = target(sourcePath)
+            if (!file.exists()) return null
+            val p = Properties().apply { file.inputStream().use { load(it) } }
+            fun get(k: String) = p.getProperty(k) ?: error("Missing $k")
+            if (get("identity") != identity(sourcePath)) return null
+            require(get("version") == "1") { "Unsupported text draft version" }
+            fun style(k: String) = TextStyle(TextPosition.valueOf(get("$k.position")), TextFont.valueOf(get("$k.font")),
+                get("$k.size").toFloat(), get("$k.color").toInt(), get("$k.plate").toBooleanStrict(), TextAnimation.valueOf(get("$k.animation")),
+                p.getProperty("$k.background")?.let { TextPlate.valueOf(it) })
+            return TextEditProject(sourcePath, get("duration").toLong(), get("width").toInt(), get("height").toInt(),
+                List(get("layers").toInt().also { require(it in 0..1000) }) { i ->
+                    TextLayer(get("l.$i.id"), get("l.$i.text"), get("l.$i.start").toLong(), get("l.$i.end").toLong(), style("l.$i.style"),
+                        TextLayerKind.valueOf(p.getProperty("l.$i.kind","LEGACY")))
+                }, List(get("captions").toInt().also { require(it in 0..100000) }) { i ->
+                    CaptionCue(get("c.$i.id"), get("c.$i.text"), get("c.$i.start").toLong(), get("c.$i.end").toLong(),
+                        p.getProperty("c.$i.confidence")?.toDouble(),p.getProperty("c.$i.reviewed","false").toBooleanStrict(),
+                        p.getProperty("c.$i.calibrated","false").toBooleanStrict())
+                }, style("captionStyle"), get("edited").toBooleanStrict(), get("language"),p.getProperty("origin","0").toLong())
+        } catch (failure: Exception) {
+            // Null means a new source: callers create and save an empty project for it.
+            // A damaged existing draft must not enter that destructive fallback.
+            throw IllegalStateException("Не удалось прочитать черновик. Файл сохранён без изменений. Можно выбрать другое видео.",failure)
+        }
+    }
 }

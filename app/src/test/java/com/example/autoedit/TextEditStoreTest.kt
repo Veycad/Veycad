@@ -24,10 +24,12 @@ class TextEditStoreTest {
             val unreadableBytes=file.readBytes()
             var fallbackCreated=false
             // Same load-or-create boundary used when opening/importing a video.
-            assertThrows(IllegalStateException::class.java) {
+            val failure=assertThrows(IllegalStateException::class.java) {
                 val loaded=store.load(source.path) ?: original.copy(layers=emptyList()).also { fallbackCreated=true }
                 store.save(loaded)
             }
+            assertTrue(failure.message!!.contains("черновик"))
+            assertFalse(failure.message!!.contains(source.path))
             assertFalse(fallbackCreated)
             assertArrayEquals(unreadableBytes,file.readBytes())
         }

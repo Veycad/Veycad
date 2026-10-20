@@ -49,7 +49,9 @@ internal class TextEditSession private constructor(context: Context) {
         if(allowed.none { file.canonicalPath.startsWith(it+File.separator) }) {
             mutable.value=state.value!!.copy(error="Недоступный исходный файл"); return
         }
-        val recoveryMessage=state.value?.error
+        val recoveryMessage=state.value?.error?.takeIf {
+            state.value?.project==null && preferences.getBoolean("running",false)
+        }
         runJob("Открываю видео") {
             val project=store.load(file.canonicalPath) ?: TextVideoProbe.project(file,::checkCancelled)
             store.save(project); preferences.edit().putString("source",project.sourcePath).commit()
