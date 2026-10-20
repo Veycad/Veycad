@@ -113,7 +113,10 @@ class ManualMvpScreenTest {
         assertTrue(view<Button>("aspect-LANDSCAPE_16_9")!!.isSelected)
         capture("editor-reopened")
         instrumentation.runOnMainSync { current()!!.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-        fixture.waitUntil("landscape Activity ready", 30_000) { ready() }
+        fixture.waitUntil("landscape Activity ready", 30_000) {
+            current()?.resources?.configuration?.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+                ready()
+        }
         for (aspect in ProjectAspect.entries) {
             tapTag("aspect-${aspect.name}")
             fixture.waitUntil("landscape ${aspect.name} ready", 30_000) {
@@ -193,7 +196,10 @@ class ManualMvpScreenTest {
             onView(withTagValue(`is`("aspect-FEED_4_5"))).perform(scrollTo())
             capture("editor-narrow-large-font-error")
             instrumentation.runOnMainSync { current()!!.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-            fixture.waitUntil("landscape error recreated", 30_000) { view<TextView>("preview-state")?.text?.startsWith("Не удалось") == true }
+            fixture.waitUntil("landscape error recreated", 30_000) {
+                current()?.resources?.configuration?.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+                    view<TextView>("preview-state")?.text?.startsWith("Не удалось") == true
+            }
             onView(withTagValue(`is`("aspect-FEED_4_5"))).perform(scrollTo())
             assertTrue(view<Button>("aspect-FEED_4_5")!!.isSelected)
             capture("editor-landscape-large-font-error")
