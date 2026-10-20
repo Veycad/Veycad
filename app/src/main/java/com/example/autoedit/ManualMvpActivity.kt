@@ -116,13 +116,17 @@ class ManualMvpActivity : AppCompatActivity() {
             setPadding(dp(22), dp(12), dp(22), dp(36))
         }
         scroll.addView(content)
-        setContentView(scroll)
-        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+        // Match the text editor: ScrollView reveals rectangles using its full height,
+        // so system insets must shrink its viewport rather than clip it with padding.
+        val viewport = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.background)) }
+        viewport.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        setContentView(viewport)
+        ViewCompat.setOnApplyWindowInsetsListener(viewport) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
-        ViewCompat.requestApplyInsets(scroll)
+        ViewCompat.requestApplyInsets(viewport)
         title = getString(R.string.manual_title)
         content.addView(label(getString(R.string.manual_title), 28))
         status = label(getString(R.string.manual_opening), 14).apply { tag = "preview-state" }.also(content::addView)
