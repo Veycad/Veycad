@@ -6,6 +6,8 @@ import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.VideoView
+import android.media.MediaMetadataRetriever
 import androidx.core.content.FileProvider
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -14,12 +16,15 @@ import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
+import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import org.hamcrest.Matchers.containsString
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
@@ -35,6 +40,8 @@ class ManualMvpScreenTest {
         intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(
             Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().apply { data = uri }))
         fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("manual start laid out") { hasManualText("Выбрать видео для базового монтажа") }
+        evidence("manual-empty.png")
         onView(withText("Выбрать видео для базового монтажа")).perform(scrollTo(), click())
         try {
             fixture.waitUntil("basic project created", 30_000) {
@@ -77,7 +84,61 @@ class ManualMvpScreenTest {
         fixture.waitUntil("selection reopened") { hasManualText("● 2. B ·") }
         onView(withText(containsString("● 2. B ·"))).perform(scrollTo()).check(matches(isDisplayed()))
         assertEquals(listOf("A1", "B", "A2"), store.load(id).current.clips.map { it.id })
+        onView(withText("Конец −1")).perform(scrollTo()).check(matches(isDisplayed()))
+        evidence("manual-controls.png")
+
+        // Exercise the actual manual renderer, not the main screen's fake renderer.
+        val revision = store.load(id).current.id
+        onView(withText("Просмотреть · полный рендер 720p")).perform(scrollTo(), click())
+        fixture.waitUntil("manual rendered preview", 180_000) {
+            hasManualText("Предпросмотр готов для текущей версии.")
+        }
+        onView(isAssignableFrom(VideoView::class.java)).perform(scrollTo())
+        fixture.waitUntil("centered playable preview") {
+            var ready = false
+            fun find(view: View): VideoView? {
+                if (view is VideoView) return view
+                if (view is ViewGroup) repeat(view.childCount) {
+                    find(view.getChildAt(it))?.let { found -> return found }
+                }
+                return null
+            }
+            currentManual()?.let { activity -> find(activity.window.decorView)?.let { movie ->
+                val parent = movie.parent as View
+                ready = movie.duration > 0 && movie.width > 0 && movie.height > 0 &&
+                    kotlin.math.abs((movie.left + movie.right) - parent.width) <= 2
+            } }
+            ready
+        }
+        evidence("manual-preview.png")
+        onView(withText("Сохранить новую версию · 1080p")).perform(scrollTo(), click())
+        fixture.waitUntil("manual export saved", 240_000) {
+            store.load(id).exports.any { it.revisionId == revision } &&
+                hasManualText("Новая версия сохранена.")
+        }
+        val project = store.load(id)
+        val export = project.exports.last { it.revisionId == revision }
+        val exportedFile = File(fixture.context.filesDir, "completed-renders/${export.fileName}")
+        val metadata = MediaMetadataRetriever()
+        try {
+            metadata.setDataSource(exportedFile.absolutePath)
+            assertEquals("1080", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
+            assertEquals("1920", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT))
+        } finally { metadata.release() }
+        assertEquals(revision, project.current.id)
+        assertEquals(59, project.current.clips[1].span.length)
+        exportedFile.copyTo(File(evidenceDirectory(), "manual-final.mp4"))
+        onView(withText("Поделиться сохранённой версией")).perform(scrollTo()).check(matches(isDisplayed()))
+        evidence("manual-export.png")
         InstrumentationRegistry.getInstrumentation().runOnMainSync { currentManual()?.finish() }
+    }
+
+    private fun evidenceDirectory() = File(fixture.context.filesDir, "manual-ui-evidence").apply { mkdirs() }
+
+    private fun evidence(name: String) {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        assertTrue("Screenshot $name", UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            .takeScreenshot(File(evidenceDirectory(), name)))
     }
 
     private fun hasManualText(prefix: String): Boolean {

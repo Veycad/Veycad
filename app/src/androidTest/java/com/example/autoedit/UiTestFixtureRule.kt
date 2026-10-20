@@ -47,7 +47,7 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         cleanGallery()
         // The runner collects this run's native AAC evidence after all screen tests.
         // Clear it at the run boundary, while ordinary per-test app data stays isolated.
-        context.filesDir.listFiles()?.filterNot { it.name == "source-audio-native-evidence" }
+        context.filesDir.listFiles()?.filterNot { it.name in setOf("source-audio-native-evidence", "manual-ui-evidence") }
             ?.forEach { it.deleteRecursively() }
         context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
         File(context.applicationInfo.dataDir, "shared_prefs").listFiles()?.forEach { file ->
