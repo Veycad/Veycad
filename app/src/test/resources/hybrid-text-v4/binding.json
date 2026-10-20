@@ -1,0 +1,35 @@
+{
+  "semanticAnchor": "a53101496244fbb8476dfb314c701380a7eff80a",
+  "producer": "ad7fcb17d45d854cd38c01b1e4af4baa1cf5bb8c",
+  "testBlob": "812a8e6387ea4eb61a733ae71186b40f1ae15150",
+  "sourceGuards": {
+    "app/build.gradle.kts": "696f19073427c076049138e5b4deb52ee7ca62d7",
+    "app/src/test/java/com/example/autoedit/HybridProjectCodecTest.kt": "7836726f99b0175f369f003d81acd84a4d294b29",
+    "app/src/test/java/com/example/autoedit/HybridProjectStoreTest.kt": "6d4407ed5ddc01f6ef014ae8290eb8ece35d1c80",
+    "app/src/main/java/com/example/autoedit/HybridEditCommands.kt": "0750ef9f7ea9c4a7ca16a90143a3c923871cff5a",
+    ".github/workflows/android-ui.yml": "00cb6d4349f888dbdf1beaacc6874b81d01d0160",
+    "app/src/main/java/com/example/autoedit/ProjectAssetStore.kt": "db36fd91eb9f09d4a05fc2b9f3c2746e285f4ad3",
+    "app/src/main/java/com/example/autoedit/HybridProjectCodec.kt": "2505cd323fc16d7eaffdbe393f3ab9760c7a94fd",
+    "app/src/main/java/com/example/autoedit/HybridProjectStore.kt": "7c60ae4869ee587302c16d092e1888e0d994b139",
+    ".github/workflows/android-baseline.yml": "f35bf6385ef50044e326172d9589f3e918132fd9",
+    "app/src/main/java/com/example/autoedit/HybridTextState.kt": "d15511b52bfdc6990146984fb6373754a0fa3d5e",
+    "app/src/main/java/com/example/autoedit/AnalysisSidecarStore.kt": "7caeca32f8c31056d04fe91055ad0f2f9d5fe5dd",
+    "app/src/main/java/com/example/autoedit/TextEditProject.kt": "c975659e92399709935ec2d4220b9fb7ad82539f",
+    "app/src/main/java/com/example/autoedit/HybridProject.kt": "cb1923fc9e9d157fe41295cf42d5eb76d978e10e",
+    "build.gradle.kts": "f68ab10e9eff53fde211a679808e38500308c662"
+  },
+  "workflow": "workflow_dispatch Android baseline",
+  "run": 39395192746,
+  "job": 118536083703,
+  "artifact": 12251373559,
+  "artifactSHA256": "aef2f44558c2b362b87ff08244425c1cddcd48de57264808639f040040e38ce4",
+  "jvmTests": 919,
+  "failures": 0,
+  "captureTests": 1,
+  "genuineOldPhysical4": true,
+  "rootVerification": "a2x-v4-ad7-capture-verification.json",
+  "hiddenRawTransportOmissions": [
+    "store-history/projects/.store.lock",
+    "store-final/projects/.store.lock"
+  ]
+}

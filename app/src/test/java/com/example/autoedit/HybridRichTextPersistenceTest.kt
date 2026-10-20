@@ -33,6 +33,13 @@ class HybridRichTextPersistenceTest {
         (listOf(reopened.original, reopened.current) + reopened.undo + reopened.redo).forEach { revision ->
             assertEquals(richText(revision.id.toInt()), revision.textState)
             assertEquals(revision, HybridProjectStore(files).loadRevision(base.id, revision.id))
+            revision.textState.layers.forEach { layer ->
+                val style = layer.style
+                listOf(false, true).forEach { dark ->
+                    assertEquals(style.plate ?: if (dark) TextPlate.DARK else TextPlate.NONE,
+                        style.copy(darkPlate = dark).resolvedPlate)
+                }
+            }
             revision.textState.captions.forEach { cue ->
                 val confidence = cue.confidence
                 assertEquals(!cue.manuallyReviewed && (!cue.confidenceCalibrated ||
@@ -41,6 +48,12 @@ class HybridRichTextPersistenceTest {
         }
         assertEquals(one.current, HybridProjectStore(files).loadRevision(base.id, one.current.id))
         assertBytes(before, dir)
+        assertThrows(UnsupportedOperationException::class.java) {
+            (reopened.current.textState.layers as MutableList<TextLayer>).clear()
+        }
+        assertThrows(UnsupportedOperationException::class.java) {
+            (reopened.current.textState.captions as MutableList<CaptionCue>).clear()
+        }
 
         val three = HybridEditCommands.commitRevision(reopened, reopened.current.copy(textState = richText(3)))
             .let { it.copy(undo = listOf(it.original), redo = emptyList()) }
@@ -77,6 +90,50 @@ class HybridRichTextPersistenceTest {
             assertEquals(TextLayerKind.SUBTITLE, text.activeLayers(900_000).single().kind)
             assertTrue(text.activeLayers(1_000_000).isEmpty())
         }
+    }
+
+    @Test fun richAuthorEditsCasUndoRedoAndBothResetsRetainTheCorrectText() {
+        val files = temporary.newFolder()
+        val store = HybridProjectStore(files)
+        val base = project(store, richText(0))
+        store.create(base)
+        val slipped = HybridEditCommands.slipClip(base, "c", 12_345)
+        val authored = HybridEditCommands.commitRevision(slipped, slipped.current.copy(textState = richText(1)))
+            .let { it.copy(exports = listOf(ProjectExportRef(it.current.id, "author-export.mp4",
+                ProjectExportSettings(1080, 1920, 30, 8_000_000, 192_000)))) }
+        store.save(authored, 0)
+        val reopened = HybridProjectStore(files).load(base.id)
+        assertEquals(authored, reopened)
+        assertEquals(richText(1), reopened.current.textState)
+        val beforeStale = bytes(store.directory(base.id))
+        val stale = HybridEditCommands.commitRevision(base, base.current.copy(textState = richText(2)))
+        assertThrows(IllegalStateException::class.java) { store.save(stale, 0) }
+        assertBytes(beforeStale, store.directory(base.id))
+
+        val undone = HybridEditCommands.undo(reopened)
+        store.save(undone, reopened.current.id)
+        val undoLoad = HybridProjectStore(files).load(base.id)
+        assertEquals(undone, undoLoad)
+        assertEquals(richText(0), undoLoad.current.textState)
+        assertEquals(richText(1), undoLoad.redo.single().textState)
+        val redone = HybridEditCommands.redo(undoLoad)
+        store.save(redone, undoLoad.current.id)
+        assertEquals(authored.current, HybridProjectStore(files).load(base.id).current)
+
+        val montage = HybridEditCommands.restoreMontage(HybridProjectStore(files).load(base.id))
+        store.save(montage, redone.current.id)
+        val montageLoad = HybridProjectStore(files).load(base.id)
+        assertEquals(montage, montageLoad)
+        assertEquals(richText(1), montageLoad.current.textState)
+        assertEquals(base.original.clips, montageLoad.current.clips)
+        assertTrue(montageLoad.current.restoresAutomaticSources)
+        val automatic = HybridEditCommands.restoreAutomatic(montageLoad)
+        store.save(automatic, montageLoad.current.id)
+        val resetLoad = HybridProjectStore(files).load(base.id)
+        assertEquals(automatic, resetLoad)
+        assertEquals(richText(0), resetLoad.current.textState)
+        assertEquals(richText(1), HybridProjectStore(files).loadRevision(base.id, authored.current.id).textState)
+        assertEquals(5L, resetLoad.nextRevisionId)
     }
 
     private fun project(store: HybridProjectStore, text: HybridTextState): HybridProject {
@@ -124,7 +181,7 @@ class HybridRichTextPersistenceTest {
         assertEquals(2000, layers.last().text.length)
         assertEquals(TextPlate.DARK, styles[0].copy(darkPlate = true).resolvedPlate)
         assertEquals(TextPlate.NONE, styles[2].copy(darkPlate = false).resolvedPlate)
-        return HybridTextState(layers, cues, styles[3], captionsEdited = revision % 2 != 0,
+        return HybridTextState(layers, cues, styles[revision % 4], captionsEdited = revision % 2 != 0,
             language = listOf("auto", "ru", "en")[revision % 3])
     }
 

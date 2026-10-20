@@ -1,4 +1,31 @@
-# A2x — общий контракт сохранения текста, предложение для ревью владельца
+# A2x — общий контракт сохранения текста
+
+## Реализация к ревью на 20 октября 2026
+
+Фактический main `f96dcc54` уже содержит manual payload physical6; текущий
+checkpoint добавляет physical7 после root-verified genuine v4 и preceding6
+capture. Историческая очередь A2a → A2t → A2x ниже больше не является START gate.
+Точные producer/run/artifact/hash receipts и неизменённые bytes сохранены в
+[v4 fixtures](../../../app/src/test/resources/hybrid-text-v4/README.md) и
+[v6 fixtures](../../../app/src/test/resources/hybrid-text-v6/README.md).
+
+Две реальные assertion failures на `ae8f7584` подтвердили rich serde/projection
+RED; независимый v6 capture PASSED. Writer7 добавляет nullable plate после старых
+style fields, kind после layer.style и nullable Double confidence + два flags
+после cue times. Reader1..6 не потребляет новые bytes и применяет legacy defaults;
+MONO/SCALE доступны genuine4. Caption projection явно создаёт SUBTITLE.
+
+Единственная декларация values `TextEditProject.kt` остаётся blob `c975659e`.
+Store/commands, CAS/allocator, timing/phase/source maps и schema1 не изменены.
+Scope реализации: общий codec, shared projection, focused tests, genuine fixtures
+и эти документы. Temporary v6 producer удалён из final source и сохранён в истории.
+Требования ниже сохраняют силу, кроме помеченной исторической очереди и уже
+закрытого отсутствия capture. Финальные exact-head baseline/UI и независимое
+ревью ещё OPEN. Совместное source/integration review владельцем text — OPEN;
+phone/STT/acoustic/render/human acceptance отдельно OPEN и не блокирует эту
+реализацию codec.
+
+## Историческое предложение от 11 октября
 
 Статус: подготовка отдельного checkpoint, без реализации и без смены encoder. Входной acceptance contract — text PR12 `1d533e3554dae0d9f3d04286ad7dee0ad5027cc0`, `docs/integration/text-core-a2x-acceptance.md`: матрица независимо проверена владельцем и принята координатором, root прочитал её полностью из immutable Git object. Это требования к A2x, а не приёмка реализации общего codec. Type source `TextEditProject.kt` из `a53101496244fbb8476dfb314c701380a7eff80a` byte-identical прежнему reviewed `cb64b2871bcd65ba103020fa9fb16c4d1222558b` (blob `c975659e92399709935ec2d4220b9fb7ad82539f`). Root отдельно сверил unchanged a531 physical-v4 codec blob `2505cd323fc16d7eaffdbe393f3ab9760c7a94fd`: writer записывает enum.name, reader вызывает enumValueOf. Прочитаны published type/contract/legacy store values; результаты standalone text/STT CI не означают PASS A2x или native/human acceptance.
 

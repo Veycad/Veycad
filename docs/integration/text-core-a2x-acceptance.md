@@ -1,7 +1,8 @@
 # A2x: приёмка сохранения текста без потерь
 
-Статус на 11 октября 2026: матрица для владельца общего codec, **не приёмка
-его реализации**. Владелец HybridProject/codec — core-чат. Один набор values
+Статус на 20 октября 2026: genuine v4/v6 capture и ожидаемый RED проверены;
+реализация additive physical7 подготовлена к exact-head CI и независимому ревью,
+**не принята**. Владелец HybridProject/codec — core-чат. Один набор values
 из `TextEditProject.kt`, один HybridRevision/CAS/store; второго DTO, STT или
 хранилища здесь нет. Приватный PR 39 не используется как принятый API.
 
@@ -44,9 +45,9 @@ revision bytes заканчиваются 52-byte default TextState без layer
 create → save → новый store/reopen; отдельно manifest и immutable revision blob.
 Для соответствующих значений проверить original/current/undo/redo и retained
 export snapshot, включая prune/reopen. Сравнивать все значения, не только
-`resolvedPlate`, отображаемый текст или наличие API. Номер нового physical format
-выбирает core после принятой preceding storage/timing версии; не фиксировать 7
-заранее. Существующие v1–v4 payloads читаются по своей схеме без новых bytes.
+`resolvedPlate`, отображаемый текст или наличие API. Фактический preceding format
+в main `f96dcc54` — 6 (включая manual graph payload); новый additive format — 7.
+Существующие v1–v6 payloads читаются по своей схеме без новых text bytes.
 
 | Область | Обязательные входы | Условие PASS |
 | --- | --- | --- |
@@ -61,7 +62,7 @@ export snapshot, включая prune/reopen. Сравнивать все зна
 | Author operations | Изменение текста/стиля/cue через общий CAS; stale CAS; undo/redo; оба reset | Нет отдельного revision counter. RestoreMontage сохраняет author text целиком либо отклоняет операцию; RestoreAutomatic возвращает original text. Reopen сохраняет историю и export snapshot |
 | Invalid payload | Unknown tags, NaN/±Infinity/вне0..1, calibrated=true при null, плохие intervals/IDs, truncated/trailing bytes и collection budgets | Ограниченный reader отклоняет данные; существующий CURRENT/retained blobs остаются целыми. Мутированные файлы — negative fixtures, не genuine legacy capture |
 
-## Подтверждённые gaps и разблокировка
+## Исходные gaps на 11 октября (историческое основание)
 
 1. **Genuine a531-v4 MONO/SCALE capture отсутствует в проверенном evidence.**
    До смены encoder получить outputs неизменённого a531 writer в изолированном
@@ -83,7 +84,34 @@ export snapshot, включая prune/reopen. Сравнивать все зна
    это противоречит опубликованному a531 writer. Исправить proposal/reader и
    подтвердить genuine v4 regression; новый version gate относится к новым полям.
 
-Exact-head baseline/UI `15e76210` успешны (918 JVM/285 Python/82 Android),
+## Capture gates и реализация на 20 октября
+
+Оба gate закрыты до изменения encoder; это новые capture неизменённых старых
+writers, а не найденные архивы. Сохранены настоящие project/revision bytes,
+полные ZIP store со скрытым `.store.lock`, inputs, provenance и root receipts:
+
+- [Genuine a531-v4 MONO/SCALE](../../app/src/test/resources/hybrid-text-v4/README.md):
+  producer `ad7fcb17`, baseline run `39395192746`, artifact `12251373559`,
+  919 JVM, без failures, отдельный capture 1/1 PASS.
+- [Genuine preceding-v6](../../app/src/test/resources/hybrid-text-v6/README.md):
+  producer `ae8f7584` от actual main `f96dcc54`, run `39395888593`, artifact
+  `12252555074`, 999 JVM, ровно две ожидаемые assertion failures rich serde и
+  caption projection, отдельный capture 1/1 PASS; errors/skips 0.
+
+Формат7 сохраняет nullable plate, layer.kind, nullable confidence и оба исходных
+flags; needsReview остаётся производным. Reader1..6 применяет legacy defaults,
+принимает genuine v4 MONO/SCALE и сохраняет старые published blobs при новых
+правках/retained export. Shared caption projection явно создаёт SUBTITLE.
+`TextEditProject.kt` blob `c975659e` не изменён; store/commands/allocator остаются
+единственными. Temporary v6 producer удалён из final source, его коммит сохранён.
+
+Постоянные focused tests покрывают real-store rich/history/export/prune,
+CAS/undo/redo/оба reset, genuine old stores и synthetic malformed negatives.
+Их финальный GREEN ещё требует exact-head baseline/UI и независимого ревью.
+Совместная приёмка владельцем definitions/format/patch boundary остаётся OPEN;
+static checks и старые capture runs её не заменяют.
+
+Исторический exact-head baseline/UI `15e76210` успешны (918 JVM/285 Python/82 Android),
 подробности в [PR 12](https://github.com/Veycad/Veycad/pull/12). Это checkpoint
 standalone editor/STT/export, **не PASS A2x**. Эта матрица проверена чтением
 immutable источников и binary evidence; новые local compile/Gradle/native/AVD
