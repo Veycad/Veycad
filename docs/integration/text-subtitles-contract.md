@@ -201,3 +201,12 @@ a531-v4 fixture. Version bump относится к новым plate/kind/cue ev
 [A2x acceptance matrix](text-core-a2x-acceptance.md). Core v4 fixtures не содержат
 MONO/SCALE и не заменяют genuine a531 capture; отдельно требуется исправление
 caption projection LEGACY → SUBTITLE. Матрица не является приёмкой общего codec.
+
+Обновление 20 октября 2026: genuine a531-v4 и фактический preceding-v6 capture
+проверены до смены encoder, см. [v4](../../app/src/test/resources/hybrid-text-v4/README.md)
+и [v6](../../app/src/test/resources/hybrid-text-v6/README.md). Codec checkpoint
+добавляет physical7 для plate/kind/cue evidence и явный SUBTITLE в shared
+projection, сохраняя c975 values без изменений и readers1..6. Это подготовка
+source/integration handoff владельцу text; совместное owner review и финальный
+exact-head baseline/UI остаются OPEN. Проверки телефона/STT/акустики и
+человеческая приёмка не входят в этот codec checkpoint.

@@ -12,7 +12,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Primitive format: v5 authored maps/source facts; v6 manual graph payload. Schema stays 1. */
+/** Primitive format: v5 authored maps/source facts; v6 manual graph; v7 rich text. Schema stays 1. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
     private val authoredMaps: AuthoredSourceMapStore = sidecars.authoredMaps()) {
     fun encode(project: HybridProject): ByteArray {
@@ -175,10 +175,15 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         }
         fun textStyle(value: TextStyle) = with(value) {
             enum(position); enum(font); out.writeFloat(sizeRatio); out.writeInt(color); out.writeBoolean(darkPlate); enum(animation)
+            optional(plate) { enum(it) }
         }
         fun textState(value: HybridTextState) = with(value) {
-            list(layers) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs); textStyle(it.style) }
-            list(captions) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs) }
+            list(layers) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs); textStyle(it.style); enum(it.kind) }
+            list(captions) {
+                string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs)
+                optional(it.confidence) { confidence -> out.writeDouble(confidence) }
+                out.writeBoolean(it.manuallyReviewed); out.writeBoolean(it.confidenceCalibrated)
+            }
             textStyle(captionStyle); out.writeBoolean(captionsEdited); string(language)
         }
         fun revision(value: HybridRevision) = with(value) {
@@ -362,11 +367,18 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(framings.map { it.first }.distinct().size == framings.size)
             return ProjectVisualSettings(aspect, explicit, framings.toMap())
         }
-        fun textStyle() = TextStyle(enum(), enum(), input.readFloat(), input.readInt(), input.readBoolean(), enum())
-        fun textState() = HybridTextState(
-            list { TextLayer(string(), string(), input.readLong(), input.readLong(), textStyle()) },
-            list { CaptionCue(string(), string(), input.readLong(), input.readLong()) },
-            textStyle(), input.readBoolean(), string())
+        fun textStyle(format: Int) = TextStyle(enum(), enum(), input.readFloat(), input.readInt(), input.readBoolean(), enum(),
+            if (format >= 7) optional { enum<TextPlate>() } else null)
+        fun textState(format: Int) = HybridTextState(
+            list { TextLayer(string(), string(), input.readLong(), input.readLong(), textStyle(format),
+                if (format >= 7) enum<TextLayerKind>() else TextLayerKind.LEGACY) },
+            list {
+                val id = string(); val text = string(); val start = input.readLong(); val end = input.readLong()
+                if (format >= 7) CaptionCue(id, text, start, end,
+                    optional { input.readDouble() }, input.readBoolean(), input.readBoolean())
+                else CaptionCue(id, text, start, end)
+            },
+            textStyle(format), input.readBoolean(), string())
         fun formatVersion(): Int = input.readInt().also {
             require(it in 1..FORMAT_VERSION) { "Unsupported hybrid format $it" }
         }
@@ -376,7 +388,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
                 val clip = HybridClip(string(), string(), span(), sourceMap(format), clip())
                 when (format) {
                     1 -> clip
-                    2, 3, 4, 5, 6 -> clip.copy(originalFrameOffset = input.readInt())
+                    2, 3, 4, 5, 6, 7 -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -387,11 +399,11 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(locked.distinct().size == locked.size)
             val resetsSources = when (format) {
                 1, 2 -> false
-                3, 4, 5, 6 -> input.readBoolean()
+                3, 4, 5, 6, 7 -> input.readBoolean()
                 else -> error("Unsupported hybrid format")
             }
             val visuals = if (format >= 4) visuals() else ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false)
-            val text = if (format >= 4) textState() else HybridTextState()
+            val text = if (format >= 4) textState(format) else HybridTextState()
             val backings = if (format >= 5) list {
                 string() to HybridSourceBacking(string(), sourceMap(format), input.readInt(), input.readLong(), input.readLong(), input.readBoolean())
             } else emptyList()
@@ -510,7 +522,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 6
+        private const val FORMAT_VERSION = 7
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024
