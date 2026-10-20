@@ -307,17 +307,31 @@ class ManualMvpScreenTest {
         .use { descriptor -> java.io.FileInputStream(descriptor.fileDescriptor).bufferedReader().readText() }
     private data class CaptureState(val status: String?, val clock: String?, val frame: Int?,
         val playing: Boolean, val paused: Boolean, val patterned: Boolean,
-        val surfaceBounds: android.graphics.Rect?, val configuration: String)
+        val surfaceBounds: android.graphics.Rect?, val windowBoundsOnScreen: android.graphics.Rect?,
+        val configuration: String)
     /** Called on main: record the same actual state around bitmap acquisition, not later metadata. */
     private fun captureState(): CaptureState {
         val activity = current()
+        val decor = (activity ?: ActivityLifecycleMonitorRegistry.getInstance()
+            .getActivitiesInStage(Stage.RESUMED).singleOrNull())?.window?.decorView
+        val surface = view<View>("preview-surface")
         val bounds = android.graphics.Rect().takeIf {
-            view<View>("preview-surface")?.getGlobalVisibleRect(it) == true
+            surface?.getGlobalVisibleRect(it) == true
+        }?.apply {
+            // getGlobalVisibleRect is root-relative, not screen-relative.
+            val rootInWindow = IntArray(2)
+            surface!!.rootView.getLocationInWindow(rootInWindow)
+            offset(rootInWindow[0], rootInWindow[1])
+        }
+        val windowBounds = decor?.let {
+            val origin = IntArray(2)
+            it.getLocationOnScreen(origin)
+            android.graphics.Rect(origin[0], origin[1], origin[0] + it.width, origin[1] + it.height)
         }
         return CaptureState(view<TextView>("preview-state")?.text?.toString(),
             activity?.let { field<TextView>(it, "clock")?.text?.toString() },
             view<SeekBar>("preview-seek")?.progress, view<Button>("play")?.text == "Пауза",
-            ready(), surfaceHasPattern(), bounds, "fontScale=${activity?.resources?.configuration?.fontScale}\n" +
+            ready(), surfaceHasPattern(), bounds, windowBounds, "fontScale=${activity?.resources?.configuration?.fontScale}\n" +
                 "density=${activity?.resources?.displayMetrics?.density}\n" +
                 "orientation=${activity?.resources?.configuration?.orientation}\n")
     }
@@ -342,6 +356,11 @@ class ManualMvpScreenTest {
             playingCapture -> state.playing && state.patterned
             else -> true
         }
+        fun unchanged(before: CaptureState, after: CaptureState) = settled(after) &&
+            before.status == after.status && before.configuration == after.configuration &&
+            before.surfaceBounds == after.surfaceBounds &&
+            before.windowBoundsOnScreen == after.windowBoundsOnScreen &&
+            (playingCapture || (before.clock == after.clock && before.frame == after.frame))
         repeat(5) { attempt ->
             val remaining = deadline - android.os.SystemClock.elapsedRealtime()
             assertTrue("Capture $name did not settle within 30 seconds", remaining > 0)
@@ -350,15 +369,12 @@ class ManualMvpScreenTest {
                 before = captureState()
                 settled(before)
             }
-            // ScreenCapture can time out under emulator GPU load. Retry acquisition only;
-            // never replace the image with a drawn/mock bitmap or skip the evidence.
-            val bitmap = instrumentation.uiAutomation.takeScreenshot()
+            // A frame commit is not a display-present fence. Copy the actual Window's
+            // committed buffer, including the entire decor/inset area, instead of the display.
+            val bitmap = copyCommittedWindow(deadline) { unchanged(before, captureState()) }
             lateinit var after: CaptureState
             instrumentation.runOnMainSync { after = captureState() }
-            val stable = settled(after) && before.status == after.status &&
-                before.configuration == after.configuration &&
-                before.surfaceBounds == after.surfaceBounds &&
-                (playingCapture || (before.clock == after.clock && before.frame == after.frame))
+            val stable = unchanged(before, after)
             val screenshotHasFrame = bitmap != null && (!(pausedCapture || playingCapture) ||
                 before.surfaceBounds?.let { hasPattern(bitmap, it) } == true)
             if (bitmap != null && stable && screenshotHasFrame) {
@@ -368,7 +384,10 @@ class ManualMvpScreenTest {
                         assertTrue("Capture $name PNG encoding failed", bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
                     }
                     File(directory, "$name.txt").writeText("source=${BuildConfig.SOURCE_SHA}\n" +
-                        "screen=${bitmap.width}x${bitmap.height}\n${before.configuration}state=${before.status}\n" +
+                        "capture=window-pixelcopy-after-frame-commit\n" +
+                        "scope=full-activity-decor-including-inset-area-not-system-ui-overlays\n" +
+                        "windowPixels=${bitmap.width}x${bitmap.height}\nwindowBoundsOnScreen=${before.windowBoundsOnScreen}\n" +
+                        "${before.configuration}state=${before.status}\n" +
                         "clockBefore=${before.clock}\nclockAfter=${after.clock}\n" +
                         "frameBefore=${before.frame}\nframeAfter=${after.frame}\nattempts=${attempt + 1}\n" +
                         "aspect=${store.list().firstOrNull()?.current?.visualSettings?.aspect}\n")
@@ -376,9 +395,92 @@ class ManualMvpScreenTest {
                 } finally { bitmap.recycle() }
             }
             bitmap?.recycle()
-            android.os.SystemClock.sleep(250)
         }
         throw AssertionError("Capture $name did not produce a real bitmap with stable state after five attempts")
+    }
+    /**
+     * Android's frame-commit contract explicitly recommends PixelCopy: the committed buffer
+     * need not be visible on the display yet. No View.draw(), renderer substitute or sleep.
+     * The configured API 36 hardware-rendered CI satisfies this evidence prerequisite.
+     */
+    @android.annotation.TargetApi(29)
+    private fun copyCommittedWindow(deadline: Long, stateStillCurrent: () -> Boolean): Bitmap? {
+        check(android.os.Build.VERSION.SDK_INT >= 29) { "Committed-window evidence requires API 29+" }
+        val committed = java.util.concurrent.CountDownLatch(1)
+        val callback = Runnable { committed.countDown() }
+        var observer: android.view.ViewTreeObserver? = null
+        var activity: Activity? = null
+        var decor: View? = null
+        var width = 0
+        var height = 0
+        try {
+            instrumentation.runOnMainSync {
+                val resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED).singleOrNull()
+                val root = resumed?.window?.decorView
+                if (root != null && root.isAttachedToWindow && !root.isLayoutRequested &&
+                    root.width > 0 && root.height > 0 && stateStillCurrent()) {
+                    check(root.isHardwareAccelerated) { "Frame-commit evidence requires hardware rendering" }
+                    activity = resumed
+                    decor = root
+                    width = root.width
+                    height = root.height
+                    observer = root.viewTreeObserver
+                    observer!!.registerFrameCommitCallback(callback)
+                    // Registered after post-scroll readiness, so this traversal contains that UI.
+                    root.invalidate()
+                }
+            }
+            if (observer == null) return null
+            assertTrue("Timed out waiting for the ready Activity frame to commit",
+                committed.await((deadline - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0),
+                    java.util.concurrent.TimeUnit.MILLISECONDS))
+        } finally {
+            instrumentation.runOnMainSync {
+                observer?.takeIf { it.isAlive }?.unregisterFrameCommitCallback(callback)
+            }
+        }
+        val copy = java.util.concurrent.CompletableFuture<Bitmap?>()
+        var requested = false
+        instrumentation.runOnMainSync {
+            val root = requireNotNull(decor)
+            val resumed = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+            if (resumed.any { it === activity } && activity?.window?.decorView === root &&
+                root.isAttachedToWindow && !root.isLayoutRequested &&
+                root.width == width && root.height == height && stateStillCurrent()) {
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                try {
+                    // Explicit decor coordinates avoid cropping content or scaling inset geometry.
+                    android.view.PixelCopy.request(requireNotNull(activity).window,
+                        android.graphics.Rect(0, 0, width, height), bitmap, { result ->
+                            if (result == android.view.PixelCopy.SUCCESS) {
+                                // A late callback owns cleanup when the bounded waiter has left.
+                                if (!copy.complete(bitmap)) bitmap.recycle()
+                            } else {
+                                bitmap.recycle()
+                                copy.complete(null)
+                            }
+                        }, android.os.Handler(android.os.Looper.getMainLooper()))
+                    requested = true
+                } catch (error: IllegalArgumentException) {
+                    bitmap.recycle()
+                    throw error
+                }
+            }
+        }
+        if (!requested) return null
+        var delivered = false
+        try {
+            val bitmap = copy.get((deadline - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0),
+                java.util.concurrent.TimeUnit.MILLISECONDS)
+            delivered = true
+            return bitmap
+        } catch (error: java.util.concurrent.TimeoutException) {
+            throw AssertionError("Timed out copying the committed Activity window", error)
+        } finally {
+            // Resolve completion-vs-timeout races without recycling an in-flight destination.
+            if (!delivered && !copy.cancel(false)) copy.getNow(null)?.recycle()
+        }
     }
     private fun surfaceHasPattern(): Boolean {
         val bitmap = view<android.view.TextureView>("preview-surface")?.bitmap ?: return false
