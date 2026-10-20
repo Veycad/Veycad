@@ -9,7 +9,7 @@ import java.util.Properties
 class TextEditStoreTest {
     @get:Rule val folder = TemporaryFolder()
     @Test fun unreadableDraftNeverFallsBackToAnEmptyReplacement() {
-        for (brokenField in listOf("version", "l.0.style.font", "duration")) {
+        for (brokenField in listOf("version", "l.0.style.font", "duration", "identity")) {
             val source=folder.newFile().apply { writeText("source") }
             val directory=folder.newFolder()
             val store=TextEditStore(directory)
