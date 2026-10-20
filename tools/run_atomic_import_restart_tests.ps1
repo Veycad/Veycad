@@ -117,6 +117,7 @@ try {
         if((Invoke-AtomicAdb -Arguments @('shell','pidof',$atomicPackage) -AllowFailure).Trim()){throw 'Old process survived force-stop'}
         Start-AtomicProbe 'verify' $atomicPhase $atomicCaseId
         $atomicVerdict=Wait-AtomicJson $atomicDirectory 'verdict.json' $atomicCaseId
+        $atomicVerdict | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $atomicCaseArchive 'verdict.json') -Encoding UTF8
         $atomicNewPid=(Invoke-AtomicAdb @('shell','pidof',$atomicPackage)).Trim()
         if($atomicNewPid -ceq $atomicOldPid -or $atomicNewPid -cne [string]$atomicVerdict.pid){throw 'A fresh process was not demonstrated'}
         $atomicExpected=if($atomicPhase -ceq 'FILES_PREPARED'){$atomicCheckpoint.old}else{$atomicCheckpoint.new}
@@ -150,9 +151,9 @@ try {
                 $atomicUiRaw | Set-Content -LiteralPath (Join-Path $atomicCaseArchive 'selection-ui.xml') -Encoding UTF8
             }
             if($null -ne $atomicButton -and $atomicButton.GetAttribute('enabled') -ceq 'true'){$atomicButtonPassed=$true}
-            # The director can extend below the viewport. Inspect names before scrolling;
-            # then inspect the actual render button, without a test-only readiness shortcut.
-            if($atomicNamesPassed -and $null -eq $atomicButton -and $atomicSwipes -lt 3){
+            # Either control can begin below the viewport on a small CI display.
+            # Retain each actual UI observation while searching farther down the director.
+            if((-not $atomicNamesPassed -or -not $atomicButtonPassed) -and $atomicSwipes -lt 8){
                 $atomicScroll=$atomicUi.SelectSingleNode("//*[@resource-id='${atomicPackage}:id/directorContent' and @scrollable='true']")
                 if($null -ne $atomicScroll -and $atomicScroll.GetAttribute('bounds') -match '^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$'){
                     $atomicX=[int](([int]$Matches[1]+[int]$Matches[3])/2)
@@ -168,8 +169,7 @@ try {
         $atomicUiRaw | Set-Content -LiteralPath (Join-Path $atomicCaseArchive 'ui.xml') -Encoding UTF8
         Invoke-AtomicAdb @('shell','rm','-f',$atomicRemoteUi) | Out-Null
         Copy-AtomicBinary @('exec-out','screencap','-p') (Join-Path $atomicCaseArchive 'screen.png')
-        if(-not $atomicUiPassed -or -not $atomicVerdict.confirmed -or $atomicVerdict.batchId -cne $atomicExpected.batchId){throw 'MainActivity did not restore a ready complete choice'}
-        $atomicVerdict | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $atomicCaseArchive 'verdict.json') -Encoding UTF8
+        if(-not $atomicUiPassed -or -not $atomicVerdict.confirmed -or $atomicVerdict.batchId -cne $atomicExpected.batchId){throw "MainActivity did not restore a ready complete choice (names=$atomicNamesPassed, button=$atomicButtonPassed, confirmed=$($atomicVerdict.confirmed))"}
         $atomicResults.Add([pscustomobject]@{phase=$atomicPhase;checkpointPid=$atomicOldPid;restartedPid=$atomicNewPid;selectedBatch=$atomicManifest.batchId;byteChecks=2;uiChecks=$true;status='PASS';archive=$atomicCaseArchive})
     }
 } catch {$atomicFailure=$_.Exception.Message; Write-Host "Atomic restart gate failed: $atomicFailure"}
