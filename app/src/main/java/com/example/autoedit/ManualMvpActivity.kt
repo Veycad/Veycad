@@ -26,6 +26,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.content.FileProvider
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.shape.RelativeCornerSize
 import java.util.concurrent.Executors
 import java.util.UUID
 import java.io.File
@@ -41,6 +43,8 @@ class ManualMvpActivity : AppCompatActivity() {
     private var leaving = false
     private lateinit var store: HybridProjectStore
     private lateinit var content: LinearLayout
+    private lateinit var scroll: ScrollView
+    private var previewStage: FrameLayout? = null
     private lateinit var status: TextView
     private var projectId: String? = null
     private var clipId: String? = null
@@ -82,6 +86,7 @@ class ManualMvpActivity : AppCompatActivity() {
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             if (max <= 0) return
+            ticks.color = context.getColor(if (isEnabled) R.color.text_primary else R.color.text_muted)
             val radius = 5 * resources.displayMetrics.density
             cutFrames.forEach { frame ->
                 val x = paddingLeft + (width - paddingLeft - paddingRight) * frame.toFloat() / max
@@ -110,7 +115,8 @@ class ManualMvpActivity : AppCompatActivity() {
         clipId = savedInstanceState?.getString("clip") ?: prefs.getString("clip", null)
         newProjectFps = savedInstanceState?.getInt("newProjectFps") ?: prefs.getInt("newProjectFps", 30)
         lastShownUs = savedInstanceState?.getLong("position") ?: prefs.getLong("position", 0L)
-        val scroll = ScrollView(this).apply { isFillViewport = true; setBackgroundColor(getColor(R.color.background)) }
+        scroll = ScrollView(this).apply { isFillViewport = true; setBackgroundColor(getColor(R.color.background)) }
+        scroll.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> resizePreviewStage() }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(12), dp(22), dp(36))
@@ -209,10 +215,19 @@ class ManualMvpActivity : AppCompatActivity() {
         else if (size >= 16) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         setPadding(0, dp(8), 0, dp(8))
     }
-    private fun button(text: String, action: () -> Unit): Button = Button(this).apply {
-        this.text = text; isAllCaps = false; minHeight = dp(48)
-        setTextColor(getColor(R.color.text_primary))
-        backgroundTintList = ColorStateList.valueOf(getColor(R.color.surface_high))
+    private fun enabledColors(enabled: Int, disabled: Int) = ColorStateList(
+        arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
+        intArrayOf(getColor(disabled), getColor(enabled))
+    )
+    private fun button(text: String, action: () -> Unit): MaterialButton = MaterialButton(this).apply {
+        this.text = text; isAllCaps = false; minHeight = dp(48); minWidth = 0; minimumWidth = 0
+        setPaddingRelative(dp(8), paddingTop, dp(8), paddingBottom)
+        shapeAppearanceModel = shapeAppearanceModel.toBuilder().setAllCornerSizes(RelativeCornerSize(.5f)).build()
+        stateListAnimator = null; elevation = 0f; translationZ = 0f
+        setTextColor(enabledColors(R.color.text_primary, R.color.text_muted))
+        backgroundTintList = enabledColors(R.color.surface_high, R.color.stroke)
+        // Keep Material's native pressed/focused ripple on the existing dark text token.
+        rippleColor = ColorStateList.valueOf(androidx.core.graphics.ColorUtils.setAlphaComponent(getColor(R.color.text_primary), 31))
         setOnClickListener { if (!busy && started && !destroyed && !leaving && operationLease != null) action() }
     }
     private fun row(vararg buttons: Button): LinearLayout = LinearLayout(this).apply {
@@ -296,6 +311,7 @@ class ManualMvpActivity : AppCompatActivity() {
         }
     }
     private fun showError(message: String) {
+        previewStage = null
         content.removeAllViews()
         content.addView(label(getString(R.string.manual_title), 28))
         status = label(message, 14).also(content::addView)
@@ -303,6 +319,7 @@ class ManualMvpActivity : AppCompatActivity() {
         content.addView(button(getString(R.string.manual_retry)) { refresh() })
     }
     private fun showProjects(projects: List<HybridProject>, selected: HybridProject?, editable: EditableMontageProject?, message: String?) {
+        previewStage = null
         content.removeAllViews()
         texture = null; play = null; seek = null; previewStatus = null; export = null; retry = null
         content.addView(button(getString(R.string.manual_back)) { leaveAfterCleanup() }.apply {
@@ -343,7 +360,7 @@ class ManualMvpActivity : AppCompatActivity() {
         showAspects(project)
         export = button(getString(R.string.manual_export, aspectLabel(project.current.visualSettings.aspect))) { renderVersion() }.apply {
             tag = "export"; minHeight = dp(58); isEnabled = false
-            backgroundTintList = ColorStateList.valueOf(getColor(R.color.neon))
+            backgroundTintList = enabledColors(R.color.neon, R.color.stroke)
         }.also(content::addView)
         content.addView(row(
             button(getString(R.string.manual_previous_cut)) { seekCut(false) },
@@ -438,10 +455,14 @@ class ManualMvpActivity : AppCompatActivity() {
                     }
                 }.apply {
                     tag = "aspect-${aspect.name}"; isSelected = chosen
-                    backgroundTintList = ColorStateList.valueOf(getColor(if (chosen) R.color.accent_soft else R.color.surface_high))
+                    backgroundTintList = enabledColors(if (chosen) R.color.accent_soft else R.color.surface_high, R.color.stroke)
                     ViewCompat.setStateDescription(this, getString(if (chosen) R.string.manual_selected else R.string.manual_not_selected))
                     // Checked semantic and a visible checkmark make selection independent of color.
-                    if (chosen) setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.manual_check, 0, 0, 0)
+                    // Four chips fit at 360dp, including the check, without Material's wide default padding.
+                    setPaddingRelative(dp(4), paddingTop, dp(4), paddingBottom)
+                    iconSize = dp(16); iconPadding = dp(2); iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+                    iconTint = enabledColors(R.color.text_primary, R.color.text_muted)
+                    if (chosen) setIconResource(R.drawable.manual_check)
                     contentDescription = getString(R.string.manual_aspect_description, aspectLabel(aspect))
                 }
                 ViewCompat.setAccessibilityDelegate(chip, object : androidx.core.view.AccessibilityDelegateCompat() {
@@ -457,6 +478,17 @@ class ManualMvpActivity : AppCompatActivity() {
         content.addView(label(getString(R.string.manual_format_hint), 14))
     }
 
+    private fun resizePreviewStage() {
+        val stage = previewStage ?: return
+        val panel = stage.parent as? View ?: return
+        // The parent already applies system insets; use the measured ScrollView only once.
+        if (scroll.height <= 0) return
+        val usableHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+        val height = minOf(dp(280), (usableHeight - panel.paddingTop - panel.paddingBottom).coerceAtLeast(1))
+        if (stage.layoutParams.height != height) {
+            stage.layoutParams = stage.layoutParams.apply { this.height = height }
+        }
+    }
     private fun showPlayer(project: HybridProject) {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16))
@@ -465,6 +497,8 @@ class ManualMvpActivity : AppCompatActivity() {
         content.addView(panel)
         val stage = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.black)) }
         panel.addView(stage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)))
+        previewStage = stage
+        resizePreviewStage()
         val movie = TextureView(this).apply {
             tag = "preview-surface"; contentDescription = getString(R.string.manual_frame)
         }
@@ -505,6 +539,10 @@ class ManualMvpActivity : AppCompatActivity() {
         clock = label(getString(R.string.manual_clock, "0:00.000", "0:00.000"), 14).also(panel::addView)
         seek = OutputTimeline(this).apply {
             tag = "preview-seek"; minimumHeight = dp(48); isEnabled = false
+            thumbTintList = enabledColors(R.color.neon, R.color.text_muted)
+            progressTintList = enabledColors(R.color.neon, R.color.text_muted)
+            progressBackgroundTintList = ColorStateList.valueOf(getColor(R.color.stroke))
+            secondaryProgressTintList = ColorStateList.valueOf(getColor(R.color.stroke))
             contentDescription = getString(R.string.manual_seek)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onStartTrackingTouch(bar: SeekBar?) {
