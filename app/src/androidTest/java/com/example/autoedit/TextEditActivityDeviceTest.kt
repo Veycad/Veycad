@@ -44,6 +44,9 @@ class TextEditActivityDeviceTest {
         val intent=Intent(context,TextEditActivity::class.java).putExtra(TextEditActivity.EXTRA_SOURCE,source.path)
         ActivityScenario.launch<TextEditActivity>(intent).use {
             waitFor { session.state.value?.busy==false && session.state.value?.error?.contains("черновик")==true }
+            onView(withText(org.hamcrest.Matchers.containsString("Не удалось прочитать черновик")))
+                .perform(scrollTo())
+                .check(androidx.test.espresso.assertion.ViewAssertions.matches(isDisplayed()))
             assertEquals(other.canonicalPath,session.state.value!!.project!!.sourcePath)
             assertArrayEquals(preserved,draft.readBytes())
             assertArrayEquals(sourceBytes,source.readBytes())
