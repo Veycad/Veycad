@@ -107,7 +107,13 @@ internal class EditSession internal constructor(
             val directory = RenderWorkspace.sourceDraftDirectory(app.filesDir)
             val stamp = UUID.randomUUID().toString()
             val targets = uris.indices.map { File(directory, "source-$it-$stamp.mp4") }
+            var published = false
             val result = runCatching {
+                require(uris.size == style.sourceCount)
+                val store = SourceDraftStore(app.filesDir)
+                val draftPreferences = app.getSharedPreferences("source_draft", Context.MODE_PRIVATE)
+                store.initialize(listOfNotNull(draftPreferences.getString("display_name", null),
+                    draftPreferences.getString("display_name_2", null)))
                 val names = uris.mapIndexed { index, uri ->
                     app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
                         null, null, null)?.use { cursor ->
@@ -118,20 +124,29 @@ internal class EditSession internal constructor(
                     val temporary = File(target.path + ".partial")
                     try {
                         app.contentResolver.openInputStream(uri)?.use { input ->
-                            temporary.outputStream().use { input.copyTo(it) }
+                            java.io.FileOutputStream(temporary).use { output ->
+                                input.copyTo(output)
+                                output.fd.sync()
+                            }
                         } ?: error("Не удалось прочитать выбранный файл")
                         check(temporary.length() > 0) { "Выбранный файл пуст" }
+                        val metadata = SequentialBitmapDecoder.metadata(temporary)
+                        require(metadata.durationUs > 0 && metadata.displayWidth > 0 && metadata.displayHeight > 0) {
+                            "Выбранный файл не содержит доступного видео"
+                        }
                         check(temporary.renameTo(target)) { "Не удалось импортировать видео" }
                     } finally { temporary.delete() }
                 }
                 val music = BuiltInMusicCatalog.select(app, style.id)
-                app.getSharedPreferences("source_draft", Context.MODE_PRIVATE).edit()
+                store.publish(targets, names)
+                published = true
+                draftPreferences.edit()
                     .putString("display_name", names[0])
                     .putString("display_name_2", names.getOrNull(1)).commit()
                 directory.listFiles()?.filter { it !in targets }?.forEach(File::delete)
                 Draft(targets, names, music)
             }
-            if (result.isFailure) targets.forEach(File::delete)
+            if (result.isFailure && !published) targets.forEach(File::delete)
             main.post { mutableState.value = State(entry = previous, draft = result.getOrNull(),
                 error = result.exceptionOrNull()?.message) }
         }

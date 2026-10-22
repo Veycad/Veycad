@@ -997,23 +997,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restoreSourceDraft() {
-        val drafts = RenderWorkspace.sourceDraftDirectory(filesDir).listFiles()
-            ?.filter { it.isFile && it.extension.lowercase() in setOf("mp4", "mov", "m4v", "webm", "mkv", "3gp") }
-            ?.sortedBy { it.name }
-            .orEmpty()
-        if (drafts.isEmpty()) return
         val preferences = getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE)
-        val restored = MontageStylePresentation.restoredSources(drafts, montageStyle)
+        val selection = runCatching {
+            val store = SourceDraftStore(filesDir)
+            store.initialize(listOfNotNull(preferences.getString(SOURCE_DRAFT_NAME, null),
+                preferences.getString(SOURCE_DRAFT_SECOND_NAME, null)))
+            store.load()
+        }.onFailure { toast(it.message ?: "Выбери видео заново") }.getOrNull() ?: return
+        val restored = MontageStylePresentation.restoredSources(selection.files, montageStyle)
         runCatching { BuiltInMusicCatalog.select(this, montageStyle.id) }.onSuccess { music ->
             sourceFile = restored[0]
             secondarySourceFile = restored.getOrNull(1)
             musicSelection = music
-            sourceDisplayNames = listOfNotNull(
-                preferences.getString(SOURCE_DRAFT_NAME, null) ?: restored[0].name,
-                restored.getOrNull(1)?.let {
-                    preferences.getString(SOURCE_DRAFT_SECOND_NAME, null) ?: it.name
-                }
-            )
+            sourceDisplayNames = selection.names.take(restored.size)
             updateSourceDisplay()
             findViewById<TextView>(R.id.musicSelection).text =
                 "♫ ${music.track.title} · ${music.track.bpm} BPM"

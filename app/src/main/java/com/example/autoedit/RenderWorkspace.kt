@@ -22,6 +22,6 @@ internal object RenderWorkspace {
     }
 
     fun clearSourceDraft(filesDir: File) {
-        File(filesDir, "source-draft").deleteRecursively()
+        SourceDraftStore(filesDir).clear()
     }
 }
