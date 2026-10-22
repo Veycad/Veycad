@@ -36,6 +36,10 @@ class MulticlassMatteProvider : ContentProvider() {
             require(it.size in 1..OpeningMatteRefinement.MAX_FRAMES && it.all { time -> time >= 0 })
             require(it.toList().zipWithNext().all { (a, b) -> a / 1_000L < b / 1_000L })
         }
+        if (targets == null) {
+            SourceAnalysisBudget.preflight(SequentialBitmapDecoder.metadata(source).durationUs,
+                intervalUs, requireNotNull(context).cacheDir.usableSpace)
+        }
         val output = File(requireNotNull(context).cacheDir,
             if (targets == null) "multiclass-matte.bin" else "opening-matte.bin")
         val temporary = File(output.parentFile, "${output.name}.partial")
@@ -186,7 +190,7 @@ class MulticlassMatteProvider : ContentProvider() {
         const val CACHE_VERSION = 1
         private const val MODEL_ASSET_PATH = "models/selfie_multiclass_256x256.tflite"
         private const val CLASS_COUNT = 6
-        private const val MAX_INPUT_SIDE = 480
+        private const val MAX_INPUT_SIDE = SourceAnalysisBudget.MAX_INPUT_SIDE
         private const val FRAME_CACHE_DIRECTORY = "multiclass-decoded-frames"
         private const val TAG = "VeycadMatte"
     }

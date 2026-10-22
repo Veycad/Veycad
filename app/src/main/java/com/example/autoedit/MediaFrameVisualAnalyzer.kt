@@ -31,6 +31,8 @@ internal object MediaFrameVisualAnalyzer {
         checkCancelled()
         require(file.isFile && intervalUs in 100_000L..1_000_000L)
         val startedNs = System.nanoTime()
+        SourceAnalysisBudget.preflight(SequentialBitmapDecoder.metadata(file).durationUs,
+            intervalUs, context.cacheDir.usableSpace)
         val cacheKey = MediaFrameAnalysisCache.key(file, intervalUs, profile)
         MediaFrameAnalysisCache.load(context, cacheKey)?.let { return it }
         // A failed sequential decode must not silently become sync-frame-only observations
