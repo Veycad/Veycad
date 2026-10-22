@@ -11,7 +11,6 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -95,10 +94,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    private val videoGallery = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) result.data?.data?.let { uri ->
-            session.importVideos(listOf(uri), montageStyle)
-        }
+    private val videoGallery = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) session.importVideos(listOf(uri), montageStyle)
     }
     private val dualVideoGallery = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -110,14 +107,6 @@ class MainActivity : AppCompatActivity() {
             return@registerForActivityResult
         }
         session.importVideos(unique, montageStyle)
-    }
-    private val videoAccessRequest = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        LocalDiagnostics.record(this, "video_access_result", mapOf("full_access" to granted.toString()))
-        if (granted) {
-            openVideoGallery()
-        } else {
-            toast("Разрешите полный доступ к видео, чтобы открыть галерею")
-        }
     }
     private val legacySave = registerForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
         val entry = legacySaveEntry
@@ -351,10 +340,8 @@ class MainActivity : AppCompatActivity() {
             LocalDiagnostics.record(this, "tap_select_video")
             if (montageStyle.sourceCount == 2) {
                 dualVideoGallery.launch(arrayOf("video/*"))
-            } else if (hasFullVideoAccess()) {
-                openVideoGallery()
             } else {
-                videoAccessRequest.launch(videoPermission())
+                videoGallery.launch(arrayOf("video/*"))
             }
         }
         renderButton.setOnClickListener {
@@ -433,24 +420,6 @@ class MainActivity : AppCompatActivity() {
                 LocalDiagnostics.record(this, "director_ready")
             }.start()
         }, SPLASH_DURATION_MS)
-    }
-
-    private fun hasFullVideoAccess(): Boolean =
-        checkSelfPermission(videoPermission()) == PackageManager.PERMISSION_GRANTED
-
-    private fun videoPermission(): String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_VIDEO
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
-
-    private fun openVideoGallery() {
-        LocalDiagnostics.record(this, "open_video_gallery")
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Video.Media.EXTERNAL_CONTENT_URI).apply {
-            type = "video/*"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        videoGallery.launch(intent)
     }
 
     private fun updateReadyState() {
