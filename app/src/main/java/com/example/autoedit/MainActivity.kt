@@ -910,10 +910,7 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { openCapture(capture) }
             })
         }
-        val edits = myEditsDirectory().listFiles()
-            ?.filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
-            ?.sortedByDescending { it.lastModified() }
-            .orEmpty()
+        val edits = CompletedRenderStore.savedFiles(filesDir)
         val unsaved = CompletedRenderStore.list(filesDir).filter { !it.saved }
         unsaved.forEach { entry ->
             myEditsList.addView(Button(this).apply {
@@ -989,10 +986,8 @@ class MainActivity : AppCompatActivity() {
         ))
     }
 
-    private fun myEditsDirectory(): File = File(filesDir, "my-edits").apply { mkdirs() }
-
     private fun updateMyEditsButton() {
-        val count = myEditsDirectory().listFiles()?.count { it.isFile && it.extension.equals("mp4", true) } ?: 0
+        val count = CompletedRenderStore.savedFiles(filesDir).size
         findViewById<Button>(R.id.myEditsButton).text = if (count == 0) "▣\nЭдиты" else "▣  $count\nЭдиты"
     }
 

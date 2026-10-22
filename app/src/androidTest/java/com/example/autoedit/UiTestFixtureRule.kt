@@ -214,7 +214,7 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
             assertEquals(0, cursor.getInt(1))
             val uri = android.content.ContentUris.withAppendedId(collection, cursor.getLong(0))
             val bytes = resolver.openInputStream(uri)!!.use { it.readBytes() }
-            assertArrayEquals(File(context.filesDir, "my-edits/$filename").readBytes(), bytes)
+            assertArrayEquals(CompletedRenderStore.savedFiles(context.filesDir).single { it.name == filename }.readBytes(), bytes)
         }
     }
     private fun cleanGallery() {

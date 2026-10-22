@@ -63,7 +63,7 @@ class ResultScreenTest {
         onView(withId(R.id.saveButton)).check(matches(not(isEnabled())))
         assertTrue(requireNotNull(CompletedRenderStore.latest(ui.context.filesDir)).saved)
         ui.assertGalleryCopy(original.name)
-        assertArrayEquals(bytes, java.io.File(ui.context.filesDir, "my-edits/${original.name}").readBytes())
+        assertFalse("Saving must not duplicate the private MP4", java.io.File(ui.context.filesDir, "my-edits/${original.name}").exists())
         assertArrayEquals(bytes, original.readBytes())
 
         ui.recreate()
