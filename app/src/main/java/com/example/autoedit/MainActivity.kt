@@ -240,7 +240,7 @@ class MainActivity : AppCompatActivity() {
                 showCompletedResult(state.entry)
                 notifyRenderReady(state.entry)
                 if (settingsPreferences().getBoolean(PREF_AUTO_SAVE, false) && !state.entry.saved) {
-                    session.save(state.entry)
+                    saveResult()
                 }
             } else if (!resultOpenedFromLibrary && renderedFile == state.entry?.file) {
                 renderedSaved = state.entry?.saved == true

@@ -9,7 +9,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import java.io.File
 
-/** Local synthetic media; no network or user gallery is needed for imports. */
+/** Synthetic import media and export destinations, confined to the isolated test app. */
 internal class UiFixtureProvider : ContentProvider() {
     override fun onCreate() = true
     private fun file(uri: Uri): File {
@@ -19,8 +19,8 @@ internal class UiFixtureProvider : ContentProvider() {
     }
     override fun getType(uri: Uri) = "video/mp4"
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-        require(mode == "r")
-        return ParcelFileDescriptor.open(file(uri), ParcelFileDescriptor.MODE_READ_ONLY)
+        require(mode in setOf("r", "w", "wt"))
+        return ParcelFileDescriptor.open(file(uri), ParcelFileDescriptor.parseMode(mode))
     }
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?,
         selectionArgs: Array<out String>?, sortOrder: String?): Cursor {
