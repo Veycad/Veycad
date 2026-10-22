@@ -80,4 +80,17 @@ class SourceDraftStoreTest {
         assertFalse(file.exists())
         assertNull(SourceDraftStore(root).load())
     }
+
+    @Test fun failedClearPublicationDoesNotDeleteMedia() {
+        val file = source("source-0-old.mp4")
+        val store = SourceDraftStore(root)
+        store.publish(listOf(file), listOf("Old"))
+        val manifest = File(root, "source-draft.properties")
+        assertTrue(manifest.delete())
+        assertTrue(manifest.mkdir())
+        File(manifest, "blocker").writeText("deny replacement")
+        assertThrows(java.io.IOException::class.java) { store.clear() }
+        assertTrue(file.isFile)
+        assertEquals("source-0-old.mp4", file.readText())
+    }
 }

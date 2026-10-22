@@ -254,10 +254,15 @@ internal class EditSession internal constructor(
         true
     }
 
-    fun clearDraft() {
-        if (state.value?.busy == true) return
-        RenderWorkspace.clearSourceDraft(app.filesDir)
-        mutableState.value = state.value?.copy(draft = null)
+    fun clearDraft(): Boolean {
+        if (state.value?.busy == true) return false
+        return runCatching { RenderWorkspace.clearSourceDraft(app.filesDir) }.fold(
+            onSuccess = { mutableState.value = state.value?.copy(draft = null, error = null); true },
+            onFailure = {
+                mutableState.value = state.value?.copy(error = "Не удалось очистить исходники. Выбранные видео сохранены; освободите место и повторите.")
+                false
+            }
+        )
     }
 
     fun save(entry: CompletedRenderStore.Entry, destination: android.net.Uri? = null) {

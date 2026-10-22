@@ -31,6 +31,29 @@ import org.junit.runner.RunWith
 class ResultScreenTest {
     @get:Rule val ui = UiTestFixtureRule()
 
+    @Test fun failed_source_cleanup_keeps_current_result_and_sources_usable() {
+        ui.launch()
+        ui.importVideos("cleanup-failure-source.mp4")
+        ui.startRender()
+        ui.renderer.complete()
+        ui.awaitDisplayed(R.id.resultContent)
+        ui.awaitIdle()
+        val files = SourceDraftStore(ui.context.filesDir).load()!!.files
+        val manifest = java.io.File(ui.context.filesDir, "source-draft.properties")
+        val bytes = manifest.readBytes()
+        assertTrue(manifest.delete())
+        assertTrue(manifest.mkdir())
+        val blocker = java.io.File(manifest, "blocker").apply { writeText("deny replacement") }
+        try {
+            ui.click(R.id.newEditButton)
+            ui.awaitDisplayed(R.id.resultContent)
+            assertTrue(files.all { it.isFile })
+            onView(withId(R.id.saveButton)).check(matches(isEnabled()))
+        } finally {
+            blocker.delete(); manifest.delete(); manifest.writeBytes(bytes)
+        }
+    }
+
     @Test fun real_preview_plays_pauses_and_resumes_without_losing_requested_pause() {
         ui.seedCompleted("preview-controls.mp4")
         ui.launch()

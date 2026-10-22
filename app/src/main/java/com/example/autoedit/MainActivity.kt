@@ -732,11 +732,15 @@ class MainActivity : AppCompatActivity() {
             .setMessage("Будут удалены выбранные исходники, кэш анализа и незавершённые данные рендера ($size). Сохранённые эдиты останутся.")
             .setNegativeButton("Отмена", null)
             .setPositiveButton("Очистить") { _, _ ->
-                musicRequests.invalidate()
-                session.clearDraft()
-                getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE).edit().clear().apply()
+                if (session.state.value?.busy == true) return@setPositiveButton
                 RenderWorkspace.clearTransient(filesDir, cacheDir)
                 cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+                if (!session.clearDraft()) {
+                    updateSettingsValues()
+                    return@setPositiveButton
+                }
+                musicRequests.invalidate()
+                getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE).edit().clear().apply()
                 sourceFile = null
                 secondarySourceFile = null
                 sourceDisplayNames = emptyList()
@@ -823,9 +827,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showNewEditScreen() {
         if (session.state.value?.busy == true || legacySaveEntry != null) return
+        if (!session.clearDraft()) return
         stopPreviewPlayback()
         musicRequests.invalidate()
-        session.clearDraft()
         getSharedPreferences(SOURCE_DRAFT_PREFS, MODE_PRIVATE).edit().clear().apply()
         resultContent.visibility = View.GONE
         myEditsContent.visibility = View.GONE

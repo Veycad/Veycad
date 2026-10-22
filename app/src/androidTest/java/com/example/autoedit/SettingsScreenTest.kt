@@ -190,6 +190,31 @@ class SettingsScreenTest {
         onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · от 15 секунд")))
     }
 
+    @Test fun failed_source_clear_frees_replaceable_cache_and_preserves_selection() {
+        ui.launch()
+        ui.importVideos("preserved-draft.mp4")
+        val sources = SourceDraftStore(ui.context.filesDir).load()!!.files.associateWith(File::readBytes)
+        val manifest = File(ui.context.filesDir, "source-draft.properties")
+        val original = manifest.readBytes()
+        val cache = File(ui.context.cacheDir, "replaceable.bin").apply { writeBytes(ByteArray(1024)) }
+        try {
+            assertTrue(manifest.delete())
+            assertTrue(manifest.mkdir())
+            File(manifest, "blocked").writeText("force publication failure")
+            openSettings()
+            ui.click(R.id.clearCacheButton)
+            onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
+            assertFalse(cache.exists())
+            sources.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
+            ui.click(R.id.backFromSettingsButton)
+            ui.awaitText(R.id.videoSelection, "preserved-draft.mp4")
+            onView(withId(R.id.renderButton)).check(matches(isEnabled()))
+        } finally {
+            manifest.deleteRecursively()
+            manifest.writeBytes(original)
+        }
+    }
+
     @Test fun helpExportsCaptureFailureDetailsAndCancellationLeavesTheReportUntouched() {
         ui.launch()
         val original = File(ui.context.filesDir, "private-original.mov").apply { writeText("PRIVATE_MEDIA_BYTES") }
