@@ -85,7 +85,7 @@ jobs:
           emulator-port: 5558
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: ./gradlew --no-daemon --console=plain :app:connectedUiTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.veycad.app.AutomaticSaveDestinationTest
+          script: pwsh -NoProfile -File tools/run_ui_tests.ps1 -Serial emulator-5558 -AvdName AutoEditAuditLegacy_API28 -LegacySaveOnly
       - name: Save legacy export reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -94,3 +94,4 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+            build/reports/ui-tests/

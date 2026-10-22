@@ -159,7 +159,7 @@ class MainActivity : AppCompatActivity() {
             .getOrDefault(CaptureMode.MUSIC)
         setCaptureMode(savedInstanceState?.getBoolean("auto_capture") == true)
         savedInstanceState?.getString("legacy_save_file")?.let { path ->
-            session.state.value?.entry?.takeIf { it.file.path == path }?.let { legacySaveEntry = it }
+            legacySaveEntry = CompletedRenderStore.list(filesDir).firstOrNull { it.file.path == path }
         }
         restoreSourceDraft()
         updateMyEditsButton()
