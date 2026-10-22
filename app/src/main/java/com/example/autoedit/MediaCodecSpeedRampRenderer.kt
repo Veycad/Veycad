@@ -215,7 +215,8 @@ object MediaCodecSpeedRampRenderer {
                 request.audioResourceId,
                 videoOnlyFile,
                 request.outputFile,
-                request.outputWindow?.durationUs ?: request.audioDurationUs
+                request.outputWindow?.durationUs ?: request.audioDurationUs,
+                request.checkCancelled
             )
             videoOnlyFile.delete()
         } else check(videoOnlyFile.renameTo(request.outputFile)) { "Unable to move video output" }
