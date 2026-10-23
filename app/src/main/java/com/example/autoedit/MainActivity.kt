@@ -188,6 +188,7 @@ class MainActivity : AppCompatActivity() {
             legacySaveEntry = CompletedRenderStore.list(filesDir).firstOrNull { it.file.path == path }
         }
         observedDraftGeneration = session.state.value?.draftGeneration ?: 0L
+        observedCleanup = session.state.value?.cleanupReport
         restoreSourceDraft()
         if (montageStyle == MontageStyleCatalog.customMusic) refreshMusicForStyle()
         updateMyEditsButton()
@@ -306,8 +307,6 @@ class MainActivity : AppCompatActivity() {
             findViewById<Button>(R.id.cancelRenderButton).visibility =
                 if ((rendering || importing) && !state.publishing) View.VISIBLE else View.GONE
             updateMyEditsButton()
-            if (!state.busy) automaticShare.complete(state.exportOperationId, state.entry, activityResumed)
-                ?.let { shareFile(it.entry.file) }
             if (!state.busy) updateSettingsValues()
             state.cleanupReport?.let { report ->
                 if (observedCleanup !== report) {
@@ -318,6 +317,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+            if (!state.busy) automaticShare.complete(state.exportOperationId, state.entry, activityResumed)
+                ?.let { shareFile(it.entry.file) }
         }
     }
 

@@ -88,6 +88,7 @@ internal class EditSession internal constructor(
         val cleanupReport: TemporaryFileCleanup.Report? = null,
         val cleanupScope: TemporaryFileCleanup.Scope? = null,
         val sourceSelectionConfirmed: Boolean = false,
+        // Set only for successful publication by this render; previous/latest results have no identity.
         val exportOperationId: String? = null
     )
 
