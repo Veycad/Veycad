@@ -70,8 +70,10 @@ internal class VideoDecoderCursor(
             decoder.start()
             checkCancelled()
         } catch (error: Throwable) {
-            release()
-            throw error
+            NativeResources().use { resources ->
+                resources.defer(::release)
+                throw error
+            }
         }
     }
 
@@ -166,11 +168,13 @@ internal class VideoDecoderCursor(
     fun release() {
         if (released) return
         released = true
-        if (::decoder.isInitialized) {
-            runCatching { decoder.stop() }
-            runCatching { decoder.release() }
+        NativeResources().use { resources ->
+            resources.defer { extractor.release() }
+            if (::decoder.isInitialized) {
+                resources.defer { decoder.release() }
+                resources.defer { decoder.stop() }
+            }
         }
-        runCatching { extractor.release() }
     }
 
     private companion object {

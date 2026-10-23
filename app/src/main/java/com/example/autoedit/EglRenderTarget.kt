@@ -129,53 +129,58 @@ class EglRenderTarget private constructor(
         if(closed) return
         val current = context != EGL14.EGL_NO_CONTEXT && runCatching { makeCurrent() }.isSuccess
         closed = true
-        if(current) {
-            GLES20.glUseProgram(0)
-            backing?.let(::deleteBacking)
-            GLES20.glDeleteProgram(copyProgram)
+        try {
+            NativeResources().use { resources ->
+                resources.defer { EGL14.eglReleaseThread() }
+                if(display != EGL14.EGL_NO_DISPLAY) {
+                    resources.defer { EGL14.eglTerminate(display) }
+                    if(context != EGL14.EGL_NO_CONTEXT) resources.defer { EGL14.eglDestroyContext(display,context) }
+                    if(window != EGL14.EGL_NO_SURFACE) resources.defer { EGL14.eglDestroySurface(display,window) }
+                    resources.defer { EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT) }
+                }
+                if(current) {
+                    resources.defer { GLES20.glDeleteProgram(copyProgram) }
+                    backing?.let { owned -> resources.defer { deleteBacking(owned) } }
+                    resources.defer { GLES20.glUseProgram(0) }
+                }
+            }
+        } finally {
+            backing = null; copyProgram = 0
+            display = EGL14.EGL_NO_DISPLAY; context = EGL14.EGL_NO_CONTEXT; window = EGL14.EGL_NO_SURFACE
         }
-        backing = null; copyProgram = 0
-        if(display != EGL14.EGL_NO_DISPLAY) {
-            EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT)
-            if(window != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display,window)
-            if(context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display,context)
-            EGL14.eglTerminate(display)
-        }
-        display = EGL14.EGL_NO_DISPLAY; context = EGL14.EGL_NO_CONTEXT; window = EGL14.EGL_NO_SURFACE
-        EGL14.eglReleaseThread()
     }
 
     private fun checkWorker() {
         check(Thread.currentThread() === worker) { "EGL target must be used on its owning GL worker" }
     }
     private data class Backing(val framebuffer: Int,val texture: Int)
-    private fun createBacking(size: OutputSize): Backing {
+    private fun createBacking(size: OutputSize): Backing = NativeResources().use { resources ->
         val textures = IntArray(1); val framebuffers = IntArray(1)
-        try {
-            GLES20.glGenTextures(1,textures,0)
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,textures[0])
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_S,GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_T,GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,size.width,size.height,0,
-                GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,null)
-            GLES20.glGenFramebuffers(1,framebuffers,0)
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,framebuffers[0])
-            GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER,GLES20.GL_COLOR_ATTACHMENT0,
-                GLES20.GL_TEXTURE_2D,textures[0],0)
-            check(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER)==GLES20.GL_FRAMEBUFFER_COMPLETE) {
-                "Unable to allocate ${size.width}x${size.height} display composition"
-            }
-            return Backing(framebuffers[0],textures[0])
-        } catch(error: Throwable) {
-            GLES20.glDeleteFramebuffers(1,framebuffers,0); GLES20.glDeleteTextures(1,textures,0)
-            throw error
-        } finally { GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0) }
+        GLES20.glGenTextures(1,textures,0)
+        resources.defer { GLES20.glDeleteTextures(1,textures,0) }
+        check(textures[0] != 0) { "Unable to allocate display composition texture" }
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,textures[0])
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_S,GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_WRAP_T,GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,size.width,size.height,0,
+            GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,null)
+        GLES20.glGenFramebuffers(1,framebuffers,0)
+        resources.defer { GLES20.glDeleteFramebuffers(1,framebuffers,0) }
+        check(framebuffers[0] != 0) { "Unable to allocate display composition framebuffer" }
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,framebuffers[0])
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER,GLES20.GL_COLOR_ATTACHMENT0,
+            GLES20.GL_TEXTURE_2D,textures[0],0)
+        check(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER)==GLES20.GL_FRAMEBUFFER_COMPLETE) {
+            "Unable to allocate ${size.width}x${size.height} display composition"
+        }
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0)
+        Backing(framebuffers[0],textures[0]).also { resources.transfer() }
     }
-    private fun deleteBacking(backing: Backing) {
-        GLES20.glDeleteFramebuffers(1,intArrayOf(backing.framebuffer),0)
-        GLES20.glDeleteTextures(1,intArrayOf(backing.texture),0)
+    private fun deleteBacking(backing: Backing) = NativeResources().use { resources ->
+        resources.defer { GLES20.glDeleteTextures(1,intArrayOf(backing.texture),0) }
+        resources.defer { GLES20.glDeleteFramebuffers(1,intArrayOf(backing.framebuffer),0) }
     }
     companion object {
         private const val EGL_RECORDABLE_ANDROID = 0x3142
