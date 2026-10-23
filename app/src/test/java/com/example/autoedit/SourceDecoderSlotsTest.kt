@@ -89,14 +89,34 @@ class SourceDecoderSlotsTest {
 
     @Test fun releaseAllAttemptsBothRolesEvenWhenCloseThrows() {
         val closed = mutableListOf<Int>()
+        var fail = true
         val slots = SourceDecoderSlots { index -> AutoCloseable {
             closed += index
-            if (index == 0) error("close failed")
+            if (index == 0 && fail) error("close failed")
         } }
         slots.acquire(0, DecoderRole.INCOMING)
         slots.acquire(1, DecoderRole.OUTGOING)
         assertThrows(IllegalStateException::class.java) { slots.releaseAll() }
         assertEquals(listOf(0, 1), closed)
+        fail = false
+        slots.releaseAll()
+        assertEquals(listOf(0, 1, 0), closed)
+    }
+
+    @Test fun failedRetirementKeepsTheLeaseAndNeverOpensAReplacementUntilRetry() {
+        var fail = true
+        val opens = mutableListOf<Int>()
+        val slots = SourceDecoderSlots { index ->
+            opens += index
+            AutoCloseable { if (fail) error("release not acknowledged") }
+        }
+        val old = slots.acquire(0, DecoderRole.INCOMING)
+        assertThrows(IllegalStateException::class.java) { slots.acquire(1, DecoderRole.INCOMING) }
+        assertEquals(listOf(0), opens)
+        assertThrows(IllegalStateException::class.java) { slots.acquire(0, DecoderRole.INCOMING) }
+        fail = false
+        slots.acquire(1, DecoderRole.INCOMING)
+        assertEquals(listOf(0, 1), opens)
         slots.releaseAll()
     }
 }

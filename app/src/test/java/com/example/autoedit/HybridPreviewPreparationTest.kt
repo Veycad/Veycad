@@ -8,6 +8,32 @@ import org.junit.rules.TemporaryFolder
 class HybridPreviewPreparationTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun normalSixtySecondAnalysisUsesExactBoundedPagesInsteadOfAnotherWholeFloatTimeline() {
+        val frames = List(240) { index -> FrameAttachments(index * 250_000L,
+            mask = FrameAttachments.Plane(256, 256, FloatArray(256 * 256) { (index + 1) / 1000f }, .9f),
+            depth = FrameAttachments.Plane(256, 256, FloatArray(256 * 256) { .7f }, .8f)) }
+        val fixture = fixture { it.copy(frameAttachments = FrameAttachmentTimeline(frames)) }
+        val budget = PreviewMemoryBudget()
+        var foreignDisposed = false
+        assertTrue(budget.reserve("foreign-live-texture", 8L * 1024 * 1024) { foreignDisposed = true })
+        budget.pin("foreign-live-texture")
+        val prepared = HybridPreviewPreparation.prepare(fixture.project, fixture.export, fixture.store, budget)
+        assertTrue("120 MiB producer analysis must fit the shared 32 MiB handoff without copying it", budget.usedBytes < 16L * 1024 * 1024)
+        val borrowed = prepared.graph.frameAttachments.frames
+        val first = borrowed.first().mask!!
+        frames.first().mask!!.values.fill(.99f)
+        for (index in listOf(239, 0, 120, 1, 238, 0)) {
+            assertEquals((index + 1) / 1000f, borrowed[index].mask!![65535], 0f)
+            assertEquals(.7f, borrowed[index].depth!![12345], 0f)
+        }
+        assertEquals(.001f, first[0], 0f)
+        assertFalse(foreignDisposed)
+        prepared.close()
+        closed { first.size }; closed { first[0] }; closed { borrowed.size }
+        assertEquals(8L * 1024 * 1024, budget.usedBytes)
+        budget.release("foreign-live-texture")
+    }
+
     @Test fun duplicateAndUnusedSelectionsKeepTheirSlotsAndCanonicalFrames() {
         for (fps in listOf(30, 60)) {
             val fixture = fixture(fps)
@@ -384,12 +410,14 @@ class HybridPreviewPreparationTest {
         }
         val video = imported("source-${fps}-${temporary.root.list()!!.size}.bin", "owned video fixture")
         val unused = imported("unused-${fps}-${temporary.root.list()!!.size}.bin", "other owned fixture")
+        val musicFile = temporary.newFile().apply { writeText("owned music fixture") }
+        val music = store.import(musicFile, ProjectAsset.Kind.AUDIO, base.music.durationUs).copy(id = base.music.id)
         val selections = listOf(SelectedVideo(SourceId("first"), video.id, SourceOwnership.IMPORTED, displayName = "first"),
             SelectedVideo(SourceId("repeat"), video.id, SourceOwnership.IMPORTED, displayName = "repeat"),
             SelectedVideo(SourceId("unused"), unused.id, SourceOwnership.IMPORTED, displayName = "unused"))
         val revision = base.shared.current.copy(graph = graphChange(base.shared.current.graph),
             clips = base.shared.current.clips.map { it.copy(assetId = video.id) })
-        return Fixture(base.shared.copy(assets = listOf(video, unused, base.music), original = revision,
+        return Fixture(base.shared.copy(assets = listOf(video, unused, music), original = revision,
             current = revision, selectedVideos = selections), base.export, store)
     }
 

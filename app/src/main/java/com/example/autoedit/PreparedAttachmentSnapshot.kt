@@ -16,6 +16,16 @@ internal class PreparedAttachmentLifetime {
     private val storage = ArrayList<PreparedAttachmentStorage<*>>()
     var closed = false
         private set
+    var pages: PreparedAttachmentPages? = null
+        private set
+
+    fun pageStorage(directory: java.io.File?, checkCancelled: () -> Unit) {
+        check(!closed && pages == null)
+        pages = if (directory == null) PreparedAttachmentPages(checkCancelled = checkCancelled)
+            else PreparedAttachmentPages(directory, checkCancelled)
+    }
+
+    fun sealPages() { pages?.seal() }
 
     fun <T : Any> own(value: T): PreparedAttachmentStorage<T> = PreparedAttachmentStorage(value).also {
         check(!closed) { "Prepared attachment lifetime is closed" }
@@ -32,15 +42,18 @@ internal class PreparedAttachmentLifetime {
 
     fun dispose() {
         if (closed) return
-        closed = true
         storage.forEach { it.dispose() }
         storage.clear()
+        pages?.close() // A failed file deletion keeps its budget key charged and retryable.
+        pages = null
+        closed = true
     }
 }
 
 /** One bounded handoff, not a new scheduler, backing store or resource manager. */
 internal class PreparedAttachmentSnapshot(private val lifetime: PreparedAttachmentLifetime) {
     private val arrays = IdentityHashMap<Any, PreparedAttachmentStorage<FloatArray>>()
+    private val pagedArrays = IdentityHashMap<Any, PreparedAttachmentPages.Values>()
     private val planes = IdentityHashMap<FrameAttachments.Plane, FrameAttachments.Plane>()
     private val vectors = IdentityHashMap<List<Float>, List<Float>>()
     private val flows = IdentityHashMap<FrameAttachments.FlowPlane, FrameAttachments.FlowPlane>()
@@ -49,6 +62,13 @@ internal class PreparedAttachmentSnapshot(private val lifetime: PreparedAttachme
     private fun plane(input: FrameAttachments.Plane?): FrameAttachments.Plane? {
         if (input == null) return null
         return planes.getOrPut(input) {
+            val pages = lifetime.pages
+            if (pages != null) {
+                val storage = pagedArrays.getOrPut(input.inputIdentity()) {
+                    pages.append(input.size) { input[it] }
+                }
+                return@getOrPut FrameAttachments.Plane.paged(input.width, input.height, storage, input.confidence)
+            }
             val storage = arrays.getOrPut(input.inputIdentity()) { lifetime.own(input.copyInput()) }
             FrameAttachments.Plane.frozen(input.width, input.height, storage, input.confidence)
         }
@@ -104,7 +124,7 @@ internal class PreparedAttachmentSnapshot(private val lifetime: PreparedAttachme
          * Plan allowance includes primary/role-mapped frames, interpolation/face/scalar samples,
          * intermediate list references and effect/layer sampling. This is not an app heap-peak claim.
          */
-        fun reservationBytes(project: HybridProject, fps: Int): Long {
+        fun reservationBytes(project: HybridProject, fps: Int, paged: Boolean = false): Long {
             // Bound GL-worker work BEFORE any per-frame scan or identity comparison.
             // Up to 3 planes/row => at most (3 * 1024)^2 identity comparisons.
             var sourceTimelines = 0L
@@ -134,6 +154,13 @@ internal class PreparedAttachmentSnapshot(private val lifetime: PreparedAttachme
             charge(project.selectedVideos?.size?.toLong() ?: 0, 512)
             charge(project.assets.size.toLong(), 256) // Compiler and source-verification identity maps.
             charge(project.current.clips.size.toLong(), 1024)
+            // The prepared text/audio projections share immutable scalar values but own their
+            // detached containers. Account text strings conservatively at the same handoff.
+            val text = project.current.textState
+            charge(project.current.texts.size.toLong() + text.layers.size + text.captions.size, 512)
+            project.current.texts.forEach { charge(it.text.length.toLong(), 4) }
+            text.layers.forEach { charge(it.text.length.toLong(), 4) }
+            text.captions.forEach { charge(it.text.length.toLong(), 4) }
             // Compiler builds baseline/current/candidate dense source maps; include their arrays,
             // temporary LongArray copies and any original timing metadata even after a large trim.
             fun revision(value: HybridRevision) {
@@ -159,6 +186,7 @@ internal class PreparedAttachmentSnapshot(private val lifetime: PreparedAttachme
             }
             visitInputFrames(project) { charge(1, 512) } // Frames, optional face object, identity index and list references.
             var ordinal = 0L
+            var spilledBytes = 0L
             visitInputPlanes(project) { plane ->
                 charge(1, 256) // Plane wrapper, array/plane identity indexes and lifetime entry.
                 val current = ordinal++
@@ -167,8 +195,13 @@ internal class PreparedAttachmentSnapshot(private val lifetime: PreparedAttachme
                 visitInputPlanes(project) { other ->
                     if (previous++ < current && other.inputIdentity() === plane.inputIdentity()) seen = true
                 }
-                if (!seen) { charge(1, 32); charge(plane.size.toLong(), 4) }
+                if (!seen) {
+                    charge(1, 32)
+                    if (paged) spilledBytes = Math.addExact(spilledBytes, Math.multiplyExact(plane.size.toLong(), 4))
+                    else charge(plane.size.toLong(), 4)
+                }
             }
+            if (paged) charge(1, PreparedAttachmentPages.reservationBytes(spilledBytes))
             ordinal = 0
             visitInputFrames(project) { attachment ->
                 val current = ordinal++

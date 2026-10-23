@@ -90,7 +90,7 @@ class HybridTextLegacyCompatibilityTest {
         store.save(changed, loaded.current.id)
         val reopened = HybridProjectStore(files).load("project")
         assertEquals(changed, reopened)
-        assertEquals(8, ByteBuffer.wrap(manifestProject(dir)).getInt(4))
+        assertEquals(9, ByteBuffer.wrap(manifestProject(dir)).getInt(4))
         assertEquals(rich, reopened.current.textState)
         assertEquals(loaded.current.graph, reopened.current.graph)
         assertEquals(loaded.current.clips, reopened.current.clips)

@@ -9,11 +9,13 @@ internal class SlotLease internal constructor(
     private val onClose: () -> Unit
 ) : AutoCloseable {
     private var closed = false
+    private var quarantined = false
+    fun requireUsable() { check(!closed && !quarantined) { "Decoder lease requires cleanup acknowledgement" } }
     override fun close() {
         if (closed) return
+        try { decoder.close() } catch (error: Throwable) { quarantined = true; throw error }
         closed = true
         onClose()
-        decoder.close()
     }
 }
 
@@ -28,7 +30,7 @@ internal class SourceDecoderSlots internal constructor(
     fun acquire(sourceIndex: Int, role: DecoderRole): SlotLease {
         require(sourceIndex in 0 until GalleryImportPolicy.MAX_FILES) { "Invalid video source index" }
         slots[role]?.let { previous ->
-            if (previous.sourceIndex == sourceIndex) return previous
+            if (previous.sourceIndex == sourceIndex) { previous.requireUsable(); return previous }
             previous.close()
         }
         val decoder = openForRole(sourceIndex, role)

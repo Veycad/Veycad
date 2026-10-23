@@ -55,7 +55,8 @@ class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
     val restoresAutomaticSources: Boolean = false,
     val visualSettings: ProjectVisualSettings = ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false),
     val textState: HybridTextState = HybridTextState(),
-    sourceBackings: Map<String, HybridSourceBacking> = emptyMap()) {
+    sourceBackings: Map<String, HybridSourceBacking> = emptyMap(),
+    val audioMix: AudioMixSettings = AudioMixSettings(AudioMixMode.MUSIC)) {
     val clips: List<HybridClip> = snapshotList(clips)
     val texts: List<TextItem> = snapshotList(texts)
     /** Empty for legacy revisions. Commands establish selection without rewriting old revisions. */
@@ -81,10 +82,11 @@ class HybridRevision(val id: Long, val parentId: Long?, val graph: MontageGraph,
         lockedCutIds: Set<String> = this.lockedCutIds,
         restoresAutomaticSources: Boolean = this.restoresAutomaticSources,
         visualSettings: ProjectVisualSettings = this.visualSettings, textState: HybridTextState = this.textState,
-        sourceBackings: Map<String, HybridSourceBacking> = this.sourceBackings) =
-        HybridRevision(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources, visualSettings, textState, sourceBackings)
+        sourceBackings: Map<String, HybridSourceBacking> = this.sourceBackings,
+        audioMix: AudioMixSettings = this.audioMix) =
+        HybridRevision(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources, visualSettings, textState, sourceBackings, audioMix)
 
-    private fun values() = listOf(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources, visualSettings, textState, sourceBackings)
+    private fun values() = listOf(id, parentId, graph, clips, music, texts, style, lockedCutIds, restoresAutomaticSources, visualSettings, textState, sourceBackings, audioMix)
     override fun equals(other: Any?): Boolean = other is HybridRevision && values() == other.values()
     override fun hashCode(): Int = values().hashCode()
     override fun toString(): String = "HybridRevision(id=$id, parentId=$parentId, clips=$clips, music=$music, texts=$texts, style=$style, lockedCutIds=$lockedCutIds, restoresAutomaticSources=$restoresAutomaticSources, graph=$graph)"

@@ -7,7 +7,7 @@ import kotlin.math.hypot
 enum class SmartFramingStatus { TRACKING, HOLDING, NO_PERSON, AMBIGUOUS, UNKNOWN }
 
 /** Prepared in source PTS; seeking never changes state. */
-internal class SmartFramingTrack private constructor(
+class SmartFramingTrack private constructor(
     val points: List<Point>, val sourceWindows: List<VisualEventMap.UsableWindow>
 ) {
     data class Point(val sourceTimeUs: Long, val centerX: Float, val centerY: Float, val status: SmartFramingStatus) {
@@ -31,7 +31,7 @@ internal class SmartFramingTrack private constructor(
     }
 
     companion object {
-        const val GENERATOR_VERSION = 1
+        const val GENERATOR_VERSION = 2
         private const val HOLD_US = 500_000L
         private const val BLEND_US = 300_000L
 
@@ -44,7 +44,7 @@ internal class SmartFramingTrack private constructor(
                 Collections.unmodifiableList(sourceWindows.toList()))
         }
 
-        fun build(analysis: MediaFrameVisualAnalyzer.Result, sourceWindows: List<VisualEventMap.UsableWindow>): SmartFramingTrack {
+        internal fun build(analysis: MediaFrameVisualAnalyzer.Result, sourceWindows: List<VisualEventMap.UsableWindow>): SmartFramingTrack {
             require(analysis.observations.zipWithNext().all { (a, b) -> a.sourceTimeUs < b.sourceTimeUs })
             require(sourceWindows.all { it.endUs <= analysis.durationUs })
             val windows = ArrayList<VisualEventMap.UsableWindow>()

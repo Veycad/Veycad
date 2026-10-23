@@ -3,6 +3,9 @@ package com.veycad.app
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.app.AlertDialog
+import android.text.InputType
+import android.widget.EditText
 import android.graphics.Typeface
 import android.view.View
 import com.google.android.material.button.MaterialButton
@@ -44,14 +47,17 @@ class MusicEditorActivity : AppCompatActivity() {
     private var projectId: String? = null
     private var clipId: String? = null
     private var busy = false
-    private var generation = 0
+    @Volatile private var generation = 0
     private var video: VideoView? = null
     private var previewFile: File? = null
     private var previewProjectId: String? = null
     private var previewRevisionId: Long? = null
     private var playbackGeneration = 0
     private var newProjectFps = 30
+    private var captionPage = 0
     private var renderJob: Future<*>? = null
+    private var mediaAdmission: ManualEditorAdmission.Request? = null
+    @Volatile private var mediaThread: Thread? = null
     private var refreshAfterStop = false
     private val disabledControls = java.util.IdentityHashMap<View, Boolean>()
     private val playbackHandler = Handler(Looper.getMainLooper())
@@ -120,8 +126,9 @@ class MusicEditorActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         generation++
-        renderJob?.cancel(true)
-        jobs.shutdownNow()
+        mediaAdmission?.cancel(); mediaAdmission = null
+        mediaThread?.interrupt()
+        jobs.shutdown()
         stopPlayback()
         previewFile?.delete()
         super.onDestroy()
@@ -130,8 +137,9 @@ class MusicEditorActivity : AppCompatActivity() {
     override fun onStop() {
         playbackHandler.removeCallbacks(playbackTicker)
         stopMusic()
-        if (renderJob != null) {
-            renderJob?.cancel(true)
+        if (renderJob != null || mediaAdmission != null) {
+            mediaAdmission?.cancel(); mediaAdmission = null
+            mediaThread?.interrupt()
             renderJob = null
             generation++
             setBusy(false, "Рендер отменён. Черновик сохранён.")
@@ -257,8 +265,8 @@ class MusicEditorActivity : AppCompatActivity() {
         val sequence = ++generation
         jobs.execute {
             val result = runCatching {
-                val projects = store.list()
-                val selected = requested?.let { id -> projects.firstOrNull { it.id == id } }
+                val projects = store.listSummaries()
+                val selected = requested?.takeIf { id -> projects.any { it.id == id } }?.let(store::loadWithAnalysisStatus)
                 projects to selected
             }
             runOnUiThread {
@@ -279,13 +287,23 @@ class MusicEditorActivity : AppCompatActivity() {
         content.addView(button("Повторить") { refresh() })
     }
 
-    private fun showProjects(projects: List<HybridProject>, selected: HybridProject?, message: String?) {
+    private fun showProjects(projects: List<ProjectSummary>, selectedState: ProjectLoadResult?, message: String?) {
+        val selected = selectedState?.project
         stopPlayback()
         content.removeAllViews()
         val custom = selected?.let(::isCustomMusic) == true
         header(message ?: if (selected != null) "Правки сохраняются автоматически." else
             "Выберите сохранённый монтаж или добавьте свои видео.")
-        if (selected != null) showEditor(selected) else {
+        if (selected != null && selectedState.analysisRegenerationRequired) {
+            val savedId = selected.id
+            panel("Восстановление проекта").apply {
+                addView(label("Сохранённый анализ отсутствует или повреждён. Восстановите проверенную копию проекта. Правки и исходники сохранены.", 14))
+                addView(button("Резервные копии и восстановление") {
+                    startActivity(Intent(this@MusicEditorActivity, BackupRecoveryActivity::class.java)
+                        .putExtra(BackupRecoveryActivity.EXTRA_PROJECT_ID, savedId))
+                })
+            }
+        } else if (selected != null) showEditor(selected) else {
             projectId = null
             clipId = null
             rememberSelection()
@@ -303,10 +321,11 @@ class MusicEditorActivity : AppCompatActivity() {
         panel("Сохранённые проекты").apply {
             if (projects.isEmpty()) addView(label("Пока нет проектов ручной доводки.", 14))
             projects.forEachIndexed { index, project ->
-                val name = if (isCustomMusic(project)) "♫ ${project.assets.single { it.id == project.current.music.assetId }.displayName}"
-                    else projectName(project)
+                val savedId = project.id
+                val name = if (project.recipeId == MontageStyleCatalog.customMusic.id) "♫ ${project.musicName.orEmpty()}"
+                    else project.displayName
                 addView(button("${index + 1}. $name · ${project.fps} кадр/с") {
-                    projectId = project.id
+                    projectId = savedId
                     clipId = null
                     rememberSelection()
                     refresh()
@@ -319,13 +338,15 @@ class MusicEditorActivity : AppCompatActivity() {
     }
 
     private fun showEditor(project: HybridProject) {
-        val export = previewSettings(project.fps)
+        val savedId = project.id
+        val export = projectSettings(project, false)
         val editable = runCatching { EditableMontageProject(project, export) }.getOrElse { error ->
             content.addView(label("Этот проект нельзя довести: ${error.message.orEmpty()}", 14))
             return
         }
         val clips = editable.current.clips
         showMusic(project)
+        showAudioAndText(project)
         val custom = isCustomMusic(project)
         val selected = clips.firstOrNull { it.id == clipId } ?: clips.first()
         if (clipId != selected.id) {
@@ -333,6 +354,10 @@ class MusicEditorActivity : AppCompatActivity() {
             rememberSelection()
         }
         val previewPanel = panel(projectName(project))
+        previewPanel.addView(button("Прямой предпросмотр и кадрирование") {
+            startActivity(Intent(this, ManualMvpActivity::class.java)
+                .putExtra(MusicEditorActivity.EXTRA_PROJECT_ID, savedId))
+        })
         previewPanel.addView(label("Версия ${project.current.id} · ${project.fps} кадр/с · черновик сохранён", 14))
         val currentPreview = previewFile?.takeIf { previewProjectId == project.id &&
             previewRevisionId == project.current.id && it.isFile && it.length() > 0L }
@@ -424,11 +449,17 @@ class MusicEditorActivity : AppCompatActivity() {
 
     private fun isCustomMusic(project: HybridProject) = project.current.style.recipeId == MontageStyleCatalog.customMusic.id
 
+    private fun loadEditableProject(id: String): HybridProject {
+        val loaded = store.loadWithAnalysisStatus(id)
+        require(!loaded.analysisRegenerationRequired) { "Сохранённый анализ недоступен. Восстановите проверенную копию проекта" }
+        return loaded.project
+    }
+
     private fun musicTime(us: Long): String = "%d:%02d.%d".format(us / 60_000_000L,
         (us / 1_000_000L) % 60L, (us / 100_000L) % 10L)
 
     private fun showMusic(project: HybridProject) {
-        if (!isCustomMusic(project)) return
+        val savedId = project.id
         val music = project.current.music
         val asset = project.assets.single { it.id == music.assetId }
         val panel = LinearLayout(this).apply {
@@ -463,7 +494,7 @@ class MusicEditorActivity : AppCompatActivity() {
         panel.addView(button("Прослушать фрагмент") {
             if (musicPlayer != null) stopMusic() else {
                 video?.pause()
-                val file = ProjectAssetStore(store.directory(project.id)).resolve(asset)
+                val file = ProjectAssetStore(store.directory(savedId)).resolve(asset)
                 val player = MediaPlayer()
                 musicPlayer = player
                 try {
@@ -479,8 +510,213 @@ class MusicEditorActivity : AppCompatActivity() {
             }
         })
         panel.addView(button("Заменить трек") { stopMusic(); musicPicker.launch(arrayOf("audio/*", "application/ogg")) })
+        panel.addView(gainControl("Громкость музыки", music.gain, 2f) { value ->
+            common(ProjectCommand.ReplaceMusic(music.copy(gain = value)))
+        })
+        panel.addView(button(if (music.repeat) "Повтор трека: включён" else "Повтор трека: выключен") {
+            common(ProjectCommand.ReplaceMusic(music.copy(repeat = !music.repeat)))
+        })
+        panel.addView(button("Плавное начало: ${musicTime(music.fadeInUs)}") {
+            editSeconds("Плавное начало музыки", music.fadeInUs) { value -> common(ProjectCommand.ReplaceMusic(music.copy(fadeInUs = value))) }
+        })
+        panel.addView(button("Плавное окончание: ${musicTime(music.fadeOutUs)}") {
+            editSeconds("Плавное окончание музыки", music.fadeOutUs) { value -> common(ProjectCommand.ReplaceMusic(music.copy(fadeOutUs = value))) }
+        })
         panel.addView(label("Клипам сохранятся твои правки. Для новых склеек по ритму создай автосборку с другим треком.", 12))
         content.addView(panel)
+    }
+
+    private fun gainControl(name: String, value: Float, limit: Float, commit: (Float) -> Unit): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val caption = label("$name: ${(value * 100).toInt()}%", 14)
+            addView(caption)
+            addView(SeekBar(this@MusicEditorActivity).apply {
+                contentDescription = name; max = (limit * 100).toInt(); progress = (value * 100).toInt()
+                minimumHeight = dp(48)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onStartTrackingTouch(bar: SeekBar) { stopMusic() }
+                    override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                        if (fromUser) caption.text = "$name: $progress%"
+                    }
+                    override fun onStopTrackingTouch(bar: SeekBar) { if (!busy) commit(bar.progress / 100f) }
+                })
+            })
+        }
+
+    private fun editSeconds(title: String, value: Long, commit: (Long) -> Unit) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText("%.3f".format(java.util.Locale.ROOT, value / 1000000.0)); contentDescription = "$title, секунды"
+        }
+        val dialog = AlertDialog.Builder(this).setTitle(title).setView(input)
+            .setNegativeButton("Отмена", null).setPositiveButton("Сохранить", null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val seconds = input.text.toString().replace(',', '.').toDoubleOrNull()
+            if (seconds == null || !seconds.isFinite() || seconds !in 0.0..3600.0) input.error = "Введите от 0 до 3600 секунд"
+            else { commit((seconds * 1000000).toLong()); dialog.dismiss() }
+        } }
+        dialog.show()
+    }
+
+    private fun saveText(expected: DraftVersion, text: HybridTextState) = change { latest ->
+        require(latest.id == expected.projectId && latest.current.id == expected.revision) { "Проект изменился; откройте правку заново" }
+        HybridEditCommands.apply(latest, ProjectCommand.SetTextState(text))
+    }
+
+    private fun showAudioAndText(project: HybridProject) {
+        val version = DraftVersion(project.id, project.current.id)
+        val audio = project.current.audioMix
+        panel("Звук монтажа").apply {
+            for ((mode, title) in listOf(AudioMixMode.MUSIC to "Музыка", AudioMixMode.SOURCE to "Исходный звук",
+                AudioMixMode.SPEECH_AND_MUSIC to "Речь + музыка")) addView(button(title) {
+                common(ProjectCommand.SetAudioMix(audio.copy(mode = mode, musicGain = minOf(audio.musicGain, 1f))))
+            }.apply { isSelected = audio.mode == mode; contentDescription = "Режим звука: $title" })
+            addView(gainControl("Громкость исходного звука", audio.sourceGain, 1f) { value ->
+                common(ProjectCommand.SetAudioMix(audio.copy(sourceGain = value)))
+            })
+            addView(label("Скорость исходной речи следует монтажу. При смешивании громкость ограничивается общим запасом от перегруза.", 12))
+        }
+        val text = project.current.textState
+        val duration = project.current.graph.editableTiming?.let { frameTimeUs(it.frameCount, project.fps) }
+            ?: project.current.graph.outputDurationMs * 1000L
+        val textDuration = ProjectClock(project.fps).timeUs(project.current.clips.last().span.endExclusive)
+        val showAuthored = project.current.style.showAuthoredText
+        panel("Текст и субтитры").apply {
+            addView(button(if (showAuthored) "Авторские титры: включены" else "Авторские титры: выключены") {
+                common(ProjectCommand.SetAuthoredText(!showAuthored))
+            })
+            addView(button("Добавить надпись") {
+                editTextLayer(version, text, textDuration, TextLayer(UUID.randomUUID().toString(), "", 0, minOf(duration, 3000000), kind = TextLayerKind.TITLE))
+            })
+            text.layers.take(12).forEach { layer -> addView(button("Надпись: ${layer.text.take(60)}") { editTextLayer(version, text, textDuration, layer) }) }
+            if (text.layers.size > 12) addView(button("Все надписи (${text.layers.size})") {
+                AlertDialog.Builder(this@MusicEditorActivity).setTitle("Надписи")
+                    .setItems(text.layers.map { it.text.take(60) }.toTypedArray()) { _, index -> editTextLayer(version, text, textDuration, text.layers[index]) }.show()
+            })
+            addView(button("Язык речи: ${text.language}") {
+                val languages = arrayOf("auto", "ru", "en")
+                AlertDialog.Builder(this@MusicEditorActivity).setTitle("Язык речи").setItems(arrayOf("Авто", "Русский", "English")) { _, index ->
+                    saveText(version, text.copy(language = languages[index]))
+                }.show()
+            })
+            addView(button("Распознать исходную речь") {
+                if (text.captionsEdited) AlertDialog.Builder(this@MusicEditorActivity).setTitle("Заменить субтитры?")
+                    .setMessage("Ручные правки останутся в предыдущей версии. Новое распознавание заменит текущие субтитры.")
+                    .setNegativeButton("Отмена", null).setPositiveButton("Распознать") { _, _ -> transcribe(version) }.show()
+                else transcribe(version)
+            }.apply { isEnabled = audio.mode != AudioMixMode.MUSIC && audio.sourceGain > 0f })
+            addView(label("Субтитры распознаются локально из исходной речи до музыки. Проверьте слова и интервалы.", 12))
+            addView(button("Добавить субтитр вручную") {
+                editCaption(version, text, textDuration, CaptionCue(UUID.randomUUID().toString(), "", 0, minOf(duration, 3000000)))
+            })
+            val pages = maxOf(1, (text.captions.size + 7) / 8)
+            captionPage = captionPage.coerceIn(0, pages - 1)
+            text.captions.drop(captionPage * 8).take(8).forEach { cue ->
+                addView(button("${musicTime(cue.startUs)} · ${if (cue.needsReview) "Проверить: " else ""}${cue.text.take(70)}") { editCaption(version, text, textDuration, cue) })
+            }
+            if (pages > 1) addView(row(button("‹ Фразы") { captionPage--; refresh() }.apply { isEnabled = captionPage > 0 },
+                button("Фразы ›") { captionPage++; refresh() }.apply { isEnabled = captionPage < pages - 1 }))
+        }
+    }
+
+    private fun textFields(title: String, text: String, startUs: Long, endUs: Long, durationUs: Long,
+        onSave: (String, Long, Long) -> Unit, onDelete: (() -> Unit)? = null, styleView: View? = null) {
+        val fields = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), 0, dp(20), 0) }
+        val words = EditText(this).apply { setText(text); hint = "Текст"; minLines = 2; contentDescription = "Текст" }
+        fun seconds(name: String, value: Long) = EditText(this).apply {
+            hint = name; contentDescription = name
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText("%.6f".format(java.util.Locale.ROOT, value / 1000000.0))
+        }
+        val start = seconds("Начало, секунды", startUs); val end = seconds("Конец, секунды", endUs)
+        fields.addView(words); fields.addView(start); fields.addView(end); styleView?.let(fields::addView)
+        val builder = AlertDialog.Builder(this).setTitle(title).setView(fields).setNegativeButton("Отмена", null)
+            .setPositiveButton("Сохранить", null)
+        if (onDelete != null) builder.setNeutralButton("Удалить") { _, _ -> onDelete() }
+        val dialog = builder.create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            fun time(field: EditText): Long? = field.text.toString().replace(',', '.').toDoubleOrNull()
+                ?.takeIf { it.isFinite() && it >= 0 && it <= durationUs / 1000000.0 }?.let { (it * 1000000).toLong() }
+            val from = time(start); val until = time(end)
+            if (from == null || until == null || until <= from) end.error = "Интервал должен быть внутри ролика"
+            else runCatching { onSave(words.text.toString(), from, until) }.fold(
+                onSuccess = { dialog.dismiss() }, onFailure = { words.error = it.message ?: "Проверьте текст" })
+        } }
+        dialog.show()
+    }
+
+    private fun editTextLayer(version: DraftVersion, state: HybridTextState, durationUs: Long, layer: TextLayer) {
+        val position = android.widget.Spinner(this).apply {
+            adapter = android.widget.ArrayAdapter(this@MusicEditorActivity, android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("Сверху", "По центру", "Снизу")); setSelection(layer.style.position.ordinal); contentDescription = "Положение надписи"
+        }
+        textFields("Надпись", layer.text, layer.startUs, layer.endUs,
+            durationUs, { words, from, until ->
+                val updated = layer.copy(text = words, startUs = from, endUs = until,
+                    style = layer.style.copy(position = TextPosition.entries[position.selectedItemPosition]))
+                saveText(version, state.copy(layers = (state.layers.filterNot { it.id == layer.id } + updated).sortedBy { it.startUs }))
+            }, { saveText(version, state.copy(layers = state.layers.filterNot { it.id == layer.id })) }, position)
+    }
+
+    private fun editCaption(version: DraftVersion, state: HybridTextState, durationUs: Long, cue: CaptionCue) {
+        textFields("Субтитр", cue.text, cue.startUs, cue.endUs,
+            durationUs, { words, from, until ->
+                val updated = cue.copy(text = words, startUs = from, endUs = until, manuallyReviewed = true)
+                saveText(version, state.copy(captions = (state.captions.filterNot { it.id == cue.id } + updated)
+                    .sortedBy { it.startUs }, captionsEdited = true))
+            }, { saveText(version, state.copy(captions = state.captions.filterNot { it.id == cue.id }, captionsEdited = true)) })
+    }
+
+    private fun transcribe(expected: DraftVersion) {
+        if (busy) return
+        invalidatePreview(); setBusy(true, "Распознаю исходную речь…")
+        val sequence = ++generation
+        submitMediaJob(sequence) {
+            val result = runCatching {
+                val lease = MediaWorkCoordinator.process.tryBeginWork() ?: error(MediaWorkCoordinator.CLEANING_MESSAGE)
+                lease.use {
+                    val checkCancelled = { if (Thread.currentThread().isInterrupted || sequence != generation) throw InterruptedException("Распознавание отменено") }
+                    val project = loadEditableProject(expected.projectId)
+                    require(project.current.id == expected.revision) { "Проект изменился; повторите распознавание" }
+                    val snapshot = PreparedProjectAudio.from(project, ProjectAssetStore(store.directory(project.id)), checkCancelled)
+                    snapshot.compose(File(cacheDir, "project-speech-work"), checkCancelled).use { audio ->
+                        val outcome = ComposedSpeechTranscriber(WhisperSpeechTranscriber()).transcribeOutcome(applicationContext,
+                            audio, snapshot.settings, project.current.textState.language, checkCancelled) { progress ->
+                            runOnUiThread { if (sequence == generation) status.text = "Распознаю исходную речь… $progress%" }
+                        }
+                        val cues = outcome.cuesOrThrow()
+                        require(cues.all { it.endUs <= snapshot.durationUs }) { "Субтитры вышли за длительность монтажа" }
+                        checkCancelled()
+                        val updated = HybridEditCommands.apply(project,
+                            ProjectCommand.SetTextState(project.current.textState.copy(captions = cues, captionsEdited = false)))
+                        store.save(updated, project.current.id)
+                        if (cues.isEmpty()) "Речь не найдена. Черновик сохранён; можно добавить субтитры вручную."
+                        else "Субтитры сохранены. Проверьте распознанный текст и интервалы."
+                    }
+                }
+            }
+            runOnUiThread {
+                if (isDestroyed || sequence != generation) return@runOnUiThread
+                renderJob = null; setBusy(false)
+                refresh(result.getOrElse { "Распознавание не завершилось: ${it.message.orEmpty()}" })
+            }
+        }
+    }
+
+    /** A queued body must run its finally; Future.cancel/shutdownNow can strand its native lease. */
+    private fun submitMediaJob(sequence: Int, action: () -> Unit) {
+        mediaAdmission = ManualEditorAdmission.acquire { lease ->
+            mediaAdmission = null
+            if (isDestroyed || sequence != generation) { lease.release(); return@acquire }
+            try {
+                renderJob = jobs.submit {
+                    mediaThread = Thread.currentThread()
+                    try { action() }
+                    finally { mediaThread = null; runOnUiThread { lease.release() } }
+                }
+            } catch (failure: Throwable) { lease.release(); throw failure }
+        }
     }
 
     private fun stopMusic() {
@@ -501,7 +737,7 @@ class MusicEditorActivity : AppCompatActivity() {
                 val musicStore = CustomMusicStore(applicationContext)
                 val selected = musicStore.importFile(uri, checkCancelled).also { imported = it }
                 musicStore.analyze(selected, checkCancelled)
-                val previous = store.load(id)
+                val previous = loadEditableProject(id)
                 val asset = ProjectAssetStore(store.directory(id)).import(selected.file,
                     ProjectAsset.Kind.AUDIO, selected.durationUs).copy(displayName = selected.title)
                 checkCancelled()
@@ -528,50 +764,43 @@ class MusicEditorActivity : AppCompatActivity() {
         setBusy(true, if (publish) "Рендерю и сохраняю новую версию…" else
             "Обновляю предпросмотр… Полный рендер может занять время.")
         val sequence = ++generation
-        renderJob = jobs.submit {
+        submitMediaJob(sequence) {
             var output: File? = null
             var linked = false
             var published: CompletedRenderStore.Entry? = null
             val result = runCatching {
-                val installed = store.load(id)
-                val settings = if (publish) exportSettings(installed.fps) else previewSettings(installed.fps)
+                val installed = loadEditableProject(id)
+                val settings = projectSettings(installed, publish)
                 unsupportedReason(installed, settings)?.let { throw IllegalArgumentException(it) }
                 val assets = ProjectAssetStore(store.directory(id))
                 val musicAsset = installed.assets.single { it.id == installed.current.music.assetId }
                 val musicFile = assets.resolve(musicAsset)
-                require(musicFile.isFile) { "Сохранённый музыкальный файл отсутствует" }
+                require(installed.current.audioMix.mode == AudioMixMode.SOURCE || musicFile.isFile) { "Сохранённый музыкальный файл отсутствует" }
                 val checkCancelled = {
-                    if (Thread.currentThread().isInterrupted) throw InterruptedException("Рендер отменён")
+                    if (Thread.currentThread().isInterrupted || sequence != generation) throw InterruptedException("Рендер отменён")
                 }
                 checkCancelled()
                 val directory = File(cacheDir, "manual-renders").apply { mkdirs() }
                 val target = File(directory, "manual-${UUID.randomUUID()}.mp4")
                 output = target
-                val request = if (isCustomMusic(installed)) {
-                    // Use the same full renderer as the automatic winner, retaining analyzed attachments.
-                    val graph = EditableMontageCompiler.compile(EditableMontageProject(installed, settings))
-                    val videos = requireNotNull(installed.selectedVideos).map { selection ->
-                        assets.resolve(installed.assets.single { it.id == selection.assetId })
+                val smart = SmartFramingPreparation.prepare(applicationContext, installed, assets, checkCancelled)
+                val budget = PreviewMemoryBudget(128L * 1024 * 1024)
+                val frames = try {
+                    HybridPreviewPreparation.prepare(installed, settings, assets, budget,
+                        scratchDirectory = cacheDir, checkCancelled = checkCancelled).use { prepared ->
+                        val request = PreparedHybridExportAdapter.request(prepared, installed, target,
+                            audioFile = musicFile.takeIf { installed.current.audioMix.mode != AudioMixMode.SOURCE },
+                            context = applicationContext, checkCancelled = checkCancelled, smartTracks = smart)
+                        MediaCodecSpeedRampRenderer.render(request)
                     }
-                    MediaCodecSpeedRampRenderer.Request(graph = graph, sourceFiles = videos,
-                        outputFile = target, width = settings.width, height = settings.height,
-                        fps = settings.fps, bitrate = settings.bitrate, audioFile = musicFile,
-                        audioDurationUs = graph.editableTiming?.let { frameTimeUs(it.frameCount, settings.fps) }
-                            ?: (graph.outputDurationMs * 1_000L),
-                        context = applicationContext, checkCancelled = checkCancelled)
-                } else {
-                    val prepared = HybridPreviewPreparation.prepare(installed, settings, assets)
-                    PreparedHybridExportAdapter.request(prepared, installed, target,
-                        audioFile = musicFile, context = applicationContext, checkCancelled = checkCancelled)
-                }
-                val frames = MediaCodecSpeedRampRenderer.render(request)
+                } finally { budget.clear() }
                 checkCancelled()
                 require(frames > 0 && target.isFile && target.length() > 0L) {
                     "Рендер не сохранил все кадры текущей версии"
                 }
                 requireVideoShape(target, settings)
                 if (publish) {
-                    val latest = store.load(id)
+                    val latest = loadEditableProject(id)
                     require(latest.current.id == installed.current.id) { "Проект изменился во время экспорта" }
                     checkCancelled()
                     val entry = CompletedRenderStore.publish(filesDir, target,
@@ -815,7 +1044,7 @@ class MusicEditorActivity : AppCompatActivity() {
         val sequence = ++generation
         jobs.execute {
             val result = runCatching {
-                val previous = store.load(id)
+                val previous = loadEditableProject(id)
                 val updated = apply(previous)
                 if (updated === previous || updated == previous) "Без изменений" else {
                     if (Thread.currentThread().isInterrupted) throw InterruptedException()
@@ -838,27 +1067,13 @@ class MusicEditorActivity : AppCompatActivity() {
     private fun previewSettings(fps: Int) = ProjectExportSettings(720, 1280, fps, 5_000_000, 192_000)
 
     private fun unsupportedReason(project: HybridProject, settings: ProjectExportSettings): String? {
-        val revision = project.current
-        val graph = revision.graph
         if (project.selectedVideos == null) return "у проекта нет проверенного порядка видео"
-        if (!isCustomMusic(project) && (graph.frameAttachments.frames.isNotEmpty() || graph.frameAttachments.maskRefinements.isNotEmpty() ||
-            graph.sourceAttachments.any { it.timeline.frames.isNotEmpty() || it.timeline.maskRefinements.isNotEmpty() }))
-            return "этому автопроекту нужен анализ кадров, который пока не передаётся в рендер"
-        if (revision.texts.isNotEmpty() || revision.textState.layers.isNotEmpty() ||
-            revision.textState.captions.isNotEmpty() || revision.style.showAuthoredText)
-            return "сохранённый текст пока не поддерживается"
-        val visual = revision.visualSettings
-        if (visual.aspect != ProjectAspect.PORTRAIT_9_16 || visual.explicitlySelected || visual.framings.isNotEmpty() ||
-            (settings.width to settings.height) !in setOf(720 to 1280, 1080 to 1920))
-            return "нестандартное кадрирование пока не поддерживается"
-        val music = revision.music
-        if ((!isCustomMusic(project) && (music != project.original.music || music.startUs != 0L)) || music.gain != 1f ||
-            music.fadeInUs != 0L || music.fadeOutUs != 0L || !music.repeat ||
-            graph.audioTrack?.sourceId != music.assetId || graph.audioTrack?.gain != music.gain ||
-            graph.audioTrack?.sourceStartUs != music.startUs)
-            return "этот вариант настройки музыки пока не поддерживается"
+        if (project.fps != settings.fps) return "частота кадров не совпадает с проектом"
         return null
     }
 
-    private fun exportSettings(fps: Int) = ProjectExportSettings(1080, 1920, fps, 8_000_000, 192_000)
+    private fun projectSettings(project: HybridProject, publish: Boolean): ProjectExportSettings {
+        val size = project.current.visualSettings.aspect.size(if (publish) 1080 else 720)
+        return ProjectExportSettings(size.width, size.height, project.fps, if (publish) 8000000 else 5000000, 192000)
+    }
 }

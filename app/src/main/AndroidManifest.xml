@@ -35,6 +35,8 @@
             android:process=":matte_engine" />
 
         <activity android:name=".ManualMvpActivity" android:exported="false" />
+        <activity android:name=".BackupRecoveryActivity" android:exported="false"
+            android:configChanges="keyboardHidden|orientation|screenSize" />
         <activity android:name=".TextEditActivity" android:exported="false" />
         <activity android:name=".CaptureActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"

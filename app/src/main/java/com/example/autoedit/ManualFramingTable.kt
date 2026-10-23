@@ -12,11 +12,16 @@ internal class ManualFramingTable(
     sourceOrder: List<SourceId>,
     geometries: Map<SourceId, SourceGeometry>,
     val aspect: ProjectAspect,
-    samples: Map<SourceId, FramingPlan.Sample>
-) {
+    samples: Map<SourceId, FramingPlan.Sample>,
+    settings: Map<SourceId, SourceFramingSettings> = emptyMap(),
+    smartTracks: Map<SourceId, SmartFramingTrack> = emptyMap()
+) : AutoCloseable {
     val sourceOrder: List<SourceId> = Collections.unmodifiableList(sourceOrder.toList())
     private val geometries = geometries.toMap()
     private val samples = samples.toMap()
+    private val settings = settings.toMap()
+    private var smartTracks = smartTracks.toMap()
+    private var closed = false
     private val crops: List<SourceFraming.Crop>
 
     init {
@@ -24,8 +29,15 @@ internal class ManualFramingTable(
         val ids = this.sourceOrder.toSet()
         require(this.geometries.keys == ids) { "Inspected geometry must cover the exact selection table" }
         require(this.samples.keys == ids) { "MANUAL samples must cover the exact selection table" }
+        require(this.settings.keys.all { it in ids } && this.smartTracks.keys.all { it in ids })
         crops = this.sourceOrder.map { id ->
             val sample = this.samples.getValue(id)
+            val setting = this.settings[id] ?: SourceFramingSettings()
+            if (setting.mode == FramingMode.SMART_PERSON) require(this.smartTracks[id] != null) { "SMART analysis is not ready" }
+            if (setting.mode == FramingMode.BLURRED_FIT) {
+                require(sample == FramingPlan.sample(this.geometries.getValue(id), aspect, setting.blurredFit))
+                return@map SourceFraming.Crop(1f, 1f)
+            }
             val rect = sample.foregroundSource
             require(sample.foregroundDestination == NormalizedRect(0f, 0f, 1f, 1f) &&
                 sample.backgroundSource == null && sample.blurRadiusFraction == 0f) { "Only MANUAL fill is supported" }
@@ -44,12 +56,46 @@ internal class ManualFramingTable(
         }
     }
 
-    fun crop(sourceIndex: Int): SourceFraming.Crop {
+    fun crop(sourceIndex: Int, sourceTimeUs: Long = 0L): SourceFraming.Crop {
+        check(!closed) { "Framing input is closed" }
         require(sourceIndex in sourceOrder.indices) { "Source role is absent from selection table: $sourceIndex" }
+        val id = sourceOrder[sourceIndex]
+        if (settings[id]?.mode == FramingMode.SMART_PERSON) {
+            val rect = sample(sourceIndex, sourceTimeUs).foregroundSource
+            return SourceFraming.Crop(rect.right - rect.left, rect.bottom - rect.top,
+                (rect.left + rect.right) / 2f, (rect.top + rect.bottom) / 2f)
+        }
         return crops[sourceIndex]
     }
 
+    fun sample(sourceIndex: Int, sourceTimeUs: Long): FramingPlan.Sample {
+        check(!closed) { "Framing input is closed" }
+        require(sourceIndex in sourceOrder.indices && sourceTimeUs >= 0)
+        val id = sourceOrder[sourceIndex]
+        val setting = settings[id] ?: SourceFramingSettings()
+        if (setting.mode != FramingMode.SMART_PERSON) return samples.getValue(id)
+        val point = smartTracks.getValue(id).sample(sourceTimeUs)
+        return FramingPlan.sample(geometries.getValue(id), aspect,
+            setting.smartPerson.copy(centerX = point.centerX, centerY = point.centerY))
+    }
+
+    fun status(sourceIndex: Int, sourceTimeUs: Long): SmartFramingStatus? {
+        check(!closed) { "Framing input is closed" }
+        require(sourceIndex in sourceOrder.indices && sourceTimeUs >= 0)
+        val id = sourceOrder[sourceIndex]
+        return if (settings[id]?.mode == FramingMode.SMART_PERSON) smartTracks.getValue(id).sample(sourceTimeUs).status else null
+    }
+
+    /** Charge compact objects once per identity, including repeated physical selections. */
+    fun smartReservationBytes(): Long {
+        check(!closed) { "Framing input is closed" }
+        return smartTracks.values.distinct().sumOf { 512L + it.points.size * 96L + it.sourceWindows.size * 64L }
+    }
+
+    override fun close() { smartTracks = emptyMap(); closed = true }
+
     fun requireTarget(size: OutputSize) {
+        check(!closed) { "Framing input is closed" }
         val expected = aspect.size(360)
         require(size.width.toLong() * expected.height == size.height.toLong() * expected.width) {
             "MANUAL table aspect does not match target; format changes require the resize controller"
@@ -57,6 +103,7 @@ internal class ManualFramingTable(
     }
 
     fun requireCompatible(other: ManualFramingTable) {
+        check(!closed && !other.closed) { "Framing input is closed" }
         require(sourceOrder == other.sourceOrder && geometries == other.geometries && aspect == other.aspect) {
             "Cached MANUAL update must retain selection order, inspected geometry and project aspect"
         }
@@ -65,15 +112,16 @@ internal class ManualFramingTable(
     companion object {
         private const val EPSILON = .00001f
 
-        fun fromDraft(project: DraftProject): ManualFramingTable {
+        fun fromDraft(project: DraftProject, smartTracks: Map<SourceId, SmartFramingTrack> = emptyMap()): ManualFramingTable {
             val visual = project.visualSettings
-            val samples = project.sourceOrder.associateWith { id ->
-                val settings = visual.framings[FramingKey(id, visual.aspect)] ?: SourceFramingSettings()
-                require(settings.mode == FramingMode.MANUAL) { "Fit background and SMART rendering are not implemented by MANUAL input" }
-                FramingPlan.sample(requireNotNull(project.sourceGeometry[id]) { "Inspected source geometry is unknown" },
-                    visual.aspect, settings.manual)
+            val settings = project.sourceOrder.associateWith { id ->
+                visual.framings[FramingKey(id, visual.aspect)] ?: SourceFramingSettings()
             }
-            return ManualFramingTable(project.sourceOrder, project.sourceGeometry, visual.aspect, samples)
+            val samples = project.sourceOrder.associateWith { id ->
+                FramingPlan.sample(requireNotNull(project.sourceGeometry[id]) { "Inspected source geometry is unknown" },
+                    visual.aspect, settings.getValue(id).current)
+            }
+            return ManualFramingTable(project.sourceOrder, project.sourceGeometry, visual.aspect, samples, settings, smartTracks)
         }
     }
 }

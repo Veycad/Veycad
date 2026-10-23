@@ -78,6 +78,8 @@ internal class GlesFrameCompositor(
     private var userTextTexture = 0
     private var userTextBitmap: Bitmap? = null
     private var userTextCanvas: Canvas? = null
+    private var userTextUpload: PreviewUploadBuffer? = null
+    private var userTextUploaded = false
     private var positionBuffer: FloatBuffer? = null
     private var texBuffer: FloatBuffer? = null
     private var sceneTarget: OffscreenTarget? = null
@@ -85,11 +87,14 @@ internal class GlesFrameCompositor(
     private var depthTarget: OffscreenTarget? = null
     private var glowTargetA: OffscreenTarget? = null
     private var glowTargetB: OffscreenTarget? = null
+    private var framingBackground: GlesFramingBackground? = null
+    private val framingTargets = mutableListOf<OffscreenTarget>()
+    private val framingPrograms = mutableListOf<Int>()
     private var released = false
     private var closing = false
     private val passExecutions = linkedMapOf<RenderPassPlanner.PassKind, Int>()
     private var heartbeatTextureLogged = false
-    private data class PivotKey(val clipIndex: Int, val sourceIndex: Int, val crop: SourceFraming.Crop)
+    private data class PivotKey(val clipIndex: Int, val sourceIndex: Int)
     private val fearPivotByClip = mutableMapOf<PivotKey, Pair<Float, Float>>()
     private var manualFraming = manualFraming
 
@@ -103,21 +108,23 @@ internal class GlesFrameCompositor(
             makeCurrent()
             incomingInput = DecoderInput(0)
             outgoingInput = DecoderInput(1)
-            program = createProgram(GlesFrameShaders.VERTEX_SHADER, GlesFrameShaders.TRANSITION_FRAGMENT_SHADER)
+            program = createProgram(GlesFramingShaders.vertex(GlesFrameShaders.VERTEX_SHADER),
+                GlesFramingShaders.fragment(GlesFrameShaders.TRANSITION_FRAGMENT_SHADER))
             postProgram = createProgram(GlesFrameShaders.POST_VERTEX_SHADER, GlesFrameShaders.POST_FRAGMENT_SHADER)
             maskTexture = create2dTexture()
             depthTexture = create2dTexture()
             flowTexture = create2dTexture()
             openingTitleTexture = createOpeningTitleTexture(authoredTitle)
             if (textProject != null) {
-                // The legacy text export shares this compositor. Account retained storage if
-                // a caller supplies a budget; the restricted MANUAL controller supplies no text.
+                // The same output-coordinate bitmap/texture is used by direct preview/export.
                 previewOwner?.reserve(PreviewAllocationOwner.imageBytes(width, height)) {
                     recycleUserText()
                 }
                 userTextBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 userTextCanvas = Canvas(checkNotNull(userTextBitmap))
                 userTextTexture = create2dTexture(width, height)
+                if (previewOwner != null) userTextUpload = PreviewUploadBuffer.create(previewOwner,
+                    PreviewUploadBuffer.pixelCapacity(width, height, 4))
             }
             val positions = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
             if (previewOwner == null) positionBuffer = floatBuffer(positions)
@@ -178,8 +185,40 @@ internal class GlesFrameCompositor(
         fearPivotByClip.clear()
     }
 
-    private fun sourceCrop(sourceIndex: Int): SourceFraming.Crop =
-        manualFraming?.crop(sourceIndex) ?: sourceCrops[sourceIndex]
+    private fun sourceCrop(sourceIndex: Int, sourceTimeUs: Long): SourceFraming.Crop =
+        manualFraming?.crop(sourceIndex, sourceTimeUs) ?: sourceCrops[sourceIndex]
+
+    private fun fitBackground(): GlesFramingBackground = framingBackground ?: GlesFramingBackground(width, height,
+        { vertex, fragment -> createProgram(vertex, fragment).also(framingPrograms::add) },
+        { w, h -> createOffscreenTarget(w, h).also(framingTargets::add).let {
+            GlesFramingBackground.Target(it.framebuffer, it.texture, it.width, it.height)
+        } }).also { framingBackground = it }
+
+    private fun bindFraming(incoming: FramingPlan.Sample?, outgoing: FramingPlan.Sample?,
+        incomingMatrix: FloatArray, outgoingMatrix: FloatArray) {
+        val incomingFit = incoming?.takeIf { it.backgroundSource != null }?.foregroundDestination
+        val outgoingFit = outgoing?.takeIf { it.backgroundSource != null }?.foregroundDestination
+        GLES20.glUniform2f(GLES20.glGetUniformLocation(program, "uFitEnabled"),
+            if (incomingFit == null) 0f else 1f, if (outgoingFit == null) 0f else 1f)
+        fun role(name: String, rect: NormalizedRect?, matrix: FloatArray) {
+            val destination = rect ?: NormalizedRect(0f, 0f, 1f, 1f)
+            GLES20.glUniform4f(GLES20.glGetUniformLocation(program, "u${name}Fit"),
+                destination.left, destination.top, destination.right, destination.bottom)
+            if (rect != null) {
+                val inverse = FloatArray(16)
+                require(Matrix.invertM(inverse, 0, matrix, 0)) { "Invalid fit source texture transform" }
+                GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(program, "u${name}TextureInverse"),
+                    1, false, inverse, 0)
+            }
+        }
+        role("Incoming", incomingFit, incomingMatrix); role("Outgoing", outgoingFit, outgoingMatrix)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE7)
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, framingBackground?.texture ?: maskTexture)
+        GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uFramingBackground"), 7)
+        GLES20.glUniform2f(GLES20.glGetUniformLocation(program, "uFramingAtlasTexel"),
+            1f / (framingBackground?.atlasWidth ?: 2), 1f / (framingBackground?.atlasHeight ?: 1))
+    }
 
     fun drawScheduled(frame: HighQualityFramePlan.Frame, sourceRotation: Int) {
         drawInternal(frame, null, sourceRotation, sourceRotation)
@@ -228,17 +267,23 @@ internal class GlesFrameCompositor(
             it.requireTarget(target.size)
             require(target.size == OutputSize(width, height)) { "Composition resize requires the display controller" }
         }
-        val incomingCrop = sourceCrop(incomingFrame.sourceIndex)
+        val incomingCrop = sourceCrop(incomingFrame.sourceIndex, incomingFrame.sourceTimeUs)
         // Validate the requested role even when a diagnostic override binds incoming to both units.
-        outgoingFrame?.let { sourceCrop(it.sourceIndex) }
+        outgoingFrame?.let { sourceCrop(it.sourceIndex, it.sourceTimeUs) }
         val secondaryFrame = outgoingFrame?.let {
             MediaCodecSpeedRampRenderer.boundSecondaryInput(incomingFrame, it,
                 debugTextureProbe, debugProbeIncomingOnBothUnits)
         } ?: incomingFrame
-        val outgoingCrop = sourceCrop(secondaryFrame.sourceIndex)
+        val outgoingCrop = sourceCrop(secondaryFrame.sourceIndex, secondaryFrame.sourceTimeUs)
         val secondarySamplerInput = MediaCodecSpeedRampRenderer.boundSecondaryInput(
             incomingInput, outgoingInput, debugTextureProbe, debugProbeIncomingOnBothUnits
         )
+        val incomingFraming = manualFraming?.sample(incomingFrame.sourceIndex, incomingFrame.sourceTimeUs)
+        val outgoingFraming = manualFraming?.sample(secondaryFrame.sourceIndex, secondaryFrame.sourceTimeUs)
+        if (incomingFraming?.backgroundSource != null || outgoingFraming?.backgroundSource != null) {
+            fitBackground().draw(incomingInput.texture, incomingInput.transformMatrix(), incomingFraming,
+                secondarySamplerInput.texture, secondarySamplerInput.transformMatrix(), outgoingFraming)
+        }
         val actualPts = incomingInput.timestampUs()
         val attachments = if (sourceAttachments.isNotEmpty() ||
             incomingFrame.transitionIn == MontageGraph.Transition.FOREGROUND_REENTRY || sigmaProfile
@@ -255,16 +300,22 @@ internal class GlesFrameCompositor(
         GLES20.glClearColor(0f, 0f, 0f, 1f); GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         GLES20.glUseProgram(program)
         val transform = FloatArray(16); Matrix.setIdentityM(transform, 0)
+        val semanticCrop = incomingFraming?.takeIf { it.backgroundSource != null }?.foregroundDestination?.let {
+            SourceFraming.Crop(1f / (it.right - it.left), 1f / (it.bottom - it.top))
+        } ?: incomingCrop
         val fearPivot = if (fearProfile && incomingFrame.transform.scale > 1.0001f) {
-            fearPivotByClip.getOrPut(PivotKey(incomingFrame.clipIndex, incomingFrame.sourceIndex, incomingCrop)) {
+            val calculate = {
                 val face = attachments?.faceRegion
                 if (face != null && face.confidence >= .75f) {
                     Pair(
-                        (.5f + (face.centerX - incomingCrop.centerX) / incomingCrop.x).coerceIn(.2f, .8f),
-                        (.5f + (face.centerY - incomingCrop.centerY) / incomingCrop.y).coerceIn(.2f, .8f)
+                        (.5f + (face.centerX - semanticCrop.centerX) / semanticCrop.x).coerceIn(.2f, .8f),
+                        (.5f + (face.centerY - semanticCrop.centerY) / semanticCrop.y).coerceIn(.2f, .8f)
                     )
                 } else Pair(.5f, .5f)
             }
+            // SMART evaluates a moving center. Do not retain a cache entry for every frame/crop.
+            if (manualFraming?.status(incomingFrame.sourceIndex, incomingFrame.sourceTimeUs) != null) calculate()
+            else fearPivotByClip.getOrPut(PivotKey(incomingFrame.clipIndex, incomingFrame.sourceIndex), calculate)
         } else Pair(.5f, .5f)
         val pivotDx = (1f - incomingFrame.transform.scale) * (fearPivot.first * 2f - 1f)
         val pivotDy = (1f - incomingFrame.transform.scale) * (1f - fearPivot.second * 2f)
@@ -313,6 +364,7 @@ internal class GlesFrameCompositor(
             outgoingCrop.centerX - .5f, .5f - outgoingCrop.centerY)
         val incomingTexMatrix = incomingInput.transformMatrix()
         val outgoingTexMatrix = secondarySamplerInput.transformMatrix()
+        bindFraming(incomingFraming, outgoingFraming, incomingTexMatrix, outgoingTexMatrix)
         if (incomingFrame.layer.heartbeatEcho && !heartbeatTextureLogged) {
             heartbeatTextureLogged = true
             android.util.Log.d("HeartbeatTexture", "incoming=${incomingInput.texture}:${incomingInput.timestampUs()} " +
@@ -384,7 +436,11 @@ internal class GlesFrameCompositor(
             bitmap.eraseColor(Color.TRANSPARENT)
             TextLayerLayout.draw(checkNotNull(userTextCanvas), requireNotNull(textProject),
                 incomingFrame.globalOutputTimeUs, strict = true)
-            android.opengl.GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+            if (previewOwner == null) android.opengl.GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+            else {
+                checkNotNull(userTextUpload).uploadRgba(bitmap, !userTextUploaded)
+                userTextUploaded = true
+            }
             onFrameProgress?.invoke((incomingFrame.outputTimeUs * 100 / textProject.durationUs).toInt())
         }
         GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uUserText"), 6)
@@ -525,7 +581,7 @@ internal class GlesFrameCompositor(
             incomingFrame.layer.opacity > .001f && (attachments?.mask?.confidence ?: 0f) >= .8f) {
             recordPass(RenderPassPlanner.PassKind.FOREGROUND_COMPOSITE)
         }
-        sceneTarget?.let { renderPostPipeline(it, incomingFrame, blend, attachments, incomingCrop, inverseSourceTransform) }
+        sceneTarget?.let { renderPostPipeline(it, incomingFrame, blend, attachments, semanticCrop, inverseSourceTransform) }
             ?: run {
                 if (textProject != null && !finishingText) drawDirectUserText()
                 recordPass(RenderPassPlanner.PassKind.ENCODER_SURFACE)
@@ -548,8 +604,9 @@ internal class GlesFrameCompositor(
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
             previewOwner.close()
             previewTextures.clear()
-            uploadStorage = null; previewPositions = null; previewCoordinates = null
+            uploadStorage = null; previewPositions = null; previewCoordinates = null; userTextUpload = null
             sceneTarget = null; motionTarget = null; depthTarget = null; glowTargetA = null; glowTargetB = null
+            framingTargets.clear(); framingPrograms.clear(); framingBackground = null
             // Only completed disposal permits destroying EGL. Never clear the shared budget.
             target.close()
             released = true
@@ -561,8 +618,9 @@ internal class GlesFrameCompositor(
             resources.defer(::recycleUserText)
             resources.defer { target.close() }
             if (current) {
-                listOfNotNull(sceneTarget, motionTarget, depthTarget, glowTargetA, glowTargetB)
+                (listOfNotNull(sceneTarget, motionTarget, depthTarget, glowTargetA, glowTargetB) + framingTargets)
                     .forEach { owned -> resources.defer { releaseTarget(owned) } }
+                framingPrograms.forEach { owned -> resources.defer { GLES20.glDeleteProgram(owned) } }
                 resources.defer { GLES20.glDeleteProgram(postProgram) }
                 resources.defer { GLES20.glDeleteProgram(program) }
                 resources.defer { GLES20.glDeleteTextures(5,

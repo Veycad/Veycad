@@ -33,7 +33,8 @@ internal object VeycadAutomaticEditor {
         val onProgress: (Progress) -> Unit = {},
         val checkCancelled: () -> Unit = {},
         val jobLease: File? = null,
-        val musicStartUs: Long = 0L
+        val musicStartUs: Long = 0L,
+        val captureOrigin: CaptureOrigin? = null
     ) {
         val sourceFile: File get() = sources.items.first().file
         val secondarySourceFile: File? get() = sources.items.getOrNull(1)?.file

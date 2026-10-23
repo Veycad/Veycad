@@ -27,13 +27,14 @@ class PreparedHybridExportDeviceTest {
             MontageGraph.ShotRole.ACTION, MontageGraph.Transition.HARD_CUT, MontageGraph.Motion.HOLD, 1f, 0)),
             metadata = NleProjectMetadata(generator = "prepared-manual-fixture"))
         val export = ProjectExportSettings(720, 720, 30, 2_000_000, 128_000)
-        val music = ProjectAsset("silent-fixture", "unused.wav", ProjectAsset.Kind.AUDIO, 1_000_000, "fixture")
+        val musicFile = SourceAudioNativeFixtures.wav(File(directory, "silent.wav")) { 0 }
+        val music = store.import(musicFile, ProjectAsset.Kind.AUDIO, 1_000_000)
         val imported = EditableMontageImporter.create("native-prepared", graph, MontageStyleCatalog.Recipe.DUALITY_LOOP,
             export, listOf(asset), music, null, listOf(selection)).shared
         val visual = ProjectVisualSettings(ProjectAspect.SQUARE_1_1, true, mapOf(
             FramingKey(selection.id, ProjectAspect.SQUARE_1_1) to SourceFramingSettings(
                 manual = FramingSettings(FramingMode.MANUAL, .75f, .5f, 1f))))
-        val revision = imported.current.copy(visualSettings = visual)
+        val revision = imported.current.copy(visualSettings = visual, music = imported.current.music.copy(gain = 0f))
         val project = imported.copy(original = revision, current = revision)
         val prepared = HybridPreviewPreparation.prepare(project, export, store)
         val output = File(directory, "manual.mp4")

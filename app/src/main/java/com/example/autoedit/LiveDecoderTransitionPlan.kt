@@ -2,6 +2,45 @@ package com.veycad.app
 
 /** Pure temporal contract for feeding both live decoders during a transition. */
 internal object LiveDecoderTransitionPlan {
+    /** Immutable bindings for random direct display, derived from the export's existing rules.
+     * This changes neither the canonical frame grid nor effect/attachment sampling. */
+    data class DirectDraw(val incoming: HighQualityFramePlan.Frame,
+        val outgoing: HighQualityFramePlan.Frame? = null, val temporal: Boolean = false)
+
+    fun directDraws(frames: List<HighQualityFramePlan.Frame>, sourceDurationsUs: List<Long>,
+        sigmaProfile: Boolean = false): List<DirectDraw> {
+        require(sourceDurationsUs.isNotEmpty() && sourceDurationsUs.all { it > 0 })
+        val byClip = frames.groupBy { it.clipIndex }
+        val draws = HashMap<Long, DirectDraw>()
+        for ((clipIndex, current) in byClip) {
+            val previous = byClip[clipIndex - 1]
+            val window = previous?.let {
+                forClip(it, current, sourceDurationsUs[it.last().sourceIndex])
+            }
+            if (window != null) {
+                val start = overlapStart(window, sigmaProfile)
+                if (start > 0) {
+                    val held = MediaCodecSpeedRampRenderer.heldBoundaryFrame(previous!!.last(), current.first())
+                    draws[held.outputTimeUs] = DirectDraw(held)
+                }
+                for (index in start until window.incoming.size) {
+                    val incoming = window.incoming[index]
+                    draws[incoming.outputTimeUs] = DirectDraw(incoming, window.outgoing[index])
+                }
+            }
+            for (frame in remainingFrames(current, window)) {
+                val temporal = MediaCodecSpeedRampRenderer.isTemporalLayer(frame.layer.kind, sigmaProfile)
+                val secondary = if (temporal) {
+                    val source = frame.secondarySourceIndex ?: frame.sourceIndex
+                    val pts = MediaCodecSpeedRampRenderer.temporalLayerSourceTimeUs(frame, sourceDurationsUs[source])
+                    MediaCodecSpeedRampRenderer.temporalLayerFrame(frame, pts)
+                } else null
+                draws[frame.outputTimeUs] = DirectDraw(frame, secondary, temporal)
+            }
+        }
+        return montageSnapshot(frames.map { draws.getValue(it.outputTimeUs) })
+    }
+
     data class Window(
         val outgoing: List<HighQualityFramePlan.Frame>,
         val incoming: List<HighQualityFramePlan.Frame>

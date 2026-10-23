@@ -12,7 +12,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Primitive format: v5 source facts; v6 manual graph; v7 music offset; v8 rich text. Schema stays 1. */
+/** Primitive format: v5 source facts; v6 manual graph; v7 music offset; v8 rich text; v9 audio mix. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
     private val authoredMaps: AuthoredSourceMapStore = sidecars.authoredMaps()) {
     fun encode(project: HybridProject): ByteArray {
@@ -226,6 +226,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
                 string(id); string(backing.assetId); sourceMap(backing.map); out.writeInt(backing.phaseStart)
                 out.writeLong(backing.slipUs); out.writeLong(backing.selectedRevisionId); out.writeBoolean(backing.automatic)
             }
+            with(audioMix) { enum(mode); out.writeFloat(sourceGain); out.writeFloat(musicGain) }
         }
         fun clip(value: MontageGraph.Clip) = with(value) {
             string(id); out.writeLong(sourceStartMs); out.writeLong(sourceEndMs); out.writeLong(outputDurationMs)
@@ -422,7 +423,9 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
                 string() to HybridSourceBacking(string(), sourceMap(format), input.readInt(), input.readLong(), input.readLong(), input.readBoolean())
             } else emptyList()
             require(backings.map { it.first }.distinct().size == backings.size)
-            return HybridRevision(id, parent, graph, clips, music, texts, style, locked.toSet(), resetsSources, visuals, text, backings.toMap())
+            val audio = if (format >= 9) AudioMixSettings(enum(), input.readFloat(), input.readFloat())
+                else AudioMixSettings(AudioMixMode.MUSIC)
+            return HybridRevision(id, parent, graph, clips, music, texts, style, locked.toSet(), resetsSources, visuals, text, backings.toMap(), audio)
         }
         fun clip() = MontageGraph.Clip(string(), input.readLong(), input.readLong(), input.readLong(), enum(), enum(), enum(),
             input.readFloat(), input.readLong(),
@@ -537,7 +540,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 8
+        private const val FORMAT_VERSION = 9
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024

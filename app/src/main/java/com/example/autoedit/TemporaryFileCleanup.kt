@@ -18,13 +18,18 @@ internal object TemporaryFileCleanup {
     private fun targets(filesDir: File, cacheDir: File, scope: Scope): List<Path> {
         val files = filesDir.canonicalFile.toPath()
         val cache = cacheDir.canonicalFile.toPath()
+        val projectScratch = if (scope == Scope.ALL_TEMPORARY || scope == Scope.TRANSIENT_RENDER) {
+            listOf(cache.resolve("manual-renders"), cache.resolve("project-speech-work"), cache.resolve("project-audio-work")) +
+                cache.toFile().listFiles().orEmpty().filter { it.name.matches(Regex("preview-floats-.*\\.tmp")) }.map { it.toPath() } +
+                files.toFile().listFiles().orEmpty().filter { it.name.matches(Regex("\\.project-restore-[a-f0-9-]{36}")) }.map { it.toPath() }
+        } else emptyList()
         return when (scope) {
             Scope.TEXT_WORK -> listOf(cache.resolve("text-work"))
             Scope.SOURCE_DRAFT -> listOf(files.resolve("source-draft"))
             Scope.TRANSIENT_RENDER -> listOf(files.resolve("pending-renders"), cache.resolve("imports"))
             Scope.ALL_TEMPORARY -> listOf(files.resolve("source-draft"), files.resolve("pending-renders"),
                 cache.resolve("imports"), cache.resolve("full-video-analysis"), cache.resolve("text-work"))
-        }
+        } + projectScratch
     }
 
     private fun safe(path: Path): Boolean = !Files.isSymbolicLink(path) &&

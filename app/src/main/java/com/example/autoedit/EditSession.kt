@@ -33,20 +33,20 @@ internal class EditSession internal constructor(
     internal data class RenderSummary(
         val clipCount: Int, val beatHitRate: Float,
         val passedQualityGate: Boolean, val issues: List<String>, val productSummary: String? = null,
-        val projectId: String? = null
+        val projectId: String? = null,
+        val ownsNewProject: Boolean = false
     )
     private object NativeRenderEngine : RenderEngine {
         override fun render(request: VeycadAutomaticEditor.Request): RenderSummary {
             if (request.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) return GalleryMvpRenderer.render(request)
             val result = VeycadAutomaticEditor.render(request)
-            val projectId = if (request.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC)
-                CustomMusicProjectHandoff.publish(request.context, result.winner.alternative.graph,
+            val projectId = CustomMusicProjectHandoff.publish(request.context, result.winner.alternative.graph,
                     request.sources, request.musicFile,
                     ProjectExportSettings(request.width, request.height, HighQualityFramePlan.DEFAULT_FPS,
-                        request.bitrate, 192_000), request.checkCancelled) else null
+                        request.bitrate, 192_000), request.checkCancelled, request.recipe, request.captureOrigin)
             return RenderSummary(result.winner.alternative.graph.clips.size,
                 result.winner.acceptance.metrics.beatHitRate, result.passedQualityGate,
-                result.winner.acceptance.issues.map { it.toString() }, projectId = projectId)
+                result.winner.acceptance.issues.map { it.toString() }, projectId = projectId, ownsNewProject = true)
         }
     }
     private val app = context.applicationContext
@@ -378,6 +378,7 @@ internal class EditSession internal constructor(
                     .apply { mkdirs() }
                 val output = File(directory, "Veycad-${UUID.randomUUID()}.mp4")
                 var wakeLock: PowerManager.WakeLock? = null
+                var provisionalProject: String? = null
                 val result = runCatching {
                     val lease = File(directory, "active.lease").apply { writeText("active") }
                     activeLease = lease
@@ -397,6 +398,8 @@ internal class EditSession internal constructor(
                         musicFile = music, outputFile = output, style = style.directorStyle,
                         recipe = requireNotNull(style.recipe),
                         musicStartUs = musicStartUs,
+                        captureOrigin = captureSessionId?.let { CaptureOrigin(it,
+                            requireNotNull(captureTakeOrdinal), captureAutoRecommendation) },
                         width = width,
                         height = height,
                         bitrate = bitrate,
@@ -407,6 +410,7 @@ internal class EditSession internal constructor(
                             mediaWork.post { publish(State(busy = true, entry = previous, draft = previousDraft, progress = progress)) }
                         }
                     ))
+                    provisionalProject = edit.projectId.takeIf { edit.ownsNewProject }
                     check(!cancelled) { "Монтаж отменён" }
                     val warning = if (edit.passedQualityGate) "проверено" else
                         "готово с предупреждением QA: ${edit.issues.joinToString()}"
@@ -421,12 +425,18 @@ internal class EditSession internal constructor(
                     val link = captureSessionId?.let { CompletedRenderStore.CaptureLink(it,
                         requireNotNull(captureTakeOrdinal), captureAutoRecommendation) }
                     val published = CompletedRenderStore.publish(app.filesDir, output, summary, link, projectId = edit.projectId)
+                    provisionalProject = null // Durable result metadata now owns this project's identity.
                     val linkError = link?.let {
                         runCatching { CaptureSessionStore(app.filesDir).attachResult(it.sessionId,
                             published.file.name, it.takeOrdinal, it.recommended) }.exceptionOrNull()
                     }
                     if (linkError != null) LocalDiagnostics.record(app, "capture_result_link_failed")
                     published to linkError
+                }
+                provisionalProject?.let { id ->
+                    runCatching { HybridProjectStore(app.filesDir).delete(id) }.exceptionOrNull()?.let { cleanup ->
+                        result.exceptionOrNull()?.addSuppressed(cleanup)
+                    }
                 }
                 wakeLock?.let { if (it.isHeld) it.release() }
                 if (captureSessionId != null) result.exceptionOrNull()?.let {

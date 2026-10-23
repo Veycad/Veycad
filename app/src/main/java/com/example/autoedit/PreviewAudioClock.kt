@@ -21,20 +21,36 @@ internal class PreviewAudioClock(
     private var outputEndUs = 0L
     private var running = false
     private var ready = false
+    private var preparedAudio: PreparedProjectAudio? = null
+    private var composedAudio: ComposedProjectAudio? = null
+    private var composedTimeline = false
 
-    fun prepare(file: File?, token: PreviewGeneration, outputUs: Long, outputDurationUs: Long, onReady: () -> Unit) {
+    fun prepare(file: File?, token: PreviewGeneration, outputUs: Long, outputDurationUs: Long,
+        snapshot: PreparedProjectAudio? = null, directory: File? = null, onReady: () -> Unit) {
         handler.post {
             if (!isCurrent(token)) return@post
             attempt(token) {
                 releasePlayer()
                 generation = token; anchorOutputUs = outputUs; ready = false
                 outputEndUs = outputDurationUs
-                if (file == null) {
+                if (preparedAudio !== snapshot) {
+                    releaseComposition()
+                    if (snapshot != null) {
+                        val composed = snapshot.compose(requireNotNull(directory)) {
+                            if (!isCurrent(token)) throw java.util.concurrent.CancellationException("Obsolete audio preparation")
+                        }
+                        if (!isCurrent(token)) { composed.close(); return@attempt }
+                        composedAudio = composed; preparedAudio = snapshot
+                    }
+                }
+                val playback = composedAudio?.playbackFile ?: file
+                composedTimeline = snapshot != null
+                if (playback == null) {
                     ready = true; onReady()
                     return@attempt
                 }
                 // Recreate for a user seek: an old native seek callback cannot be mistaken for a
-                // new seek on the same MediaPlayer. At most one player exists, no music proxy.
+                // new seek on the same MediaPlayer. At most one player borrows the composed WAV.
                 val current = MediaPlayer().also { player = it }
                 current.setAudioAttributes(AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
@@ -51,17 +67,19 @@ internal class PreviewAudioClock(
                         }
                         durationUs = current.duration.toLong() * 1_000
                         require(durationUs > 0) { "Preview music requires a finite positive duration" }
-                        current.isLooping = true
+                        current.isLooping = !composedTimeline
                         current.setOnSeekCompleteListener {
                             if (player === current && isCurrent(token)) {
                                 ready = true; onReady()
                             }
                         }
-                        current.seekTo(PreviewMusicPosition.seekPosition(outputUs, durationUs) / 1_000,
+                        val position = if (composedTimeline) outputUs.coerceAtMost(outputEndUs)
+                            else PreviewMusicPosition.seekPosition(outputUs, durationUs)
+                        current.seekTo(position / 1_000,
                             MediaPlayer.SEEK_CLOSEST)
                     }
                 }
-                current.setDataSource(file.absolutePath)
+                current.setDataSource(playback.absolutePath)
                 current.prepareAsync()
                 handler.postDelayed({
                     if (player === current && isCurrent(token) && !ready)
@@ -104,7 +122,8 @@ internal class PreviewAudioClock(
                     runCatching { it.timestamp?.anchorMediaTimeUs }.getOrNull()
                         ?: runCatching { it.currentPosition.toLong() * 1_000 }.getOrNull()
                 }
-                onPosition(if (current == null) prediction
+                onPosition(if (current == null) prediction else if (composedTimeline)
+                    (local ?: prediction).coerceIn(0, outputEndUs)
                     else PreviewMusicPosition.globalPosition(local, durationUs, prediction))
             }
         }
@@ -114,9 +133,14 @@ internal class PreviewAudioClock(
 
     /** Completion only follows release on the audio owner; callers must also await GL cleanup. */
     fun release(onReleased: (Throwable?) -> Unit) {
-        handler.post { onReleased(runCatching { releasePlayer() }.exceptionOrNull()) }
+        handler.post { onReleased(runCatching { releasePlayer(); releaseComposition() }.exceptionOrNull()) }
     }
-    fun close() { handler.post { releasePlayer(); thread.quitSafely() } }
+    fun close() { handler.post { releasePlayer(); releaseComposition(); thread.quitSafely() } }
+
+    private fun releaseComposition() {
+        composedAudio?.close()
+        composedAudio = null; preparedAudio = null; composedTimeline = false
+    }
 
     private fun releasePlayer() {
         player?.release()

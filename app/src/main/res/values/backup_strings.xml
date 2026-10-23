@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">Копия проекта</string>
+    <string name="backup_description">Сохрани проект, его исходники и доступные готовые видео в ZIP. Восстановление добавит отдельный проект.</string>
+    <string name="backup_version_policy">Для восстановления нужна эта или более новая совместимая версия Veycad. Перед сменой версии сохрани копию отдельно от приложения. Старые версии могут не открыть новые проекты.</string>
+    <string name="backup_ready">Выбери действие.</string>
+    <string name="backup_save">Сохранить резервную копию</string>
+    <string name="backup_restore">Восстановить новую копию</string>
+    <string name="backup_share">Поделиться копией</string>
+    <string name="backup_done">Готово</string>
+    <string name="backup_wait">Дождись завершения копирования.</string>
+    <string name="backup_writing">Сохраняю проект и проверяю исходники…</string>
+    <string name="backup_restoring">Проверяю копию и восстанавливаю проект…</string>
+    <string name="backup_saved">Копия сохранена: %1$d файлов, %2$d байт.</string>
+    <string name="backup_restored">Новый проект восстановлен: %1$d файлов, %2$d байт. Нажми «Готово», чтобы открыть его.</string>
+    <string name="backup_missing_outputs">Ранее удалённых готовых видео в копии нет: %1$d. Сам проект сохранён.</string>
+    <string name="backup_legacy_unverified">Исходников без сохранённого проверенного SHA-256 в старом проекте: %1$d. Копия проверяет текущие байты, но не подтверждает их первоначальную идентичность.</string>
+    <string name="backup_cleanup_warning">Проект восстановлен, но временные файлы удалось убрать не полностью.</string>
+    <string name="backup_failed">Не удалось завершить операцию: %1$s</string>
+</resources>

@@ -40,20 +40,20 @@ data class FrameAttachments(
 
     class Plane private constructor(val width: Int, val height: Int,
         private val producerValues: FloatArray?, private val ownedValues: PreparedAttachmentStorage<FloatArray>?,
-        val confidence: Float) {
+        val confidence: Float, private val pagedValues: PreparedAttachmentPages.Values? = null) {
         constructor(width: Int, height: Int, values: FloatArray, confidence: Float) :
             this(width, height, values, null, confidence)
         constructor(width: Int, height: Int, values: List<Float>, confidence: Float) :
             this(width, height, values.toFloatArray(), confidence)
 
         /** Producer arrays remain mutable. A prepared plane returns a detached caller-owned copy. */
-        val values: FloatArray get() = if (ownedValues == null) producerValues!! else ownedValues.get().copyOf()
+        val values: FloatArray get() = pagedValues?.copy() ?: if (ownedValues == null) producerValues!! else ownedValues.get().copyOf()
         /** Allocation-free reads, also enforcing the prepared lifetime after close. */
-        val size: Int get() = data().size
-        operator fun get(index: Int): Float = data()[index]
+        val size: Int get() = pagedValues?.size ?: data().size
+        operator fun get(index: Int): Float = pagedValues?.get(index) ?: data()[index]
         private fun data(): FloatArray = producerValues ?: ownedValues!!.get()
-        internal fun inputIdentity(): Any = producerValues ?: ownedValues!!.identity()
-        internal fun copyInput(): FloatArray = data().copyOf()
+        internal fun inputIdentity(): Any = producerValues ?: pagedValues?.identity() ?: ownedValues!!.identity()
+        internal fun copyInput(): FloatArray = pagedValues?.copy() ?: data().copyOf()
 
         fun copy(width: Int = this.width, height: Int = this.height, values: FloatArray = this.values,
             confidence: Float = this.confidence): Plane = Plane(width, height, values, confidence)
@@ -65,11 +65,15 @@ data class FrameAttachments(
         internal companion object {
             fun frozen(width: Int, height: Int, storage: PreparedAttachmentStorage<FloatArray>, confidence: Float) =
                 Plane(width, height, null, storage, confidence)
+            fun paged(width: Int, height: Int, storage: PreparedAttachmentPages.Values, confidence: Float) =
+                Plane(width, height, null, null, confidence, storage)
         }
 
         init {
-            require(width > 0 && height > 0 && data().size.toLong() == width.toLong() * height)
-            require(data().all { it.isFinite() })
+            require(width > 0 && height > 0 && size.toLong() == width.toLong() * height)
+            // The spool writer already validated every float before sealing its immutable file.
+            // Metadata/size must not fault every lazy plane into memory at construction.
+            if (pagedValues == null) require(data().all { it.isFinite() })
             require(confidence in 0f..1f)
         }
 
@@ -77,16 +81,19 @@ data class FrameAttachments(
         // and attachment interpolation, so retain the former List<Float> value semantics.
         override fun equals(other: Any?): Boolean = other is Plane &&
             width == other.width && height == other.height && confidence == other.confidence &&
-            data().contentEquals(other.data())
+            size == other.size && (if (pagedValues == null && other.pagedValues == null) data().contentEquals(other.data())
+                else (0 until size).all { this[it].toBits() == other[it].toBits() })
 
         override fun hashCode(): Int {
             var result = width
             result = 31 * result + height
-            result = 31 * result + data().contentHashCode()
+            var pixels = if (pagedValues == null) data().contentHashCode() else 1
+            if (pagedValues != null) for (index in 0 until size) pixels = 31 * pixels + this[index].toBits()
+            result = 31 * result + pixels
             return 31 * result + confidence.hashCode()
         }
 
-        override fun toString(): String = "Plane(width=$width, height=$height, values=${data()}, confidence=$confidence)"
+        override fun toString(): String = "Plane(width=$width, height=$height, samples=$size, confidence=$confidence)"
     }
 
     data class FlowPlane(val width: Int, val height: Int, val vectors: List<Float>, val confidence: Float) {

@@ -456,7 +456,7 @@ class MainActivity : AppCompatActivity() {
             val id = CompletedRenderStore.list(filesDir).firstOrNull { it.file == renderedFile }?.projectId
                 ?: return@setOnClickListener
             stopPreviewPlayback()
-            startActivity(Intent(this, MusicEditorActivity::class.java).putExtra(MusicEditorActivity.EXTRA_PROJECT_ID, id))
+            startActivity(Intent(this, ManualMvpActivity::class.java).putExtra(ManualMvpActivity.EXTRA_PROJECT_ID, id))
         }
         findViewById<Button>(R.id.myEditsButton).setOnClickListener {
             LocalDiagnostics.record(this, "tap_my_edits")

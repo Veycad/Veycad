@@ -59,6 +59,15 @@ internal class PreviewUploadBuffer private constructor(
         upload(buffer, bitmap?.width ?: 1, bitmap?.height ?: 1, GLES20.GL_ALPHA, true)
     }
 
+    /** Reuses the retained staging allocation and texture storage for output-coordinate text. */
+    fun uploadRgba(bitmap: Bitmap, fresh: Boolean) {
+        require(bitmap.config == Bitmap.Config.ARGB_8888 && !bitmap.isRecycled)
+        require(bitmap.rowBytes == bitmap.width * 4) { "Text bitmap must have packed RGBA rows" }
+        val buffer = data(pixelCapacity(bitmap.width, bitmap.height, 4))
+        bitmap.copyPixelsToBuffer(buffer)
+        upload(buffer, bitmap.width, bitmap.height, GLES20.GL_RGBA, fresh)
+    }
+
     private fun upload(buffer: ByteBuffer, width: Int, height: Int, format: Int, fresh: Boolean) {
         buffer.position(0)
         GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)

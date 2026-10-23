@@ -6,6 +6,8 @@ sealed interface ProjectCommand {
     data class MoveCut(val cutId: String, val targetFrame: Int) : ProjectCommand
     data class SlipClip(val clipId: String, val sourceOffsetUs: Long) : ProjectCommand
     data class ReplaceMusic(val music: ProjectMusic, val asset: ProjectAsset? = null) : ProjectCommand
+    data class SetAudioMix(val settings: AudioMixSettings) : ProjectCommand
+    data class SetTextState(val text: HybridTextState) : ProjectCommand
     data class PutText(val item: TextItem) : ProjectCommand
     data class RemoveText(val id: String) : ProjectCommand
     data class SetAuthoredText(val visible: Boolean) : ProjectCommand
@@ -21,6 +23,8 @@ object HybridEditCommands {
         is ProjectCommand.MoveCut -> moveCut(project, command.cutId, command.targetFrame)
         is ProjectCommand.SlipClip -> slipClip(project, command.clipId, command.sourceOffsetUs)
         is ProjectCommand.ReplaceMusic -> replaceMusic(project, command.music, command.asset)
+        is ProjectCommand.SetAudioMix -> commitRevision(project, project.current.copy(audioMix = command.settings))
+        is ProjectCommand.SetTextState -> commitRevision(project, project.current.copy(textState = command.text))
         is ProjectCommand.PutText -> putText(project, command.item)
         is ProjectCommand.RemoveText -> removeText(project, command.id)
         is ProjectCommand.SetAuthoredText -> setAuthoredText(project, command.visible)

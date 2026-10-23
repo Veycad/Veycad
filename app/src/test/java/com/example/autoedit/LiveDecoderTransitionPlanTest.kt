@@ -6,6 +6,40 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LiveDecoderTransitionPlanTest {
+    @Test fun directDrawBindingsMatchExportWarmupAndKeepBothRolesForRandomAccess() {
+        val previous = listOf(frame(0, 800_000, -1f), frame(33_333, 900_000, -1f))
+            .map { it.copy(clipIndex = 0, sourceIndex = 2) }
+        val incoming = (2..4).map { index -> frame(index * 33_333L, 200_000L + index * 1000, .25f * (index - 1))
+            .copy(clipIndex = 1, sourceIndex = 1) }
+        val frames = previous + incoming
+        val draws = LiveDecoderTransitionPlan.directDraws(frames, listOf(1_000_000, 1_000_000, 950_000))
+        assertEquals(LiveDecoderTransitionPlan.drawFrames(frames), draws.map { it.incoming })
+        assertNull(draws[2].outgoing)
+        assertEquals(2, draws[3].outgoing!!.sourceIndex)
+        assertEquals(949_999L, draws[3].outgoing!!.sourceTimeUs)
+        assertEquals(incoming[1], draws[3].incoming)
+        assertTrue(!draws[3].temporal)
+        // A random reverse seek consumes the same immutable two-role record, without replaying
+        // a second timeline or borrowing whichever decoder texture happened to be current.
+        assertEquals(listOf(draws[4], draws[0], draws[3]), listOf(4, 0, 3).map(draws::get))
+    }
+
+    @Test fun directTemporalBindingsKeepExplicitSecondarySourceAndSameSourceOffsets() {
+        val first = frame(0, 500_000, -1f).copy(transitionIn = MontageGraph.Transition.HARD_CUT,
+            layer = LayerCompositorModel.Sample(kind = MontageGraph.OverlayKind.DOUBLE_EXPOSURE),
+            secondarySourceIndex = 2, secondarySourceTimeUs = 900_000)
+        val second = first.copy(outputTimeUs = 33_333, secondarySourceIndex = null,
+            secondarySourceTimeUs = null)
+        val draws = LiveDecoderTransitionPlan.directDraws(listOf(first, second), listOf(1_000_000, 1_000_000, 1_000_000))
+        assertTrue(draws.all { it.temporal })
+        assertEquals(2, draws[0].outgoing!!.sourceIndex)
+        assertEquals(900_000L, draws[0].outgoing!!.sourceTimeUs)
+        assertEquals(0, draws[1].outgoing!!.sourceIndex)
+        assertEquals(80_000L, draws[1].outgoing!!.sourceTimeUs)
+        assertTrue(LiveDecoderTransitionPlan.directDraws(listOf(first), listOf(1_000_000, 1_000_000, 1_000_000), true)
+            .all { it.outgoing == null })
+    }
+
     @Test fun transitionKeepsNSourceIndicesAndClampsOnlyOutgoingSourceAtItsEof() {
         val previous = listOf(frame(0, 800_000, -1f), frame(33_333, 900_000, -1f))
             .map { it.copy(sourceIndex = 19) }

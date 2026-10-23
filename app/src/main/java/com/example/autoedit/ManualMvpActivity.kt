@@ -58,7 +58,7 @@ class ManualMvpActivity : AppCompatActivity() {
     private var controller: DraftPreviewController? = null
     private var stopping = false
     private var afterStop: (() -> Unit)? = null
-    private var keepPreparedAfterStop = false
+    private var framingSourceId: String? = null
     private var binding: Binding? = null
     private var texture: TextureView? = null
     private var playbackState = DraftPreviewController.State()
@@ -70,10 +70,11 @@ class ManualMvpActivity : AppCompatActivity() {
     private var export: Button? = null
     private var dragging = false
     private var exporting = false
+    private var preparingPreview = false
     private var pendingImports: List<Uri>? = null
     private val surfaces = mutableListOf<BorrowedSurface>()
     private data class BorrowedSurface(val texture: SurfaceTexture, val surface: Surface, var destroyed: Boolean = false)
-    private data class Binding(val project: HybridProject, val prepared: PreparedHybridPreview,
+    private data class Binding(val projectId: String, val revisionId: Long, val prepared: PreparedHybridPreview,
         val request: MediaCodecSpeedRampRenderer.Request)
     /** Tick positions come from the same canonical frames that drive seek and export. */
     private class OutputTimeline(context: android.content.Context) : androidx.appcompat.widget.AppCompatSeekBar(context) {
@@ -100,6 +101,12 @@ class ManualMvpActivity : AppCompatActivity() {
             if (started && !busy && operationLease != null && !leaving) drainImports()
         }
     }
+    private val backup = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) result.data?.getStringExtra("projectId")?.let { id ->
+            projectId = id; clipId = null; lastShownUs = 0L; rememberSelection()
+            if (started && operationLease != null) refresh()
+        }
+    }
     private fun drainImports() {
         val uris = pendingImports ?: return
         pendingImports = null
@@ -111,10 +118,11 @@ class ManualMvpActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         store = HybridProjectStore(filesDir)
         val prefs = getSharedPreferences("manual_mvp", MODE_PRIVATE)
-        projectId = savedInstanceState?.getString("project") ?: prefs.getString("project", null)
-        clipId = savedInstanceState?.getString("clip") ?: prefs.getString("clip", null)
+        val explicitProject = intent.getStringExtra(EXTRA_PROJECT_ID)
+        projectId = savedInstanceState?.getString("project") ?: explicitProject ?: prefs.getString("project", null)
+        clipId = savedInstanceState?.getString("clip") ?: if (explicitProject == null) prefs.getString("clip", null) else null
         newProjectFps = savedInstanceState?.getInt("newProjectFps") ?: prefs.getInt("newProjectFps", 30)
-        lastShownUs = savedInstanceState?.getLong("position") ?: prefs.getLong("position", 0L)
+        lastShownUs = savedInstanceState?.getLong("position") ?: if (explicitProject == null) prefs.getLong("position", 0L) else 0L
         scroll = ScrollView(this).apply { isFillViewport = true; setBackgroundColor(getColor(R.color.background)) }
         scroll.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> resizePreviewStage() }
         content = LinearLayout(this).apply {
@@ -262,7 +270,7 @@ class ManualMvpActivity : AppCompatActivity() {
     /** Latest UI job replaces older work; every borrowed Surface survives until the actual stop ack. */
     private fun stopPreview(keepPrepared: Boolean = false, action: () -> Unit) {
         afterStop = action
-        keepPreparedAfterStop = keepPrepared
+        check(!keepPrepared) { "Prepared export remains on the controller's GL worker" }
         if (stopping) return
         val player = controller
         stopping = true
@@ -271,15 +279,38 @@ class ManualMvpActivity : AppCompatActivity() {
             player?.close()
             surfaces.forEach { held -> held.surface.release(); if (held.destroyed) held.texture.release() }
             surfaces.clear()
-            if (!keepPreparedAfterStop) {
-                val previous = binding; binding = null
-                if (previous != null) jobs.execute { previous.prepared.close() }
-            }
+            binding = null // A borrowed view; the controller disposed it on its GL worker before this ack.
+            preparingPreview = false
             stopping = false
             val next = afterStop; afterStop = null
             next?.invoke()
         }
         if (player == null) released() else player.stopAndRelease { released() }
+    }
+
+    /** Explicit pressure injection is also usable on modern Android, which omits legacy low callbacks. */
+    internal fun releasePreviewForMemoryPressure(onReleased: () -> Unit = {}) {
+        // Pressure is not cancellation of a protected edit/export. Its owner still holds the
+        // media lease; preview was already stopped before export and the job must drain itself.
+        if (busy || exporting || stopping || preparingPreview) { onReleased(); return }
+        generation++; rememberSelection()
+        stopPreview {
+            // A real exact-frame notification can arrive while stopping. Persist the final
+            // displayed clock only once its GL consumer has actually acknowledged release.
+            rememberSelection()
+            setBusy(false)
+            play?.isEnabled = false; seek?.isEnabled = false; export?.isEnabled = false
+            previewStatus?.text = "Предпросмотр освобождён. Нажмите «Повторить», чтобы продолжить."
+            retry?.visibility = View.VISIBLE; retry?.isEnabled = true
+            onReleased()
+        }
+    }
+
+    override fun onLowMemory() { super.onLowMemory(); if (started) releasePreviewForMemoryPressure() }
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (started && level in android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW until
+            android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) releasePreviewForMemoryPressure()
     }
 
     private fun refresh(message: String? = null) {
@@ -293,17 +324,19 @@ class ManualMvpActivity : AppCompatActivity() {
             jobs.execute {
                 val result = runCatching {
                     checkCurrent(sequence)
-                    val projects = store.list()
-                    val selected = projects.firstOrNull { it.id == requested }
-                    val editable = selected?.let { runCatching { EditableMontageProject(it, exportSettings(it)) }.getOrNull() }
+                    val projects = store.listSummaries()
+                    val loaded = projects.firstOrNull { it.id == requested }?.let { store.loadWithAnalysisStatus(it.id) }
+                    val editable = loaded?.takeUnless { it.analysisRegenerationRequired }?.project?.let {
+                        runCatching { EditableMontageProject(it, exportSettings(it)) }.getOrNull()
+                    }
                     checkCurrent(sequence)
-                    Triple(projects, selected, editable)
+                    Triple(projects, loaded, editable)
                 }
                 runOnUiThread {
                     if (destroyed || !started || sequence != generation) return@runOnUiThread
                     setBusy(false)
-                    result.fold(onSuccess = { (projects, selected, editable) ->
-                        showProjects(projects, selected, editable, message)
+                    result.fold(onSuccess = { (projects, loaded, editable) ->
+                        showProjects(projects, loaded?.project, editable, message, loaded?.analysisRegenerationRequired == true)
                         drainImports()
                     }, onFailure = { showError(getString(R.string.manual_open_failed)) })
                 }
@@ -318,7 +351,8 @@ class ManualMvpActivity : AppCompatActivity() {
         status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         content.addView(button(getString(R.string.manual_retry)) { refresh() })
     }
-    private fun showProjects(projects: List<HybridProject>, selected: HybridProject?, editable: EditableMontageProject?, message: String?) {
+    private fun showProjects(projects: List<ProjectSummary>, selected: HybridProject?, editable: EditableMontageProject?, message: String?,
+        analysisRecoveryRequired: Boolean = false) {
         previewStage = null
         content.removeAllViews()
         texture = null; play = null; seek = null; previewStatus = null; export = null; retry = null
@@ -329,7 +363,15 @@ class ManualMvpActivity : AppCompatActivity() {
         content.addView(label(getString(R.string.manual_title), 28))
         status = label(message ?: getString(R.string.manual_intro), 14).also(content::addView)
         status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        if (selected != null) showEditor(selected, editable) else {
+        if (selected != null && analysisRecoveryRequired) {
+            val recoverId = selected.id
+            status.text = "Данные анализа проекта отсутствуют или повреждены. Чтобы сохранить исходный монтаж, " +
+                "редактирование, предпросмотр и экспорт остановлены. Сделайте резервную копию или откройте другую сборку."
+            status.tag = "project-recovery-required"
+            content.addView(button("Резервная копия") {
+                stopPreview { backup.launch(Intent(this, BackupRecoveryActivity::class.java).putExtra("projectId", recoverId)) }
+            }.apply { tag = "backup-project" })
+        } else if (selected != null) showEditor(selected, editable) else {
             projectId = null; clipId = null; lastShownUs = 0; rememberSelection()
         }
         content.addView(label(getString(R.string.manual_new), 20))
@@ -340,15 +382,20 @@ class ManualMvpActivity : AppCompatActivity() {
         ))
         content.addView(button(getString(R.string.manual_import)) { videoPicker.launch(arrayOf("video/*")) }.apply { tag = "import" })
         content.addView(label(getString(R.string.manual_saved), 20))
+        content.addView(button("Восстановить копию") {
+            stopPreview { backup.launch(Intent(this, BackupRecoveryActivity::class.java)) }
+        }.apply { tag = "restore-backup" })
         if (projects.isEmpty()) content.addView(label(getString(R.string.manual_empty), 14))
         projects.forEachIndexed { index, project ->
+            val savedId = project.id
             content.addView(button(getString(R.string.manual_project, index + 1, project.fps)) {
-                projectId = project.id; clipId = null; lastShownUs = 0; rememberSelection(); refresh()
+                projectId = savedId; clipId = null; lastShownUs = 0; rememberSelection(); refresh()
             })
         }
     }
 
     private fun showEditor(project: HybridProject, editable: EditableMontageProject?) {
+        val selectedProjectId = project.id
         if (editable == null) {
             content.addView(label(getString(R.string.manual_unsupported), 14)); return
         }
@@ -358,6 +405,15 @@ class ManualMvpActivity : AppCompatActivity() {
         content.addView(label(getString(R.string.manual_revision, project.current.id, project.fps), 16))
         showPlayer(project)
         showAspects(project)
+        showFraming(project, selected.origin.sourceIndex)
+        content.addView(button("Музыка, речь и текст") {
+            rememberSelection()
+            stopPreview { startActivity(Intent(this, MusicEditorActivity::class.java)
+                .putExtra(MusicEditorActivity.EXTRA_PROJECT_ID, selectedProjectId)) }
+        }.apply { tag = "project-audio-text" })
+        content.addView(button("Резервная копия") {
+            stopPreview { backup.launch(Intent(this, BackupRecoveryActivity::class.java).putExtra("projectId", selectedProjectId)) }
+        }.apply { tag = "backup-project" })
         export = button(getString(R.string.manual_export, aspectLabel(project.current.visualSettings.aspect))) { renderVersion() }.apply {
             tag = "export"; minHeight = dp(58); isEnabled = false
             backgroundTintList = enabledColors(R.color.neon, R.color.stroke)
@@ -478,6 +534,57 @@ class ManualMvpActivity : AppCompatActivity() {
         content.addView(label(getString(R.string.manual_format_hint), 14))
     }
 
+    private fun showFraming(project: HybridProject, clipSourceIndex: Int) {
+        val selections = requireNotNull(project.selectedVideos)
+        val selected = selections.firstOrNull { it.id.value == framingSourceId }
+            ?: selections[clipSourceIndex.coerceIn(selections.indices)]
+        framingSourceId = selected.id.value
+        val key = FramingKey(selected.id, project.current.visualSettings.aspect)
+        val settings = project.current.visualSettings.framings[key] ?: SourceFramingSettings()
+        fun update(transform: (SourceFramingSettings) -> SourceFramingSettings) = change { installed ->
+            val visual = installed.current.visualSettings
+            val current = visual.framings[key] ?: SourceFramingSettings()
+            val updated = visual.withFraming(key, transform(current))
+            HybridEditCommands.apply(installed, ProjectCommand.CommitRevision(installed.current.copy(visualSettings = updated)))
+        }
+        content.addView(label("Кадрирование", 20))
+        content.addView(button("Исходник ${selections.indexOf(selected) + 1}: ${selected.displayName}") {
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Выберите исходник")
+                .setItems(selections.mapIndexed { index, item -> "${index + 1}. ${item.displayName}" }.toTypedArray()) { _, index ->
+                    framingSourceId = selections[index].id.value; refresh()
+                }.show()
+        }.apply { tag = "framing-source" })
+        val modes = listOf(FramingMode.MANUAL to "Вручную", FramingMode.SMART_PERSON to "По человеку",
+            FramingMode.BLURRED_FIT to "Размытый фон")
+        content.addView(row(*modes.map { (mode, title) -> button(title) { update { it.withMode(mode) } }.apply {
+            tag = "framing-${mode.name}"; isSelected = settings.mode == mode
+            ViewCompat.setStateDescription(this, if (isSelected) "Выбрано" else "Не выбрано")
+            backgroundTintList = enabledColors(if (isSelected) R.color.accent_soft else R.color.surface_high, R.color.stroke)
+        } }.toTypedArray()))
+        val geometry = requireNotNull(project.assets.single { it.id == selected.assetId }.videoMetadata).geometry
+        fun pan(x: Float, y: Float) {
+            if (settings.mode != FramingMode.MANUAL) return
+            update { old -> old.withSettings(FramingPlan.clampManual(geometry, key.aspect,
+                old.manual.copy(centerX = (old.manual.centerX + x).coerceIn(0f, 1f),
+                    centerY = (old.manual.centerY + y).coerceIn(0f, 1f)))) }
+        }
+        content.addView(row(button("←") { pan(-.05f, 0f) }, button("→") { pan(.05f, 0f) },
+            button("↑") { pan(0f, -.05f) }, button("↓") { pan(0f, .05f) }).apply {
+                for (index in 0 until childCount) getChildAt(index).isEnabled = settings.mode == FramingMode.MANUAL
+            })
+        fun zoom(delta: Float) {
+            if (settings.mode == FramingMode.BLURRED_FIT) return
+            update { old -> old.withSettings(old.current.copy(zoom = (old.current.zoom + delta).coerceIn(1f, 3f))) }
+        }
+        content.addView(row(button("Масштаб −") { zoom(-.1f) }, button("Масштаб +") { zoom(.1f) },
+            button("Сбросить кадр") { update { it.withSettings(FramingSettings(it.mode)) } }))
+        content.addView(label(when (settings.mode) {
+            FramingMode.MANUAL -> "Стрелки перемещают кадр; масштаб от 1 до 3. Положение сохраняется для этого формата."
+            FramingMode.SMART_PERSON -> "Следим за устойчивым центром человека. Если человек не найден или людей несколько, кадр вернётся к центру."
+            FramingMode.BLURRED_FIT -> "Исходник целиком в кадре; поля заполняет размытая копия того же кадра."
+        }, 14))
+    }
+
     private fun resizePreviewStage() {
         val stage = previewStage ?: return
         val panel = stage.parent as? View ?: return
@@ -583,11 +690,12 @@ class ManualMvpActivity : AppCompatActivity() {
     private fun time(us: Long): String = "%d:%02d.%03d".format(us / 60_000_000, us / 1_000_000 % 60, us / 1_000 % 1_000)
     private fun showState(state: DraftPreviewController.State) {
         playbackState = state
+        if (state.error != null) preparingPreview = false
         if (state.shownOutputTimeUs != null && state.exactFrameReady) lastShownUs = state.shownOutputTimeUs
         if (destroyed || !started) return
         play?.text = getString(if (state.playing) R.string.manual_pause else R.string.manual_play)
         play?.contentDescription = play?.text
-        val plan = binding?.prepared?.framePlan
+        val plan = binding?.let { runCatching { it.prepared.framePlan }.getOrNull() }
         if (plan != null) {
             clock?.text = getString(R.string.manual_clock, time(lastShownUs), time(plan.durationUs))
             if (!dragging) seek?.progress = plan.frames.binarySearchBy(lastShownUs) { it.outputTimeUs }.coerceAtLeast(0)
@@ -601,6 +709,19 @@ class ManualMvpActivity : AppCompatActivity() {
             state.exactFrameReady -> R.string.manual_paused
             else -> R.string.manual_preparing
         })
+        if (!failed && state.exactFrameReady && plan != null) {
+            val frame = PreviewFrameSelection.nearest(plan, lastShownUs)
+            val status = binding?.request?.preparedExport?.framing?.status(frame.sourceIndex, frame.sourceTimeUs)
+            val detail = when (status) {
+                SmartFramingStatus.TRACKING -> "Кадр следует за человеком"
+                SmartFramingStatus.HOLDING -> "Краткая потеря человека — удерживаем кадр"
+                SmartFramingStatus.NO_PERSON -> "Человек не найден — кадр по центру"
+                SmartFramingStatus.AMBIGUOUS -> "Несколько людей — кадр по центру"
+                SmartFramingStatus.UNKNOWN -> "Нет надёжных данных — кадр по центру"
+                null -> null
+            }
+            if (detail != null) previewStatus?.text = "${previewStatus?.text}\n$detail"
+        }
         retry?.visibility = if (failed) View.VISIBLE else View.GONE
         retry?.isEnabled = failed
         play?.isEnabled = !busy && !stopping && !failed && (state.exactFrameReady || state.playing)
@@ -618,47 +739,44 @@ class ManualMvpActivity : AppCompatActivity() {
         controller?.seekTo(target)
     }
     private fun preparePreview(project: HybridProject) {
+        preparingPreview = true
         val sequence = generation
+        val preparedProjectId = project.id
+        val preparedRevisionId = project.current.id
+        val player = DraftPreviewController { state ->
+            if (sequence == generation || stopping) showState(state)
+        }
+        controller = player
         jobs.execute {
-            var prepared: PreparedHybridPreview? = null
             val result = runCatching {
                 checkCurrent(sequence)
                 val assets = ProjectAssetStore(store.directory(project.id))
                 unsupportedReason(project)?.let { throw IllegalArgumentException(it) }
-                val value = HybridPreviewPreparation.prepare(project, exportSettings(project), assets)
-                prepared = value
-                val audio = if (value.graph.audioTrack == null) null else assets.resolve(project.assets.single { it.id == project.current.music.assetId })
+                val tracks = SmartFramingPreparation.prepare(applicationContext, project, assets) { checkCurrent(sequence) }
                 checkCurrent(sequence)
-                // A unique reserved destination is inert until the explicit export action.
-                val target = File(cacheDir, "manual-renders/manual-${UUID.randomUUID()}.mp4")
-                val request = PreparedHybridExportAdapter.request(value, project, target, audioFile = audio,
-                    context = applicationContext, checkCancelled = {
-                        if (Thread.currentThread().isInterrupted) throw InterruptedException("Экспорт отменён")
-                    })
-                Binding(project, value, request)
+                assets to tracks
             }
-            if (result.isFailure) prepared?.close()
             runOnUiThread {
-                if (destroyed || !started || sequence != generation) {
-                    result.getOrNull()?.let { stale -> jobs.execute { stale.prepared.close() } }
-                    return@runOnUiThread
-                }
-                result.fold(onSuccess = { value ->
-                    binding = value
-                    val plan = value.prepared.framePlan
-                    lastShownUs = lastShownUs.coerceIn(0, plan.frames.last().outputTimeUs)
-                    seek?.max = plan.frames.lastIndex
-                    (seek as? OutputTimeline)?.cutFrames = plan.frames.indices.filter { index ->
-                        index > 0 && plan.frames[index].clipIndex != plan.frames[index - 1].clipIndex
+                if (destroyed || !started || sequence != generation || controller !== player) return@runOnUiThread
+                result.fold(onSuccess = { (assets, tracks) ->
+                    val target = File(cacheDir, "manual-renders/manual-${UUID.randomUUID()}.mp4")
+                    player.prepareAndOpen(project, exportSettings(project), assets, target, applicationContext, tracks) { prepared, request ->
+                        if (destroyed || !started || sequence != generation || controller !== player) return@prepareAndOpen
+                        preparingPreview = false
+                        binding = Binding(preparedProjectId, preparedRevisionId, prepared, request)
+                        val plan = prepared.framePlan
+                        lastShownUs = lastShownUs.coerceIn(0, plan.frames.last().outputTimeUs)
+                        seek?.max = plan.frames.lastIndex
+                        (seek as? OutputTimeline)?.cutFrames = plan.frames.indices.filter { index ->
+                            index > 0 && plan.frames[index].clipIndex != plan.frames[index - 1].clipIndex
+                        }
+                        texture?.takeIf { it.isAvailable }?.let { movie ->
+                            attachSurface(requireNotNull(movie.surfaceTexture), movie.width, movie.height)
+                        }
+                        player.seekTo(lastShownUs)
                     }
-                    val player = DraftPreviewController { state ->
-                        if (sequence == generation || stopping) showState(state)
-                    }
-                    controller = player
-                    player.open(value.request)
-                    texture?.takeIf { it.isAvailable }?.let { movie -> attachSurface(requireNotNull(movie.surfaceTexture), movie.width, movie.height) }
-                    player.seekTo(lastShownUs)
                 }, onFailure = { error ->
+                    preparingPreview = false
                     previewStatus?.text = getString(if (error is IllegalArgumentException) R.string.manual_preview_unavailable else R.string.manual_preview_failed)
                     retry?.visibility = View.VISIBLE
                 })
@@ -669,39 +787,51 @@ class ManualMvpActivity : AppCompatActivity() {
     private fun renderVersion() {
         if (busy || stopping) return
         val frozen = binding ?: return
+        val player = controller ?: return
+        val expectedFrames = frozen.prepared.framePlan.frames.size
+        val settings = frozen.prepared.exportSettings
+        val target = frozen.request.outputFile
         exporting = true
         setBusy(true, getString(R.string.manual_exporting))
         val sequence = ++generation
-        stopPreview(keepPrepared = true) {
-            if (destroyed || !started || sequence != generation) return@stopPreview
-            binding = null // The export job exclusively owns this prepared lifetime until finally.
+        binding = null // No UI getter may borrow an input after the GL owner disposes it.
+        player.renderPrepared { outcome ->
+            // Display/audio and the prepared lifetime have actually retired on their GL owner.
+            surfaces.forEach { held -> held.surface.release(); if (held.destroyed) held.texture.release() }
+            surfaces.clear()
+            if (controller === player) { controller = null; player.close() }
             jobs.execute {
                 exportThread = Thread.currentThread()
-                val target = frozen.request.outputFile
                 var published: CompletedRenderStore.Entry? = null
                 var linked = false
                 val result = try { runCatching {
                     checkCurrent(sequence)
-                    target.parentFile!!.mkdirs()
-                    val frames = MediaCodecSpeedRampRenderer.render(frozen.request)
+                    when (outcome) {
+                        is MediaCodecSpeedRampRenderer.Outcome.Failed -> throw outcome.cause
+                        is MediaCodecSpeedRampRenderer.Outcome.Saved -> require(outcome.frameCount == expectedFrames)
+                    }
+                    require(target.isFile && target.length() > 0)
+                    requireVideoShape(target, settings)
+                    val latest = loadEditable(frozen.projectId)
+                    require(latest.current.id == frozen.revisionId)
                     checkCurrent(sequence)
-                    require(frames == frozen.prepared.framePlan.frames.size && target.isFile && target.length() > 0)
-                    requireVideoShape(target, frozen.prepared.exportSettings)
-                    val latest = store.load(frozen.project.id)
-                    require(latest.current.id == frozen.project.current.id)
-                    checkCurrent(sequence)
-                    val entry = CompletedRenderStore.publish(filesDir, target, getString(R.string.manual_export_summary, latest.current.id))
+                    val origin = latest.selectedVideos.orEmpty().mapNotNull { it.captureOrigin }.distinct().singleOrNull()
+                    val capture = origin?.let { CompletedRenderStore.CaptureLink(it.sessionId, it.takeOrdinal, it.recommended) }
+                    val entry = CompletedRenderStore.publish(filesDir, target,
+                        getString(R.string.manual_export_summary, latest.current.id), capture, projectId = latest.id)
                     published = entry
                     checkCurrent(sequence)
                     store.save(latest.copy(exports = latest.exports + ProjectExportRef(latest.current.id,
-                        entry.file.name, frozen.prepared.exportSettings)), expectedRevisionId = latest.current.id)
+                        entry.file.name, settings)), expectedRevisionId = latest.current.id)
                     linked = true
+                    capture?.let { link -> runCatching {
+                        CaptureSessionStore(filesDir).attachResult(link.sessionId, entry.file.name, link.takeOrdinal, link.recommended)
+                    } }
                 } } finally {
                     try {
                         target.delete()
                         if (!linked) published?.let { entry -> entry.file.delete(); File(entry.file.parentFile, "${entry.file.name}.properties").delete() }
                     } finally {
-                        frozen.prepared.close()
                         exportThread = null
                     }
                 }
@@ -843,7 +973,7 @@ class ManualMvpActivity : AppCompatActivity() {
             jobs.execute {
                 val result = runCatching {
                     checkCurrent(sequence)
-                    val previous = store.load(id)
+                    val previous = loadEditable(id)
                     val updated = apply(previous)
                     if (updated !== previous && updated != previous) {
                         checkCurrent(sequence)
@@ -862,18 +992,15 @@ class ManualMvpActivity : AppCompatActivity() {
         val size = project.current.visualSettings.aspect.size(1080)
         return ProjectExportSettings(size.width, size.height, project.fps, 8_000_000, 192_000)
     }
+    private fun loadEditable(id: String): HybridProject {
+        val loaded = store.loadWithAnalysisStatus(id)
+        require(!loaded.analysisRegenerationRequired) { "Данные анализа проекта повреждены; требуется восстановление" }
+        return loaded.project
+    }
     private fun unsupportedReason(project: HybridProject): String? {
-        val revision = project.current
-        val graph = revision.graph
         if (project.selectedVideos == null) return getString(R.string.manual_unsupported)
-        if (graph.frameAttachments.frames.isNotEmpty() || graph.frameAttachments.maskRefinements.isNotEmpty() ||
-            graph.sourceAttachments.any { it.timeline.frames.isNotEmpty() || it.timeline.maskRefinements.isNotEmpty() })
-            return getString(R.string.manual_unsupported)
-        if (revision.texts.isNotEmpty() || revision.textState.layers.isNotEmpty() ||
-            revision.textState.captions.isNotEmpty() || revision.style.showAuthoredText)
-            return getString(R.string.manual_unsupported)
-        if (revision.visualSettings.framings.any { it.key.aspect == revision.visualSettings.aspect && it.value.mode != FramingMode.MANUAL })
-            return getString(R.string.manual_unsupported)
         return null
     }
+
+    companion object { const val EXTRA_PROJECT_ID = "editable_project_id" }
 }
