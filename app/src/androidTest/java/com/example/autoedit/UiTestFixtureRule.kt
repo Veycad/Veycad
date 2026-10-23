@@ -45,7 +45,10 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         instrumentation.runOnMainSync { app.resetSession() }
         context.getSystemService(android.app.NotificationManager::class.java).cancelAll()
         cleanGallery()
-        context.filesDir.listFiles()?.forEach { it.deleteRecursively() }
+        // The runner collects this run's native AAC evidence after all screen tests.
+        // Clear it at the run boundary, while ordinary per-test app data stays isolated.
+        context.filesDir.listFiles()?.filterNot { it.name == "source-audio-native-evidence" }
+            ?.forEach { it.deleteRecursively() }
         context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
         File(context.applicationInfo.dataDir, "shared_prefs").listFiles()?.forEach { file ->
             context.getSharedPreferences(file.nameWithoutExtension, 0).edit().clear().commit()

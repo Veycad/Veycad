@@ -1,0 +1,13 @@
+{
+  "format": "custom-music-software-aac-reviewed-pins-v1",
+  "source_commit": "f893221c8d89cb798b829bebe71d55e1a3f242fd",
+  "artifact_id": 11707458538,
+  "run_id": 38154571916,
+  "attempt": 1,
+  "head_sha": "ef0788b4ea5cb32b5e36d135f3d85bb5ca0d2ab1",
+  "zip_sha256": "06958c95c230c8db8210d5e60b97551d2adf8429df855d08b7fe648e6400d173",
+  "materials_sha256": "405546b2fabf2b7b07061d237d1b66c590f9a553ad5f88d86ec750e9b322b62f",
+  "jni_sha256": "5d4fea54e753859f42159dcf8b090cd7d525df7e26238559dc71b57965ee9753",
+  "jni_source_sha256": "d733dc07bcdc5f69d299dfd8522651eb7f37db50448a1dafb87f1d4fd4fd36ad",
+  "independent_review_complete": true
+}

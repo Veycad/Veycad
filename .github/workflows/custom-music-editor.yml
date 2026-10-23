@@ -1,0 +1,67 @@
+name: Custom music editor MVP
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: custom-music-editor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  mvp:
+    if: github.head_ref == 'codex/custom-music-editor-mvp' || github.ref_name == 'codex/custom-music-editor-mvp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358 cmake;3.22.1'
+      - name: Verify music editor regressions
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --console=plain :app:testDebugUnitTest --tests '*CustomMusicEditorIntegrationTest' --tests '*CustomAudioTest' --tests '*HybridProjectCodecTest'
+      - name: Build the installable APK
+        run: |
+          ./gradlew --no-daemon --console=plain :app:assembleMusicEditor -PsourceSha="$(git rev-parse HEAD)"
+          mkdir -p build/reports/music-editor
+          cp app/build/outputs/apk/musicEditor/app-universal-musicEditor.apk build/reports/music-editor/Veycad-custom-music-editor.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging build/reports/music-editor/Veycad-custom-music-editor.apk > build/reports/music-editor/apk-info.txt
+          grep -q "package: name='com.veycad.app.musiceditor'" build/reports/music-editor/apk-info.txt
+          git rev-parse HEAD > build/reports/music-editor/source-sha.txt
+          sha256sum build/reports/music-editor/*.apk > build/reports/music-editor/sha256.txt
+      - name: Build the test harness
+        run: ./gradlew --no-daemon --console=plain :app:assembleUiTest :app:assembleUiTestAndroidTest -PsourceSha="$(git rev-parse HEAD)"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test import, saved editor, offset and native export
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          emulator-port: 5556
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-front emulated -camera-back emulated
+          script: bash tools/run_music_editor_smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: custom-music-editor-mvp
+          path: |
+            build/reports/music-editor/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error

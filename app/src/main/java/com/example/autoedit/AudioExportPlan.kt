@@ -34,19 +34,19 @@ object AudioExportPlan {
 
     private const val MAX_WINDOW_SEGMENTS = 100_000L
 
-    fun loop(trackDurationUs: Long, outputDurationUs: Long): List<Segment> {
-        require(trackDurationUs > 0 && outputDurationUs > 0)
+    fun loop(trackDurationUs: Long, outputDurationUs: Long, sourceStartUs: Long = 0L): List<Segment> {
+        require(trackDurationUs > 0 && outputDurationUs > 0 && sourceStartUs in 0 until trackDurationUs)
         val result = mutableListOf<Segment>(); var output = 0L
         while (output < outputDurationUs) {
-            val size = minOf(trackDurationUs, outputDurationUs - output)
-            result += Segment(0L, size, output); output += size
+            val size = minOf(trackDurationUs - sourceStartUs, outputDurationUs - output)
+            result += Segment(sourceStartUs, sourceStartUs + size, output); output += size
         }
         return result
     }
 
     /** Music always spans the graph's rendered duration, never the raw camera duration. */
     fun forGraph(trackDurationUs: Long, graph: MontageGraph): List<Segment> =
-        loop(trackDurationUs, graph.outputDurationMs * 1_000L)
+        loop(trackDurationUs, graph.outputDurationMs * 1_000L, graph.audioTrack?.sourceStartUs ?: 0L)
 
     /** AAC access units are timestamped from sample count, avoiding accumulated millisecond drift. */
     fun presentationTimeUs(encodedSamples: Long, sampleRate: Int): Long {

@@ -118,7 +118,9 @@ internal object MediaFrameVisualAnalyzer {
                             subjectQuality = subjectQuality,
                             subjectOcclusion = subjectOcclusion,
                             maskTemporalIou = semantic?.maskTemporalIou ?: 0f,
-                            faceRegion = semantic.faceRegion
+                            faceRegion = semantic.faceRegion,
+                            detectedFaceCount = semantic.detectedFaceCount,
+                            faceInferenceSucceeded = semantic.faceInferenceSucceeded
                         )
                     }
                     observations += observationForFrame(timeUs, estimate, semantic,
@@ -199,7 +201,8 @@ internal object MediaFrameVisualAnalyzer {
             motionMeasurement = motionMeasurement.takeIf { semantic != null },
             faceInferenceSucceeded = semantic?.faceInferenceSucceeded ?: false,
             gestureEvidenceAvailable = semantic?.gestureEvidenceAvailable ?: false,
-            cameraMeasurement = cameraMeasurement.takeIf { semantic != null }
+            cameraMeasurement = cameraMeasurement.takeIf { semantic != null },
+            detectedFaceCount = semantic?.detectedFaceCount
         )
 
     /** Aspect-preserving full-frame area integration is only for explicit correspondence.

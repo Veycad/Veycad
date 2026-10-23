@@ -29,7 +29,7 @@ class DirectorScreenTest {
         onView(withId(R.id.selectStyleButton)).check(matches(isEnabled()))
         onView(withId(R.id.myEditsButton)).check(matches(isEnabled()))
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Heartbeat")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Пульс под музыку")))
         onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · от 15 секунд")))
         onView(withId(R.id.renderHint)).check(matches(withText("Сначала добавь видео")))
         onView(withId(R.id.appVersion)).check(matches(withSubstring(BuildConfig.VERSION_NAME)))
@@ -94,7 +94,7 @@ class DirectorScreenTest {
         ui.awaitDisplayed(R.id.directorContent)
         ui.awaitText(R.id.musicSelection, "108 BPM")
         onView(withId(R.id.videoSelection)).check(matches(withText("1 · first-scene.mp4\n2 · second-scene.mp4")))
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("DUALITY")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Диалог двух сцен")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
     }
 
@@ -124,7 +124,7 @@ class DirectorScreenTest {
         ui.recreate()
         ui.awaitDisplayed(R.id.directorContent)
         ui.awaitText(R.id.musicSelection, "122 BPM")
-        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("FEAR")))
+        onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Динамичный бит")))
         onView(withId(R.id.videoSelection)).check(matches(withText("motion.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
         assertTrue(source.exists())

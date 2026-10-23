@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaFrameVisualAnalyzerTest {
+    @Test fun count_is_propagated_from_current_semantics_without_guessing_from_largest_face() {
+        for (count in listOf(0, 1, 2, null)) {
+            val current = semantics(faceSucceeded = count != null).copy(detectedFaceCount = count)
+            val observation = MediaFrameVisualAnalyzer.observationForFrame(0, estimate, current)
+            assertEquals(count, observation.detectedFaceCount)
+            assertEquals(count != null, observation.faceInferenceSucceeded)
+        }
+        assertNull(MediaFrameVisualAnalyzer.observationForFrame(0, estimate, null).detectedFaceCount)
+    }
     private val pixels = LumaMotionEstimator.Plane(12, 18, FloatArray(12 * 18) { .5f })
     private val estimate = LumaMotionEstimator.estimate(null, pixels)
     private fun semantics(face: VisualEventMap.Face? = VisualEventMap.Face(.9f, 24f),
@@ -41,11 +50,11 @@ class MediaFrameVisualAnalyzerTest {
         assertTrue(map.events.none { it.type == VisualEventMap.EventType.GESTURE })
     }
 
-    @Test fun one_portrait_plus_failed_frames_cannot_supply_two_human_witnesses_for_any_product() {
+    @Test fun one_portrait_plus_failed_frames_cannot_supply_two_human_witnesses_for_authored_products() {
         val observations = listOf(MediaFrameVisualAnalyzer.observationForFrame(0, estimate, semantics())) +
             (1..3).map { MediaFrameVisualAnalyzer.observationForFrame(it * 250_000L, estimate, null) }
         val visual = VisualEventMap(2_000_000L, emptyList(), observations)
-        for (recipe in MontageStyleCatalog.Recipe.values()) {
+        for (recipe in MontageStyleCatalog.Recipe.entries.filter { it !in setOf(MontageStyleCatalog.Recipe.GALLERY_MONTAGE, MontageStyleCatalog.Recipe.CUSTOM_MUSIC) }) {
             val maps = if (recipe == MontageStyleCatalog.Recipe.DUALITY_LOOP) listOf(visual, visual) else listOf(visual)
             val rejection = try {
                 MaterialSuitability.checkHumanEvidence(recipe, maps)

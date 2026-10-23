@@ -7,6 +7,22 @@ plugins {
     id("com.android.application")
 }
 
+// MVP instrumentation compiles only the reused real helpers/editor cases, never the
+// uiTest fake application. The default complete uiTest source set remains unchanged.
+val mvpDeviceTests = providers.gradleProperty("deviceTestBuildType").orNull == "mvp"
+val mvpSmokeSources = layout.buildDirectory.dir("generated/mvpSmokeSources")
+val prepareMvpSmokeSources by tasks.registering(Sync::class) {
+    from("src/androidTest/java") {
+        include("com/example/autoedit/SyntheticVideo.kt",
+            "com/example/autoedit/UiXmlRunListener.kt",
+            "com/example/autoedit/TextEditActivityDeviceTest.kt")
+    }
+    into(mvpSmokeSources)
+}
+if (mvpDeviceTests) tasks.configureEach {
+    if (name == "preMvpAndroidTestBuild") dependsOn(prepareMvpSmokeSources)
+}
+
 // Network access is build-time only. The application contains the verified model in assets.
 val speechAssets = layout.buildDirectory.dir("generated/speechAssets")
 val prepareSpeechAssets by tasks.registering {
@@ -59,6 +75,8 @@ android {
         targetSdk = 36
         versionCode = 17
         versionName = "0.1.16"
+        buildConfigField("boolean", "GALLERY_MVP", "false")
+        buildConfigField("String", "SOURCE_SHA", "\"${providers.gradleProperty("sourceSha").orElse("local").get()}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild.cmake {
             arguments += listOf("-DFETCHCONTENT_BASE_DIR=" + File(System.getProperty("user.home"), ".cache/veycad-speech/cmake").path.replace('\\','/'))
@@ -67,6 +85,34 @@ android {
     }
 
     buildTypes {
+        create("manualMvp") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".manualmvp"
+            versionNameSuffix = "-manual-mvp"
+            matchingFallbacks += "debug"
+        }
+        create("integrated") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".integrated2"
+            versionNameSuffix = "-integrated"
+            buildConfigField("boolean", "GALLERY_MVP", "true")
+            matchingFallbacks += "debug"
+        }
+        create("musicEditor") {
+            initWith(getByName("integrated"))
+            applicationIdSuffix = ".musiceditor"
+            versionNameSuffix = "-music-editor"
+            resValue("string", "app_name", "Veykad · своя музыка")
+        }
+        create("mvp") {
+            initWith(getByName("debug"))
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".mvp"
+            versionNameSuffix = "-mvp"
+            buildConfigField("boolean", "GALLERY_MVP", "true")
+            matchingFallbacks += "debug"
+        }
         create("cameraPilot") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".camera"
@@ -79,10 +125,22 @@ android {
             matchingFallbacks += "debug"
         }
     }
-    testBuildType = "uiTest"
+    testBuildType = providers.gradleProperty("deviceTestBuildType").orNull ?: "uiTest"
+
+    // Saved-MP4 diagnostics are opt-in and absent from the ordinary UI test APK/inventory.
+    if (providers.gradleProperty("customMusicTargeted").orNull == "true") {
+        sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicDiagnostic/java"
+    }
+    // Remote diagnostic only: prebuilt JNI never enters an application source set.
+    if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
+        sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicSoftwareDiagnostic/kotlin"
+        // The remote runner populates this directory before Gradle; Android SourceSet accepts a File.
+        sourceSets.getByName("androidTest").jniLibs.srcDir(layout.buildDirectory.dir("customMusicSoftwareDiagnostic/jniLibs").get().asFile)
+    }
 
     buildFeatures {
         buildConfig = true
+        resValues = true
     }
 
     splits {
@@ -106,6 +164,8 @@ android {
     }
     androidResources { noCompress += "bin" }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/speechAssets").get().asFile)
+    if (mvpDeviceTests) sourceSets.getByName("androidTest").java.setSrcDirs(
+        listOf(mvpSmokeSources.get().asFile))
 
     lint {
         // This product currently has one Russian-localized UI. Keep correctness, permissions,
@@ -122,6 +182,13 @@ android {
 }
 
 androidComponents {
+    if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
+        onVariants(selector().withBuildType("uiTest")) { variant ->
+            // Keep the reviewed binary byte-for-byte in the diagnostic test APK.
+            checkNotNull(variant.androidTest) { "Software audio diagnostic requires the uiTest AndroidTest variant" }
+                .packaging.jniLibs.keepDebugSymbols.add("**/libsoftware_aac_probe.so")
+        }
+    }
     beforeVariants(selector().all()) { variant ->
         (variant as com.android.build.api.variant.HasUnitTestBuilder).enableUnitTest =
             variant.buildType == "debug"
