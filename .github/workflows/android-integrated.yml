@@ -1,0 +1,78 @@
+name: Android integrated APK
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-integrated-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrated:
+    if: github.head_ref == 'codex/samsung-integrated' || github.ref_name == 'codex/samsung-integrated' || github.head_ref == 'codex/custom-music-editor-mvp' || github.ref_name == 'codex/custom-music-editor-mvp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358 cmake;3.22.1'
+      - name: Build the combined app and retain exact provenance
+        env:
+          PULL_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          chmod +x gradlew
+          checkout_sha=$(git rev-parse HEAD)
+          test "$checkout_sha" = "$PULL_HEAD_SHA"
+          ./gradlew --no-daemon --console=plain :app:assembleIntegrated -PsourceSha="$checkout_sha"
+          mkdir -p build/reports/integrated
+          cp app/build/outputs/apk/integrated/app-universal-integrated.apk build/reports/integrated/Veycad-integrated-universal.apk
+          printf 'checkout_sha=%s\npull_head_sha=%s\n' "$checkout_sha" "$PULL_HEAD_SHA" > build/reports/integrated/provenance.txt
+          cd build/reports/integrated
+          sha256sum Veycad-integrated-universal.apk > sha256.txt
+          cat sha256.txt >> provenance.txt
+      - name: Build existing gallery-enabled test harness
+        run: ./gradlew --no-daemon --console=plain --max-workers=2 :app:assembleMvp :app:assembleMvpAndroidTest -PdeviceTestBuildType=mvp -PsourceSha="$(git rev-parse HEAD)"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify gallery admission, native export, preview, save and share
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          avd-name: IntegratedGallery_API36
+          emulator-port: 5556
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            bash tools/run_mvp_smoke.sh gallery-import
+            mkdir -p build/reports/mvp
+            cp app/build/outputs/apk/mvp/app-universal-mvp.apk build/reports/mvp/app-mvp.apk
+            bash tools/run_mvp_smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integrated-universal-apk
+          path: |
+            build/reports/integrated/
+            build/reports/mvp/
+            !build/reports/mvp/app-mvp.apk
+          if-no-files-found: error

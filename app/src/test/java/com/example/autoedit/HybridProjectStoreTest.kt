@@ -16,6 +16,95 @@ class HybridProjectStoreTest {
         return storageProject(listOf(assets.import(video, ProjectAsset.Kind.VIDEO, 2_000_000),
             assets.import(music, ProjectAsset.Kind.AUDIO, 2_000_000)))
     }
+    @Test fun richTextSurvivesReopenHistoryResetsAndPrunedExportWithoutRewritingBlobs() {
+        val files = temporary.newFolder()
+        val store = HybridProjectStore(files)
+        val base = initial(store)
+        val originalText = persistenceText()
+        val original = base.original.copy(textState = originalText)
+        val project = base.copy(original = original, current = original)
+        store.create(project)
+        val authorText = originalText.copy(language = "ru", captionsEdited = true,
+            captions = originalText.captions.map { it.copy(manuallyReviewed = true) })
+        val edited = HybridEditCommands.commitRevision(project, project.current.copy(textState = authorText,
+            graph = project.current.graph.copy(audioTrack = MontageGraph.AudioTrack("music", .7f, 1_234_567L))))
+            .copy(exports = listOf(ProjectExportRef(1, "text.mp4", ProjectExportSettings(720, 1280, 30, 1000, 100))))
+        store.save(edited, 0)
+        val revisionDir = File(store.directory(project.id), "revisions")
+        val retainedBytes = revisionDir.listFiles()!!.associate { it.name to it.readBytes() }
+        val later = HybridEditCommands.commitRevision(edited, edited.current.copy(
+            textState = authorText.copy(language = "en")))
+        store.save(later, edited.current.id)
+        val undone = HybridEditCommands.undo(later)
+        store.save(undone, later.current.id)
+        val reopened = HybridProjectStore(files).load(project.id)
+        assertEquals(undone, reopened)
+        assertEquals(originalText, reopened.original.textState)
+        assertEquals(authorText, reopened.current.textState)
+        assertEquals(later.current.textState, reopened.redo.single().textState)
+        assertEquals(originalText, reopened.undo.single().textState)
+        assertEquals(listOf(true, false) + List(2) { listOf(true, false, true, false) }.flatten() +
+            List(2) { listOf(true, false, false, false) }.flatten(),
+            reopened.original.textState.captions.map { it.needsReview })
+        assertTrue(reopened.current.textState.captions.none { it.needsReview })
+        assertTrue(reopened.current.textState.captions.any { !it.confidenceCalibrated })
+        val nullPlate = reopened.original.textState.layers.first().style
+        assertNull(nullPlate.plate)
+        assertEquals(TextPlate.NONE, nullPlate.resolvedPlate)
+        assertEquals(TextPlate.DARK, nullPlate.copy(darkPlate = true).resolvedPlate)
+        val explicitNone = reopened.original.textState.layers.first { it.style.plate == TextPlate.NONE && it.style.darkPlate }.style
+        assertEquals(TextPlate.NONE, explicitNone.resolvedPlate)
+        assertEquals(TextPlate.NONE, explicitNone.copy(darkPlate = false).resolvedPlate)
+        assertEquals(TextLayerKind.LEGACY, reopened.original.textState.layers.first().kind)
+        assertEquals(2000, reopened.original.textState.layers.first().text.length)
+        assertEquals(1_234_567L, reopened.current.graph.audioTrack!!.sourceStartUs)
+        assertEquals(1_234_567L, reopened.redo.single().graph.audioTrack!!.sourceStartUs)
+        assertEquals(0L, reopened.original.graph.audioTrack!!.sourceStartUs)
+        val redone = HybridEditCommands.redo(reopened)
+        store.save(redone, reopened.current.id)
+        val pointer = File(store.directory(project.id), "CURRENT")
+        val beforeStaleSave = pointer.readBytes()
+        assertThrows(IllegalStateException::class.java) { store.save(edited, 0) }
+        assertArrayEquals(beforeStaleSave, pointer.readBytes())
+        val slipped = HybridEditCommands.slipClip(redone, "c", 10_000)
+        store.save(slipped, redone.current.id)
+        val montageReset = HybridEditCommands.restoreMontage(slipped)
+        store.save(montageReset, slipped.current.id)
+        assertEquals(redone.current.textState, HybridProjectStore(files).load(project.id).current.textState)
+        val automaticReset = HybridEditCommands.restoreAutomatic(montageReset)
+        store.save(automaticReset, montageReset.current.id)
+        assertEquals(originalText, HybridProjectStore(files).load(project.id).current.textState)
+        var pruned = automaticReset
+        repeat(55) { index ->
+            pruned = HybridEditCommands.commitRevision(pruned, pruned.current.copy(
+                textState = originalText.copy(language = if (index % 2 == 0) "en" else "ru")))
+        }
+        store.save(pruned, automaticReset.current.id)
+        val finalProject = HybridProjectStore(files).load(project.id)
+        assertFalse(finalProject.undo.any { it.id == edited.current.id })
+        assertEquals(edited.current, HybridProjectStore(files).loadRevision(project.id, finalProject.exports.single().revisionId))
+        retainedBytes.forEach { (name, bytes) -> assertArrayEquals(bytes, File(revisionDir, name).readBytes()) }
+    }
+
+    private fun persistenceText(): HybridTextState {
+        val styles = listOf<TextPlate?>(null, TextPlate.NONE, TextPlate.DARK, TextPlate.ACCENT).flatMap { plate ->
+            listOf(false, true).map { dark -> TextStyle(font = TextFont.MONO, animation = TextAnimation.SCALE,
+                darkPlate = dark, plate = plate) }
+        }
+        val layers = styles.mapIndexed { index, style ->
+            val kind = TextLayerKind.entries[index % TextLayerKind.entries.size]
+            TextLayer("layer-$index", if (index == 0) "Я".repeat(2000) else "Текст 😀", 100, 900_000, style, kind)
+        }
+        val cues = listOf(false, true).map { manual -> CaptionCue("unknown-$manual", "Речь", 100, 900_000,
+            manuallyReviewed = manual) } + listOf(0.0, .74, .75, 1.0).flatMap { confidence ->
+            listOf(false, true).flatMap { calibrated -> listOf(false, true).map { manual ->
+                CaptionCue("cue-$confidence-$calibrated-$manual", "Речь", 100, 900_000,
+                    confidence, manual, calibrated)
+            } }
+        }
+        return HybridTextState(layers, cues, styles.last().copy(darkPlate = false))
+    }
+
     @Test fun interruptedSaveKeepsPreviousRevision() {
         val files = temporary.newFolder()
         val store = HybridProjectStore(files)

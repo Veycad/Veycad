@@ -21,6 +21,7 @@ internal object MaterialSuitability {
         recipe: MontageStyleCatalog.Recipe,
         visualMaps: List<VisualEventMap>
     ) {
+        if (recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC) return
         val hasEvidence = visualMaps.map { map -> map.observations.count {
             it.humanPresenceConfidence >= .55f || (it.face?.confidence ?: 0f) >= .65f
         } >= 2 }

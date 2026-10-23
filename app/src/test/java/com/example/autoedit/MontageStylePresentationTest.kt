@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MontageStylePresentationTest {
+    @Test fun hidden_gallery_copy_keeps_full_selected_source_order() {
+        val gallery = MontageStyleCatalog.galleryMontage
+        val copy = MontageStylePresentation.forStyle(gallery)
+        assertEquals("Ролик из галереи", copy.title)
+        assertEquals("В разработке", copy.sourceHint)
+        assertNull(copy.minimumSourceDurationMs)
+        val selected = (0 until 20).map { "selected-$it.mp4" }
+        assertEquals(selected, MontageStylePresentation.restoredSources(selected, gallery))
+    }
     @Test fun style_selector_explains_the_result_in_familiar_language() {
         assertEquals("Динамичный бит", MontageStylePresentation.forStyle(MontageStyleCatalog.fearStrobe).title)
         assertEquals("Пульс под музыку", MontageStylePresentation.forStyle(MontageStyleCatalog.heartbeat).title)
@@ -12,8 +21,8 @@ class MontageStylePresentationTest {
 
     @Test fun active_products_have_distinct_owned_identity_and_grammar() {
         val copies = MontageStyleCatalog.available.map(MontageStylePresentation::forStyle)
-        assertEquals(3, copies.map { it.symbol }.distinct().size)
-        assertEquals(3, copies.map { it.subtitle }.distinct().size)
+        assertEquals(copies.size, copies.map { it.symbol }.distinct().size)
+        assertEquals(copies.size, copies.map { it.subtitle }.distinct().size)
         copies.forEach { copy ->
             assertTrue(copy.selectorLabel.contains(copy.title))
             assertFalse(copy.selectorLabel.contains("Σ"))

@@ -45,4 +45,34 @@ class GlProgramOwnershipTest {
         assertTrue(driver.shaders.isEmpty())
         assertTrue(driver.programs.isEmpty())
     }
+    @Test fun linkFailureKeepsItsCauseWhenNativeCleanupAlsoFails() {
+        val driver = Driver()
+        val cause = IllegalStateException("link failed")
+        val cleanup = IllegalArgumentException("native delete failed")
+        val failing = object : GlProgramOwnership.Driver by driver {
+            override fun link(program: Int) { throw cause }
+            override fun deleteProgram(program: Int) { driver.deleteProgram(program); throw cleanup }
+            override fun deleteShader(shader: Int) { driver.deleteShader(shader); throw cleanup }
+        }
+        assertSame(cause, assertThrows(IllegalStateException::class.java) {
+            GlProgramOwnership.create(failing, "vertex", "fragment")
+        })
+        assertTrue(driver.shaders.isEmpty())
+        assertTrue(driver.programs.isEmpty())
+        assertTrue(cause.suppressed.isNotEmpty())
+    }
+
+    @Test fun shaderCleanupFailureDoesNotStrandTheLinkedProgram() {
+        val driver = Driver()
+        val cleanup = IllegalArgumentException("shader delete failed")
+        val failing = object : GlProgramOwnership.Driver by driver {
+            override fun deleteShader(shader: Int) { driver.deleteShader(shader); throw cleanup }
+        }
+        assertSame(cleanup, assertThrows(IllegalArgumentException::class.java) {
+            GlProgramOwnership.create(failing, "vertex", "fragment")
+        })
+        assertTrue(driver.shaders.isEmpty())
+        assertTrue(driver.programs.isEmpty())
+    }
+
 }

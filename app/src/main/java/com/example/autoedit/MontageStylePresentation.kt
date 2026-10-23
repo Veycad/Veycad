@@ -9,25 +9,34 @@ internal object MontageStylePresentation {
         val sourceCount: Int,
         val minimumSourceDurationMs: Long?,
         val unavailableLabel: String? = null,
+        val customMusic: Boolean = false,
         val profileName: String = title,
         val tags: List<String> = emptyList()
     ) {
-        val selectorLabel: String get() = "$symbol   $title\n" +
-            if (profileName == title) subtitle else "$profileName · $subtitle"
-        val addSourceLabel: String get() = if (sourceCount == 2) "Добавить 2 видео" else "Добавить видео"
+        val selectorLabel: String get() = "$symbol   $title\n$subtitle"
+        val addSourceLabel: String get() = when (sourceCount) {
+            20 -> "Добавить 1–20 видео"
+            2 -> "Добавить 2 видео"
+            else -> "Добавить видео"
+        }
         val sourceHint: String get() {
             unavailableLabel?.let { return it }
+            if (sourceCount == 20) return "1–20 видео MP4 · H.264 · без HDR"
             val seconds = requireNotNull(minimumSourceDurationMs) / 1_000L
             return if (sourceCount == 2) "2 видео · каждое от $seconds секунд"
             else "1 видео · от $seconds секунд"
         }
         val musicPlaceholder: String get() = unavailableLabel?.let { "♫ $it" }
-            ?: "♫ Музыка для стиля «$title» подберётся автоматически"
+            ?: "♫ Выберите трек · $title".takeIf { customMusic }
+            ?: "♫ Музыка для $title подберётся автоматически"
         val musicLoading: String get() = unavailableLabel?.let { "♫ $it" }
-            ?: "♫ Подбираю музыку для стиля «$title»…"
+            ?: "♫ Анализирую трек · $title…".takeIf { customMusic }
+            ?: "♫ Подбираю музыку для $title…"
 
         fun sourceDisplay(names: List<String>): String = when {
             names.isEmpty() -> sourceHint
+            sourceCount == 20 -> "Выбрано ${names.size} видео\n" + names.mapIndexed { index, name ->
+                "${index + 1} · $name" }.joinToString("\n")
             sourceCount == 2 && names.size >= 2 -> "1 · ${names[0]}\n2 · ${names[1]}"
             sourceCount == 2 -> "Выбрано 1 из 2 · ${names[0]}"
             else -> names[0]
@@ -67,9 +76,12 @@ internal object MontageStylePresentation {
             MontageStyleCatalog.Recipe.HEARTBEAT -> "♥"
             MontageStyleCatalog.Recipe.FEAR_STROBE -> "⚡"
             MontageStyleCatalog.Recipe.DUALITY_LOOP -> "↔"
+            MontageStyleCatalog.Recipe.CUSTOM_MUSIC -> "♫"
+            MontageStyleCatalog.Recipe.GALLERY_MONTAGE -> "▦"
             null -> "○"
         }
         val subtitle = if (style.recipe == MontageStyleCatalog.Recipe.SIGMA) style.unavailableLabel
+            else if (style.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC) "Ваш трек · склейки по ритму"
             else tags.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: style.description
         return Copy(
             symbol, title, subtitle, style.sourceCount,
@@ -80,6 +92,7 @@ internal object MontageStylePresentation {
                 else -> EditDurationPolicy.MINIMUM_MS
             },
             unavailableLabel = style.unavailableLabel.takeIf { !style.available },
+            customMusic = style.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
             profileName = style.title,
             tags = tags
         )

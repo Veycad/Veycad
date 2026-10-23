@@ -7,6 +7,27 @@ plugins {
     id("com.android.application")
 }
 
+val previewSourceSha = providers.environmentVariable("GIT_SHA").orNull?.also {
+    require(it.matches(Regex("[0-9a-f]{40}"))) { "GIT_SHA must be a complete source commit" }
+} ?: providers.gradleProperty("sourceSha").orElse("local-unverified").get()
+
+// MVP instrumentation compiles only real helpers/editor cases, without the uiTest fake app.
+val mvpDeviceTests = providers.gradleProperty("deviceTestBuildType").orNull == "mvp"
+val mvpSmokeSources = layout.buildDirectory.dir("generated/mvpSmokeSources")
+val prepareMvpSmokeSources by tasks.registering(Sync::class) {
+    from("src/androidTest/java") {
+        include("com/example/autoedit/SyntheticVideo.kt",
+            "com/example/autoedit/UiXmlRunListener.kt",
+            "com/example/autoedit/TextEditActivityDeviceTest.kt")
+    }
+    from("src/uiTest/java") { include("com/example/autoedit/SyntheticVideo.kt") }
+    from("src/mvpSmoke/java") { include("com/example/autoedit/GalleryImportDeviceTest.kt") }
+    into(mvpSmokeSources)
+}
+if (mvpDeviceTests) tasks.configureEach {
+    if (name == "preMvpAndroidTestBuild") dependsOn(prepareMvpSmokeSources)
+}
+
 // Network access is build-time only. The application contains the verified model in assets.
 val speechAssets = layout.buildDirectory.dir("generated/speechAssets")
 val prepareSpeechAssets by tasks.registering {
@@ -59,6 +80,9 @@ android {
         targetSdk = 36
         versionCode = 17
         versionName = "0.1.16"
+        buildConfigField("boolean", "GALLERY_MVP", "false")
+        buildConfigField("String", "SOURCE_SHA", "\"$previewSourceSha\"")
+        buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "false")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild.cmake {
             arguments += listOf("-DFETCHCONTENT_BASE_DIR=" + File(System.getProperty("user.home"), ".cache/veycad-speech/cmake").path.replace('\\','/'))
@@ -67,6 +91,36 @@ android {
     }
 
     buildTypes {
+        create("manualMvp") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
+            matchingFallbacks += "debug"
+        }
+        create("integrated") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".integrated2"
+            versionNameSuffix = "-integrated"
+            buildConfigField("boolean", "GALLERY_MVP", "true")
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
+            matchingFallbacks += "debug"
+        }
+        create("musicEditor") {
+            initWith(getByName("integrated"))
+            applicationIdSuffix = ".musiceditor"
+            versionNameSuffix = "-music-editor"
+            resValue("string", "app_name", "Veykad · своя музыка")
+        }
+        create("mvp") {
+            initWith(getByName("debug"))
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".mvp"
+            versionNameSuffix = "-mvp"
+            buildConfigField("boolean", "GALLERY_MVP", "true")
+            matchingFallbacks += "debug"
+        }
         create("cameraPilot") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".camera"
@@ -75,14 +129,27 @@ android {
         }
         create("uiTest") {
             initWith(getByName("debug"))
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
             applicationIdSuffix = if (providers.gradleProperty("textDeviceTest").orNull == "true") ".texttest" else ".uitest"
             matchingFallbacks += "debug"
         }
     }
-    testBuildType = "uiTest"
+    testBuildType = providers.gradleProperty("deviceTestBuildType").orNull ?: "uiTest"
+
+    // Saved-MP4 diagnostics are opt-in and absent from the ordinary UI test APK/inventory.
+    if (providers.gradleProperty("customMusicTargeted").orNull == "true") {
+        sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicDiagnostic/java"
+    }
+    // Remote diagnostic only: prebuilt JNI never enters an application source set.
+    if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
+        sourceSets.getByName("androidTest").kotlin.directories += "src/customMusicSoftwareDiagnostic/kotlin"
+        // The remote runner populates this directory before Gradle; Android SourceSet accepts a File.
+        sourceSets.getByName("androidTest").jniLibs.srcDir(layout.buildDirectory.dir("customMusicSoftwareDiagnostic/jniLibs").get().asFile)
+    }
 
     buildFeatures {
         buildConfig = true
+        resValues = true
     }
 
     splits {
@@ -106,6 +173,11 @@ android {
     }
     androidResources { noCompress += "bin" }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/speechAssets").get().asFile)
+    if (mvpDeviceTests) {
+        val selectedSmokeSources = listOf(mvpSmokeSources.get().asFile)
+        sourceSets.getByName("androidTest").java.setSrcDirs(selectedSmokeSources)
+        sourceSets.getByName("androidTest").kotlin.setSrcDirs(selectedSmokeSources)
+    }
 
     lint {
         // This product currently has one Russian-localized UI. Keep correctness, permissions,
@@ -122,6 +194,13 @@ android {
 }
 
 androidComponents {
+    if (providers.gradleProperty("customMusicSoftwareAudioProbe").orNull == "true") {
+        onVariants(selector().withBuildType("uiTest")) { variant ->
+            // Keep the reviewed binary byte-for-byte in the diagnostic test APK.
+            checkNotNull(variant.androidTest) { "Software audio diagnostic requires the uiTest AndroidTest variant" }
+                .packaging.jniLibs.keepDebugSymbols.add("**/libsoftware_aac_probe.so")
+        }
+    }
     beforeVariants(selector().all()) { variant ->
         (variant as com.android.build.api.variant.HasUnitTestBuilder).enableUnitTest =
             variant.buildType == "debug"
@@ -130,6 +209,7 @@ androidComponents {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test:core-ktx:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")

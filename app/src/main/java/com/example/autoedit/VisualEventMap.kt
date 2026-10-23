@@ -146,10 +146,13 @@ data class VisualEventMap(
         /** Zero is a measured absence of gesture only when current pose evidence is available. */
         val gestureEvidenceAvailable: Boolean = gestureConfidence > 0f,
         /** May exist when body motion is unknown; never manufacture a zero-valued subject. */
-        val cameraMeasurement: CameraMeasurement? = null
+        val cameraMeasurement: CameraMeasurement? = null,
+        /** Successful inference counts every face; null is unknown, never zero. */
+        val detectedFaceCount: Int? = null
     ) {
         init {
             require(sourceTimeUs >= 0L)
+            require(detectedFaceCount == null || (detectedFaceCount >= 0 && faceInferenceSucceeded))
             require(cameraMeasurement == null || cameraMeasurement.currentTimeUs == sourceTimeUs)
             require(gestureConfidence in 0f..1f && occlusionConfidence in 0f..1f &&
                 personMaskConfidence in 0f..1f && personMaskTemporalIou in 0f..1f &&

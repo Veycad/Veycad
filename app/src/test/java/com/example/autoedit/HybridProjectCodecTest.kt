@@ -40,6 +40,60 @@ internal fun storageProject(assets: List<ProjectAsset> = listOf(
 
 class HybridProjectCodecTest {
     @get:Rule val temporary = TemporaryFolder()
+    @Test fun richTextReaderRejectsUnknownTagsAndInvalidConfidenceInBothPayloads() {
+        val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
+        val base = storageProject()
+        fun payloads(confidence: Double?): List<ByteArray> {
+            val text = HybridTextState(layers = listOf(TextLayer("rich-layer", "Title", 0, 1000,
+                TextStyle(plate = TextPlate.ACCENT), TextLayerKind.TITLE)),
+                captions = listOf(CaptionCue("rich-cue", "confidence-marker", 0, 1000, confidence)))
+            val revision = base.current.copy(textState = text)
+            return listOf(codec.encode(base.copy(original = revision, current = revision)),
+                codec.encodeRevisions(listOf(revision)).getValue(revision.id))
+        }
+        fun uniqueOffset(bytes: ByteArray, marker: String): Int {
+            val target = marker.toByteArray(Charsets.UTF_8)
+            return (0..bytes.size - target.size).filter { index ->
+                target.indices.all { bytes[index + it] == target[it] }
+            }.single()
+        }
+        fun reject(bytes: ByteArray, standalone: Boolean) {
+            assertThrows(IllegalArgumentException::class.java) {
+                if (standalone) codec.decodeRevision(bytes) else codec.decode(bytes)
+            }
+        }
+        payloads(.75).forEachIndexed { index, bytes ->
+            assertEquals(8, ByteBuffer.wrap(bytes).getInt(4))
+            for ((tag, unknown) in listOf("ACCENT" to "ALIEN!", "TITLE" to "BOGUS")) {
+                val corrupt = bytes.copyOf()
+                unknown.toByteArray(Charsets.UTF_8).copyInto(corrupt, uniqueOffset(bytes, tag))
+                reject(corrupt, index == 1)
+            }
+            val confidenceOffset = uniqueOffset(bytes, "confidence-marker") + "confidence-marker".length + 16 + 1
+            for (confidence in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, -.01, 1.01)) {
+                val corrupt = bytes.copyOf()
+                ByteBuffer.wrap(corrupt).putDouble(confidenceOffset, confidence)
+                reject(corrupt, index == 1)
+            }
+        }
+        payloads(null).forEachIndexed { index, bytes ->
+            val corrupt = bytes.copyOf()
+            val calibratedOffset = uniqueOffset(bytes, "confidence-marker") + "confidence-marker".length + 16 + 2
+            corrupt[calibratedOffset] = 1 // Null confidence with calibration is rejected by the owner constructor.
+            reject(corrupt, index == 1)
+        }
+    }
+
+    @Test fun customMusicOffsetSurvivesProjectAndRevisionStorage() {
+        val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
+        val base = storageProject()
+        val revision = base.current.copy(graph = base.current.graph.copy(
+            audioTrack = MontageGraph.AudioTrack("music", .7f, 1_234_567L)),
+            music = base.current.music.copy(startUs = 1_234_567L))
+        val project = base.copy(original = revision, current = revision)
+        assertEquals(project, codec.decode(codec.encode(project)))
+        assertEquals(revision, codec.decodeRevision(codec.encodeRevisions(listOf(revision)).getValue(revision.id)))
+    }
     @Test fun version1ProjectLoadsWithZeroPhase() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val bytes = javaClass.getResourceAsStream("/hybrid-v1/project.bin")!!.use { it.readBytes() }
@@ -59,14 +113,14 @@ class HybridProjectCodecTest {
         assertEquals(revision, codec.decodeRevision(revisionBytes))
     }
 
-    @Test fun version6RoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
+    @Test fun currentVersionRoundTripsSignedCameraPhaseInHistoryAndRevisionBlobs() {
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val base = storageProject()
         val revision = base.current.copy(id = 1, parentId = 0,
             clips = base.current.clips.map { it.copy(originalFrameOffset = -2) })
         val project = base.copy(current = revision, nextRevisionId = 2, undo = listOf(base.original))
         val encoded = codec.encode(project)
-        assertEquals(6, ByteBuffer.wrap(encoded).getInt(4))
+        assertEquals(8, ByteBuffer.wrap(encoded).getInt(4))
         val loaded = codec.decode(encoded)
         assertEquals(project, loaded)
         assertEquals(-2, loaded.current.clips.single().originalFrameOffset)
@@ -124,7 +178,7 @@ class HybridProjectCodecTest {
         assertEquals(reset.current, store.loadRevision("project", reset.current.id))
         val codec = HybridProjectCodec(AnalysisSidecarStore(temporary.newFolder()))
         val resetBlob = codec.encodeRevisions(listOf(reset.current)).getValue(reset.current.id)
-        assertEquals(6, ByteBuffer.wrap(resetBlob).getInt(4))
+        assertEquals(8, ByteBuffer.wrap(resetBlob).getInt(4))
         assertEquals(reset.current, codec.decodeRevision(resetBlob))
         val edited = HybridEditCommands.slipClip(reset, "right", 123_456)
         assertFalse(edited.current.restoresAutomaticSources)

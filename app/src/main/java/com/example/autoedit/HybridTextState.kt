@@ -27,7 +27,7 @@ class HybridTextState(
     fun activeLayers(projectTimeUs: Long): List<TextLayer> =
         layers.filter { projectTimeUs >= it.startUs && projectTimeUs < it.endUs && it.text.isNotBlank() } +
             captions.filter { projectTimeUs >= it.startUs && projectTimeUs < it.endUs && it.text.isNotBlank() }
-                .map { TextLayer(it.id, it.text, it.startUs, it.endUs, captionStyle) }
+                .map { TextLayer(it.id, it.text, it.startUs, it.endUs, captionStyle, TextLayerKind.SUBTITLE) }
 
     private fun values() = listOf(layers, captions, captionStyle, captionsEdited, language)
     override fun equals(other: Any?): Boolean = other is HybridTextState && values() == other.values()

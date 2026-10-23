@@ -12,12 +12,50 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.security.MessageDigest
+import java.util.Properties
 import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class TextEditActivityDeviceTest {
     private val context get()=ApplicationProvider.getApplicationContext<android.content.Context>()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
+    @Test fun unreadableDraftIsPreservedAndAnotherVideoCanStillOpen() {
+        val source=SyntheticVideo.create(File(context.cacheDir,"damaged-draft-${UUID.randomUUID()}.mp4"),1000)
+        val other=SyntheticVideo.create(File(context.cacheDir,"good-draft-${UUID.randomUUID()}.mp4"),1000)
+        val replacement=SyntheticVideo.create(File(context.cacheDir,"replacement-${UUID.randomUUID()}.mp4"),1000)
+        val session=TextEditSession.get(context)
+        instrumentation.runOnMainSync { session.open(source) }
+        waitFor { session.state.value?.busy==false && session.state.value?.project?.sourcePath==source.canonicalPath }
+        instrumentation.runOnMainSync {
+            session.update(session.state.value!!.project!!.copy(layers=listOf(
+                TextLayer("saved","Мой заголовок",0,1_000_000))))
+            session.open(other)
+        }
+        waitFor { session.state.value?.busy==false && session.state.value?.project?.sourcePath==other.canonicalPath }
+        val key=MessageDigest.getInstance("SHA-256").digest(source.canonicalPath.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val draft=File(context.filesDir,"text-drafts/$key.properties")
+        val properties=Properties().apply { draft.inputStream().use { load(it) } }
+        properties.setProperty("l.0.style.font","future-or-damaged")
+        draft.outputStream().use { properties.store(it,"unreadable draft") }
+        val preserved=draft.readBytes()
+        val sourceBytes=source.readBytes()
+        val intent=Intent(context,TextEditActivity::class.java).putExtra(TextEditActivity.EXTRA_SOURCE,source.path)
+        ActivityScenario.launch<TextEditActivity>(intent).use {
+            waitFor { session.state.value?.busy==false && session.state.value?.error?.contains("черновик")==true }
+            onView(withText(org.hamcrest.Matchers.containsString("Не удалось прочитать черновик")))
+                .perform(scrollTo())
+                .check(androidx.test.espresso.assertion.ViewAssertions.matches(isDisplayed()))
+            assertEquals(other.canonicalPath,session.state.value!!.project!!.sourcePath)
+            assertArrayEquals(preserved,draft.readBytes())
+            assertArrayEquals(sourceBytes,source.readBytes())
+            instrumentation.runOnMainSync { session.open(replacement) }
+            waitFor { session.state.value?.busy==false && session.state.value?.project?.sourcePath==replacement.canonicalPath }
+            assertNull(session.state.value!!.error)
+            assertArrayEquals(preserved,draft.readBytes())
+        }
+    }
     private fun waitFor(predicate:()->Boolean) {
         val deadline=android.os.SystemClock.elapsedRealtime()+60_000
         while(true) {

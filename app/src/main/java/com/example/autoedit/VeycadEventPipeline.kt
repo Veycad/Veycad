@@ -36,19 +36,29 @@ object VeycadEventPipeline {
         observations: List<VisualEventMap.Observation>,
         frameAttachments: FrameAttachmentTimeline = FrameAttachmentTimeline(),
         requestedOutputDurationMs: Long? = null,
-        requestedStyle: EventMatchingDirector.Style? = null
+        requestedStyle: EventMatchingDirector.Style? = null,
+        audioStartUs: Long = 0L,
+        useAuthoredProfile: Boolean = true,
+        checkCancelled: () -> Unit = {}
     ): Result {
-        val fearProfile = FearStrobeProfile.matchesAudio(audioFile)
-        val dualityProfile = DualityLoopProfile.matchesAudio(audioFile)
+        require(audioStartUs >= 0L && (audioStartUs == 0L || !useAuthoredProfile))
+        val fearProfile = useAuthoredProfile && FearStrobeProfile.matchesAudio(audioFile)
+        val dualityProfile = useAuthoredProfile && DualityLoopProfile.matchesAudio(audioFile)
         val decodeDurationUs = when {
             fearProfile -> maxOf(sourceDurationUs, FearStrobeProfile.OUTPUT_DURATION_US)
             dualityProfile -> maxOf(sourceDurationUs, DualityLoopProfile.OUTPUT_DURATION_US)
+            !useAuthoredProfile -> CustomMusicStore.ANALYSIS_DURATION_US
             else -> sourceDurationUs
         }
-        val decoded = MediaCodecAudioDecoder.decode(audioFile, decodeDurationUs)
-        val analysedAudio = AudioBeatMapAnalyzer.analyze(decoded.mono(), decoded.sampleRate)
+        val decoded = MediaCodecAudioDecoder.decode(audioFile, decodeDurationUs,
+            checkCancelled = checkCancelled, startUs = audioStartUs)
+        require(decoded.frameCount > 0L) { "В выбранном фрагменте нет аудио" }
+        val analysedAudio = if (useAuthoredProfile)
+            AudioBeatMapAnalyzer.analyze(decoded.mono(), decoded.sampleRate, checkCancelled = checkCancelled)
+        else AudioBeatMapAnalyzer.analyzeLoopingFragment(decoded.mono(), decoded.sampleRate,
+            checkCancelled = checkCancelled)
         val sourceDurationMs = sourceDurationUs / 1_000L
-        val referenceProfile = ReferenceMontageProfile.matchesAudio(audioFile)
+        val referenceProfile = useAuthoredProfile && ReferenceMontageProfile.matchesAudio(audioFile)
         val referenceDurationMs: Long? = if (referenceProfile) {
             ReferenceMontageProfile.outputDurationMs(audioFile, sourceDurationMs)
         } else {
@@ -74,7 +84,10 @@ object VeycadEventPipeline {
                 else -> null
             },
             requestedStyle
-        )
+        ).let { result -> result.copy(alternatives = result.alternatives.map { alternative ->
+            alternative.copy(graph = alternative.graph.copy(audioTrack =
+                alternative.graph.audioTrack?.copy(sourceStartUs = audioStartUs)))
+        }) }
     }
 
     fun fromPcm(

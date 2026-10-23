@@ -30,8 +30,13 @@ import org.junit.runner.RunWith
 class StyleVideoPreviewScreenTest {
     @get:Rule val ui = UiTestFixtureRule()
 
-    @Test fun every_available_style_has_a_decodable_three_second_bundled_example() {
-        for (style in MontageStyleCatalog.available) {
+    @Test fun authored_styles_have_decodable_examples_and_additive_routes_have_no_preview() {
+        val demoStyles = listOf(MontageStyleCatalog.heartbeat, MontageStyleCatalog.fearStrobe,
+            MontageStyleCatalog.dualityLoop)
+        assertEquals(demoStyles.map { it.id }.toSet(), MontageStyleCatalog.available
+            .filter { StylePreviewAssets.forStyle(it) != null }.map { it.id }.toSet())
+        for (style in demoStyles) {
+            assertTrue("${style.id}: demo style must remain available", style.available)
             val asset = requireNotNull(StylePreviewAssets.forStyle(style))
             val retriever = MediaMetadataRetriever()
             try {
@@ -47,6 +52,8 @@ class StyleVideoPreviewScreenTest {
                 frame.recycle()
             } finally { retriever.release() }
         }
+        assertNull(StylePreviewAssets.forStyle(MontageStyleCatalog.galleryMontage))
+        assertNull(StylePreviewAssets.forStyle(MontageStyleCatalog.customMusic))
         MontageStyleCatalog.all.filter { !it.available }.forEach { assertNull(StylePreviewAssets.forStyle(it)) }
     }
 

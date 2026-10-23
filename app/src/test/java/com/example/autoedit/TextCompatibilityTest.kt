@@ -26,6 +26,17 @@ class TextCompatibilityTest {
         assertEquals(TextLayerKind.SUBTITLE,p.activeLayers(10).single().kind)
         assertEquals(2,p.activeLayers(10).single().maxLines)
     }
+    @Test fun sharedCaptionProjectionUsesSubtitleKindAndEndExclusiveTime() {
+        val style = TextStyle(font = TextFont.MONO, animation = TextAnimation.SCALE,
+            darkPlate = false, plate = TextPlate.ACCENT)
+        val cue = CaptionCue("shared-cue", "Речь", 100, 1000, .74, true, false)
+        val state = HybridTextState(captions = listOf(cue), captionStyle = style)
+        assertTrue(state.activeLayers(99).isEmpty())
+        assertEquals(listOf(TextLayer(cue.id, cue.text, cue.startUs, cue.endUs, style, TextLayerKind.SUBTITLE)),
+            state.activeLayers(100))
+        assertEquals(TextLayerKind.SUBTITLE, state.activeLayers(999).single().kind)
+        assertTrue(state.activeLayers(1000).isEmpty())
+    }
     @Test fun unknownAndLowConfidenceRequireReviewUntilExplicitManualCheck() {
         val unknown=CaptionCue("c","Речь",0,1000)
         assertTrue(unknown.needsReview)

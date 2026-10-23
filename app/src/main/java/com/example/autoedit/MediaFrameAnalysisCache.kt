@@ -101,7 +101,7 @@ internal object MediaFrameAnalysisCache {
             val semanticModelSuccesses = input.readInt()
             val observationCount = input.checkedCount(MAXIMUM_FRAMES)
             val observations = List(observationCount) { input.readObservation() }
-            val attachments = input.readTimeline()
+            val attachments = input.readTimeline(profile.retainsAttachments)
             require(input.read() == -1) { "Unexpected trailing source analysis cache data" }
             require(durationUs > 0L && observations.isNotEmpty())
             MediaFrameVisualAnalyzer.Result(
@@ -134,6 +134,7 @@ internal object MediaFrameAnalysisCache {
             writeInt(it.cameraCells); writeInt(it.cameraQuadrants); writeLong(it.intervalUs)
         }
         writeBoolean(value.faceInferenceSucceeded)
+        writeOptional(value.detectedFaceCount) { writeInt(it) }
         writeBoolean(value.gestureEvidenceAvailable)
         writeOptional(value.cameraMeasurement) {
             writeFloat(it.x); writeFloat(it.y); writeFloat(it.confidence)
@@ -166,6 +167,7 @@ internal object MediaFrameAnalysisCache {
             readInt(), readFloat(), readInt(), readInt(), readLong())
         },
         faceInferenceSucceeded = readBoolean(),
+        detectedFaceCount = readOptional { readInt() },
         gestureEvidenceAvailable = readBoolean(),
         cameraMeasurement = readOptional {
             VisualEventMap.CameraMeasurement(readFloat(), readFloat(), readFloat(), readInt(), readInt(),
@@ -180,9 +182,13 @@ internal object MediaFrameAnalysisCache {
         value.maskRefinements.forEach { writeAttachment(it) }
     }
 
-    private fun DataInputStream.readTimeline(): FrameAttachmentTimeline {
-        val frames = List(checkedCount(MAXIMUM_FRAMES)) { readAttachment() }
-        val refinements = List(checkedCount(MAXIMUM_REFINEMENTS)) { readAttachment() }
+    private fun DataInputStream.readTimeline(retainsAttachments: Boolean): FrameAttachmentTimeline {
+        val frameCount = checkedCount(MAXIMUM_FRAMES)
+        require(retainsAttachments || frameCount == 0) { "Observation-only cache cannot retain render planes" }
+        val frames = List(frameCount) { readAttachment() }
+        val refinementCount = checkedCount(MAXIMUM_REFINEMENTS)
+        require(retainsAttachments || refinementCount == 0) { "Observation-only cache cannot retain render planes" }
+        val refinements = List(refinementCount) { readAttachment() }
         return FrameAttachmentTimeline(frames, refinements)
     }
 
@@ -200,6 +206,8 @@ internal object MediaFrameAnalysisCache {
         writeOptional(value.maskBlendTarget) { writePlane(it) }
         writeFloat(value.maskBlendProgress)
         writeBoolean(value.maskIsOpacity)
+        writeBoolean(value.faceInferenceSucceeded)
+        writeOptional(value.detectedFaceCount) { writeInt(it) }
     }
 
     private fun DataInputStream.readAttachment() = FrameAttachments(
@@ -215,7 +223,9 @@ internal object MediaFrameAnalysisCache {
         },
         maskBlendTarget = readOptional { readPlane() },
         maskBlendProgress = readFloat(),
-        maskIsOpacity = readBoolean()
+        maskIsOpacity = readBoolean(),
+        faceInferenceSucceeded = readBoolean(),
+        detectedFaceCount = readOptional { readInt() }
     )
 
     private fun DataOutputStream.writePlane(value: FrameAttachments.Plane) {
@@ -262,7 +272,7 @@ internal object MediaFrameAnalysisCache {
     private fun directory(context: Context) = File(context.cacheDir, DIRECTORY).apply { mkdirs() }
 
     private const val MAGIC = 0x56414E4C
-    internal const val VERSION = 18 // Explicit profile/header and completed assessment coverage; older caches have no capability contract.
+    internal const val VERSION = 19 // All-face count and independent face-inference success in observations/attachments.
     private const val DIRECTORY = "full-video-analysis"
     private const val MAXIMUM_ENTRIES = 3
     private const val MAXIMUM_FRAMES = 4_000

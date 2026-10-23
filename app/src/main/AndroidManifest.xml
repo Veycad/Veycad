@@ -9,17 +9,13 @@
          production contract is local-only, so do not ship those permissions. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="Veykad"
+        android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.AutoEdit">
@@ -38,10 +34,12 @@
             android:exported="false"
             android:process=":matte_engine" />
 
+        <activity android:name=".ManualMvpActivity" android:exported="false" />
         <activity android:name=".TextEditActivity" android:exported="false" />
         <activity android:name=".CaptureActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="false" />
+        <activity android:name=".MusicEditorActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"

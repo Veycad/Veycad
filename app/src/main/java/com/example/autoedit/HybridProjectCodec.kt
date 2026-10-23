@@ -12,7 +12,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Primitive format: v5 authored maps/source facts; v6 manual graph payload. Schema stays 1. */
+/** Primitive format: v5 source facts; v6 manual graph; v7 music offset; v8 rich text. Schema stays 1. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
     private val authoredMaps: AuthoredSourceMapStore = sidecars.authoredMaps()) {
     fun encode(project: HybridProject): ByteArray {
@@ -56,12 +56,8 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         }
     }
 
-    internal fun decodeRevision(bytes: ByteArray): HybridRevision {
-        require(bytes.size in 8..MAX_MANIFEST_BYTES)
-        val reader = Reader(DataInputStream(ByteArrayInputStream(bytes)), sidecars, authoredMaps.reader())
-        require(reader.input.readInt() == MAGIC)
-        val format = reader.formatVersion()
-        return reader.revision(format).also { revision ->
+    internal fun decodeRevision(bytes: ByteArray): HybridRevision = decodePayload(bytes) { reader, format ->
+        reader.revision(format).also { revision ->
             require(reader.input.available() == 0)
             require(revision.sourceBackings.keys.all { id -> revision.clips.any { it.id == id } })
             val budget = HybridSourceWindow.ComparisonBudget()
@@ -69,12 +65,8 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         }
     }
 
-    fun decodeWithAnalysisStatus(bytes: ByteArray): ProjectLoadResult {
-        require(bytes.size in 8..MAX_MANIFEST_BYTES)
-        val reader = Reader(DataInputStream(ByteArrayInputStream(bytes)), sidecars, authoredMaps.reader())
+    fun decodeWithAnalysisStatus(bytes: ByteArray): ProjectLoadResult = decodePayload(bytes) { reader, format ->
         with(reader) {
-            require(input.readInt() == MAGIC) { "Not a hybrid project" }
-            val format = formatVersion()
             val id = string(); val fps = input.readInt(); val next = input.readLong()
             val assets = list {
                 val asset = ProjectAsset(string(), string(), enum(), input.readLong(), string(), string())
@@ -90,8 +82,33 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             val exports = list { ProjectExportRef(input.readLong(), string(), ProjectExportSettings(
                 input.readInt(), input.readInt(), input.readInt(), input.readInt(), input.readInt())) }
             require(input.available() == 0) { "Trailing project data" }
-            return ProjectLoadResult(HybridProject(id, 1, fps, next, assets, original, current, undo, redo, exports, selections), missing)
+            ProjectLoadResult(HybridProject(id, 1, fps, next, assets, original, current, undo, redo, exports, selections), missing)
         }
+    }
+
+    private fun <T> decodePayload(bytes: ByteArray, read: (Reader, Int) -> T): T {
+        require(bytes.size in 8..MAX_MANIFEST_BYTES)
+        val header = DataInputStream(ByteArrayInputStream(bytes))
+        require(header.readInt() == MAGIC) { "Not a hybrid project" }
+        val format = header.readInt()
+        require(format in 1..FORMAT_VERSION) { "Unsupported hybrid format $format" }
+        fun parse(richTextV7: Boolean): T {
+            val input = DataInputStream(ByteArrayInputStream(bytes, 8, bytes.size - 8))
+            return read(Reader(input, sidecars, authoredMaps.reader(), richTextV7), format)
+        }
+        if (format != 7) return parse(false)
+
+        // Two published writers used v7. Validate each whole payload; never guess from a field.
+        val valid = mutableListOf<T>()
+        val failures = mutableListOf<Exception>()
+        for (richText in listOf(false, true)) {
+            try { valid += parse(richText) } catch (failure: Exception) { failures += failure }
+        }
+        if (valid.size != 1) {
+            throw IllegalArgumentException(if (valid.isEmpty()) "Invalid hybrid v7 payload" else "Ambiguous hybrid v7 payload")
+                .also { error -> failures.forEach(error::addSuppressed) }
+        }
+        return valid.single()
     }
 
     /** A whole manifest/revision budget, never reset between lists or history entries. */
@@ -175,10 +192,17 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         }
         fun textStyle(value: TextStyle) = with(value) {
             enum(position); enum(font); out.writeFloat(sizeRatio); out.writeInt(color); out.writeBoolean(darkPlate); enum(animation)
+            optional(plate) { enum(it) }
         }
         fun textState(value: HybridTextState) = with(value) {
-            list(layers) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs); textStyle(it.style) }
-            list(captions) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs) }
+            list(layers) {
+                string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs); textStyle(it.style); enum(it.kind)
+            }
+            list(captions) {
+                string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs)
+                optional(it.confidence) { confidence -> out.writeDouble(confidence) }
+                out.writeBoolean(it.manuallyReviewed); out.writeBoolean(it.confidenceCalibrated)
+            }
             textStyle(captionStyle); out.writeBoolean(captionsEdited); string(language)
         }
         fun revision(value: HybridRevision) = with(value) {
@@ -280,7 +304,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         fun graph(value: MontageGraph) = with(value) {
             out.writeInt(version); out.writeLong(sourceDurationMs); out.writeLong(outputDurationMs); enum(profile)
             list(clips) { clip(it) }
-            optional(audioTrack) { string(it.sourceId); out.writeFloat(it.gain) }
+            optional(audioTrack) { string(it.sourceId); out.writeFloat(it.gain); out.writeLong(it.sourceStartUs) }
             list(overlays) { overlay(it) }
             with(metadata) { out.writeInt(schemaVersion); out.writeLong(revision); nullableLong(parentRevision); string(generator) }
             list(parameterTracks) { track(it) }
@@ -318,7 +342,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
     }
 
     private class Reader(val input: DataInputStream, val sidecars: AnalysisSidecarStore,
-        val maps: AuthoredSourceMapStore.Reader) {
+        val maps: AuthoredSourceMapStore.Reader, val richTextV7: Boolean) {
         val missing = linkedSetOf<String>()
         private val arrays = mutableMapOf<String, FloatArray?>()
         private var arrayBytes = 0L
@@ -362,21 +386,23 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(framings.map { it.first }.distinct().size == framings.size)
             return ProjectVisualSettings(aspect, explicit, framings.toMap())
         }
-        fun textStyle() = TextStyle(enum(), enum(), input.readFloat(), input.readInt(), input.readBoolean(), enum())
-        fun textState() = HybridTextState(
-            list { TextLayer(string(), string(), input.readLong(), input.readLong(), textStyle()) },
-            list { CaptionCue(string(), string(), input.readLong(), input.readLong()) },
-            textStyle(), input.readBoolean(), string())
-        fun formatVersion(): Int = input.readInt().also {
-            require(it in 1..FORMAT_VERSION) { "Unsupported hybrid format $it" }
-        }
+        fun textStyle(format: Int) = TextStyle(enum(), enum(), input.readFloat(), input.readInt(), input.readBoolean(), enum(),
+            if (format >= 8 || format == 7 && richTextV7) optional { enum<TextPlate>() } else null)
+        fun textState(format: Int) = HybridTextState(
+            list { TextLayer(string(), string(), input.readLong(), input.readLong(), textStyle(format),
+                if (format >= 8 || format == 7 && richTextV7) enum<TextLayerKind>() else TextLayerKind.LEGACY) },
+            list { CaptionCue(string(), string(), input.readLong(), input.readLong(),
+                if (format >= 8 || format == 7 && richTextV7) optional { input.readDouble() } else null,
+                if (format >= 8 || format == 7 && richTextV7) input.readBoolean() else false,
+                if (format >= 8 || format == 7 && richTextV7) input.readBoolean() else false) },
+            textStyle(format), input.readBoolean(), string())
         fun revision(format: Int): HybridRevision {
             val id = input.readLong(); val parent = nullableLong(); val graph = graph(format)
             val clips = list {
                 val clip = HybridClip(string(), string(), span(), sourceMap(format), clip())
                 when (format) {
                     1 -> clip
-                    2, 3, 4, 5, 6 -> clip.copy(originalFrameOffset = input.readInt())
+                    in 2..FORMAT_VERSION -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -387,11 +413,11 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(locked.distinct().size == locked.size)
             val resetsSources = when (format) {
                 1, 2 -> false
-                3, 4, 5, 6 -> input.readBoolean()
+                in 3..FORMAT_VERSION -> input.readBoolean()
                 else -> error("Unsupported hybrid format")
             }
             val visuals = if (format >= 4) visuals() else ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false)
-            val text = if (format >= 4) textState() else HybridTextState()
+            val text = if (format >= 4) textState(format) else HybridTextState()
             val backings = if (format >= 5) list {
                 string() to HybridSourceBacking(string(), sourceMap(format), input.readInt(), input.readLong(), input.readLong(), input.readBoolean())
             } else emptyList()
@@ -426,10 +452,10 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             "music" -> EffectAnchor.Music(input.readLong(), input.readLong())
             else -> throw IllegalArgumentException("Unknown manual effect anchor $kind")
         }
-        fun manualState() = ManualMontageState(
+        fun manualState(format: Int) = ManualMontageState(
             list { ManualClipState(string(), range(), input.readLong(), list { track() }, optional { phase() }) },
             list { AnchoredMontageEffect(string(), string(), string(), anchor(), input.readBoolean(),
-                optional { overlay(6) }, optional { node(6) }, input.readFloat(), input.readFloat()) })
+                optional { overlay(format) }, optional { node(format) }, input.readFloat(), input.readFloat()) })
         fun timeMapping(): ClipTimeMapping {
             val fps = input.readInt(); val duration = input.readLong(); val origin = input.readLong()
             val count = input.readInt()
@@ -452,14 +478,15 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(version in 1..MontageGraph.CURRENT_VERSION)
             val source = input.readLong(); val duration = input.readLong(); val profile = enum<MontageGraph.Profile>()
             val clips = list { clip() }
-            val audio = optional { MontageGraph.AudioTrack(string(), input.readFloat()) }
+            val audio = optional { MontageGraph.AudioTrack(string(), input.readFloat(),
+                if (format >= 8 || format == 7 && !richTextV7) input.readLong() else 0L) }
             val overlays = list { overlay(format) }
             val metadata = NleProjectMetadata(input.readInt(), input.readLong(), nullableLong(), string())
             val tracks = list { track() }
             val attachments = timeline()
             val effects = GpuEffectGraph(list { node(format) })
             val timing = if (format >= 6) optional { editableTiming() } else null
-            val manual = if (format >= 6) optional { manualState() } else null
+            val manual = if (format >= 6) optional { manualState(format) } else null
             val sources = if (format >= 6) list { SourceAttachments(input.readInt(), timeline()) } else emptyList()
             val overrides = if (format >= 6) optional { ManualRenderOverrides(stringSet(), stringSet()) } else null
             return MontageGraph(source, duration, profile, clips, audio, overlays, metadata, tracks,
@@ -510,7 +537,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 6
+        private const val FORMAT_VERSION = 8
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024

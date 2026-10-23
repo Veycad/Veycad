@@ -1,0 +1,25 @@
+{
+  "producer": "ae8f75842224ddc5c64a85266d22ef2f8b772f23",
+  "codecBlob": "59c8ba57b39a1ac4c89ac550f507f98d18ff763b",
+  "physical": 6,
+  "inventoriedFiles": 14,
+  "rawHiddenTransportOmissions": [],
+  "standaloneRevisions": 4,
+  "stores": [
+    {
+      "zip": "store-history.zip",
+      "members": 12,
+      "hiddenLock": true,
+      "current": "7ce326c0-1be7-44d7-8ecc-49768341e951.bin",
+      "projectSha256": "418d174c4622faa1af90a6f33113a4d544294c0393bbdd76fcbc3f49c8f362f3"
+    },
+    {
+      "zip": "store-final.zip",
+      "members": 14,
+      "hiddenLock": true,
+      "current": "f2038b4b-dc56-40cf-9e4c-1b3e780776ab.bin",
+      "projectSha256": "f1d3358756b42a8a848dfe7c821326b497a428a30fb2c52dda926f27fb5f0615"
+    }
+  ],
+  "verified": true
+}

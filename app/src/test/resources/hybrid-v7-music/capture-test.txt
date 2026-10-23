@@ -1,0 +1,47 @@
+package com.veycad.app
+
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import org.junit.Test
+
+/** Throwaway producer: run with the unchanged published codec selected by CAPTURE_LAYOUT. */
+class HybridV7CaptureTest {
+    @Test fun capture() {
+        val layout = System.getenv("CAPTURE_LAYOUT") ?: return
+        val output = File(System.getenv("CAPTURE_OUTPUT"), layout).apply { mkdirs() }
+        val files = File(output, "files").apply { mkdirs() }
+        val store = HybridProjectStore(files)
+        val base = storageProject()
+        val original = base.original.copy(textState = HybridTextState(
+            layers = listOf(TextLayer("title", "Сохранённый заголовок", 0, 900_000,
+                TextStyle(font = TextFont.MONO, animation = TextAnimation.SCALE,
+                    darkPlate = false, plate = TextPlate.ACCENT), TextLayerKind.TITLE)),
+            captions = listOf(CaptionCue("caption", "Проверенная фраза", 0, 900_000, .74, true, false)),
+            captionStyle = TextStyle(darkPlate = true, plate = TextPlate.NONE), language = "ru"),
+            graph = base.original.graph.copy(audioTrack = if (layout == "music")
+                MontageGraph.AudioTrack("music", .7f, 1_234_567) else base.original.graph.audioTrack))
+        val current = original.copy(id = 1, parentId = 0,
+            clips = original.clips.map { it.copy(originalFrameOffset = -2) },
+            textState = original.textState.copy(language = "en"))
+        val project = base.copy(original = original, current = current, nextRevisionId = 2,
+            undo = listOf(original), exports = listOf(ProjectExportRef(0, "retained.mp4",
+                ProjectExportSettings(1080, 1920, 30, 8_000_000, 192_000))))
+        val dir = store.directory(project.id)
+        val sources = File(dir, "sources").apply { mkdirs() }
+        project.assets.forEach { File(sources, it.fileName).writeText("synthetic ${it.id}") }
+        store.create(project)
+        val codec = HybridProjectCodec(AnalysisSidecarStore(File(dir, "analysis")))
+        File(output, "project.bin").writeBytes(codec.encode(project))
+        codec.encodeRevisions(listOf(original, current)).forEach { (id, bytes) ->
+            File(output, "revision-$id.bin").writeBytes(bytes)
+        }
+        ZipOutputStream(File(output, "store.zip").outputStream()).use { zip ->
+            files.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(files).path }.forEach { file ->
+                zip.putNextEntry(ZipEntry(file.relativeTo(files).invariantSeparatorsPath).apply { time = 0 })
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+    }
+}

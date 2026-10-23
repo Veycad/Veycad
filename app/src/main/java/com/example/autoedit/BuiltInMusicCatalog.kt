@@ -9,7 +9,7 @@ import kotlin.math.exp
 import kotlin.math.sin
 import kotlin.math.tanh
 
-/** Local phonk catalog. The authored reference track is bundled with the user's permission. */
+/** Authored scores and the existing procedural gallery score; every track has a product route. */
 object BuiltInMusicCatalog {
     data class Track(
         val id: String,
@@ -53,31 +53,13 @@ object BuiltInMusicCatalog {
         R.raw.duality_loop_author
     )
 
-    val tracks: List<Track> = listOf(
-        Track("neon_drift", "Neon Drift", 156, 55.00, intArrayOf(0, 3, 5, 7), .03),
-        Track("midnight_torque", "Midnight Torque", 148, 49.00, intArrayOf(0, 0, 7, 5), .07),
-        Track("chrome_ghost", "Chrome Ghost", 164, 58.27, intArrayOf(0, 5, 3, 10), .02),
-        Track("asphalt_ritual", "Asphalt Ritual", 142, 46.25, intArrayOf(0, 7, 5, 3), .09),
-        Track("grave_circuit", "Grave Circuit", 154, 51.91, intArrayOf(0, 7, 3, 10), .065),
-        Track("night_lane", "Night Lane", 152, 51.91, intArrayOf(0, 5, 7, 3), .06),
-        Track("shadow_clutch", "Shadow Clutch", 160, 43.65, intArrayOf(0, 0, 3, 7), .04),
-        Track("violet_rev", "Violet Rev", 146, 65.41, intArrayOf(0, 8, 7, 3), .08),
-        Track("concrete_pulse", "Concrete Pulse", 158, 55.00, intArrayOf(0, 10, 7, 5), .05),
-        Track(
-            "leonid_reentry",
-            "Leonid Re-entry",
-            121,
-            49.00,
-            intArrayOf(0, 3, 8, 7),
-            .10,
-            R.raw.leonid_reentry_phonk
-        )
-    )
+    private val sigmaTrack = Track("leonid_reentry", "Leonid Re-entry", 121, 49.00,
+        intArrayOf(0, 3, 8, 7), .10, R.raw.leonid_reentry_phonk)
+    private val galleryTrack = Track("neon_drift", "Neon Drift", 156, 55.00, intArrayOf(0, 3, 5, 7), .03)
+    val tracks: List<Track> = listOf(sigmaTrack, heartbeatTrack, fearTrack, dualityTrack, galleryTrack)
 
     fun select(context: Context, styleId: String): Selection {
-        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         val track = trackForStyle(styleId)
-        preferences.edit().putString(LAST_TRACK, track.id).apply()
         val directory = File(context.filesDir, "built-in-music").apply { mkdirs() }
         val resourceId = track.rawResourceId
         val file = File(
@@ -102,6 +84,7 @@ object BuiltInMusicCatalog {
         MontageStyleCatalog.heartbeat.id -> heartbeatTrack
         MontageStyleCatalog.fearStrobe.id -> fearTrack
         MontageStyleCatalog.dualityLoop.id -> dualityTrack
+        MontageStyleCatalog.galleryMontage.id -> tracks.single { it.id == "neon_drift" }
         else -> error("No production music route for montage style: $styleId")
     }
 
@@ -203,8 +186,6 @@ object BuiltInMusicCatalog {
         write(value ushr 24 and 0xff)
     }
 
-    private const val PREFERENCES = "built_in_music"
-    private const val LAST_TRACK = "last_track"
     private const val GENERATOR_VERSION = 1
     private const val ASSET_VERSION = 1
     private const val SAMPLE_RATE = 44_100

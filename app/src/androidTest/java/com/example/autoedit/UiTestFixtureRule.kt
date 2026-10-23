@@ -45,7 +45,10 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         instrumentation.runOnMainSync { app.resetSession() }
         context.getSystemService(android.app.NotificationManager::class.java).cancelAll()
         cleanGallery()
-        context.filesDir.listFiles()?.forEach { it.deleteRecursively() }
+        // The runner collects this run's native AAC evidence after all screen tests.
+        // Clear it at the run boundary, while ordinary per-test app data stays isolated.
+        context.filesDir.listFiles()?.filterNot { it.name == "source-audio-native-evidence" }
+            ?.forEach { it.deleteRecursively() }
         context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
         File(context.applicationInfo.dataDir, "shared_prefs").listFiles()?.forEach { file ->
             context.getSharedPreferences(file.nameWithoutExtension, 0).edit().clear().commit()
@@ -55,7 +58,6 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         fixture = SyntheticVideo.create(File(context.getDir("ui-fixtures", 0), "synthetic.mp4"))
         renderer.outputFixture = fixture
         if (grantPermissions) {
-            grant(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE)
             if (Build.VERSION.SDK_INT >= 33) grant(Manifest.permission.POST_NOTIFICATIONS)
         }
         Intents.init()
@@ -122,12 +124,14 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         while (launched) {
             var busy = false
             instrumentation.runOnMainSync { busy = app.editSession.state.value?.busy == true }
-            if (!busy) break
+            if (!busy && MediaWorkCoordinator.process.snapshot() == MediaWorkCoordinator.Snapshot(0, false)) break
             if (SystemClock.elapsedRealtime() >= deadline) throw AssertionError("Session did not become idle")
             SystemClock.sleep(25)
         }
         instrumentation.waitForIdleSync()
     }
+    fun selectedSources(): List<File> = SourceDraftStore(context.filesDir).read()?.entries.orEmpty()
+        .map { File(context.filesDir, "source-draft/${it.fileName}") }
     fun waitUntil(description: String, timeoutMs: Long = 15_000, condition: () -> Boolean) {
         if (!launched) error("Launch activity before waiting for $description")
         onView(isRoot()).perform(object : ViewAction {
@@ -186,7 +190,7 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         // New responses replace earlier responses instead of a first-match stale stub.
         Intents.release()
         Intents.init()
-        intending(anyOf(hasAction(Intent.ACTION_PICK), hasAction(Intent.ACTION_OPEN_DOCUMENT)))
+        intending(hasAction(Intent.ACTION_OPEN_DOCUMENT))
             .respondWith(android.app.Instrumentation.ActivityResult(code, data))
     }
     fun startRender() {
@@ -214,7 +218,7 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
             assertEquals(0, cursor.getInt(1))
             val uri = android.content.ContentUris.withAppendedId(collection, cursor.getLong(0))
             val bytes = resolver.openInputStream(uri)!!.use { it.readBytes() }
-            assertArrayEquals(File(context.filesDir, "my-edits/$filename").readBytes(), bytes)
+            assertArrayEquals(CompletedRenderStore.savedFiles(context.filesDir).single { it.name == filename }.readBytes(), bytes)
         }
     }
     private fun cleanGallery() {

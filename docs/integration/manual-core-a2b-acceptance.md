@@ -1,9 +1,14 @@
 # A2b: durable manual montage acceptance contract
 
-Status: acceptance tests are a checkpoint for the common-core owner. The current
-`main` codec does not persist `MontageGraph.manualMontageState`; remote RED and
-later A2b GREEN have not yet been observed for this checkpoint. These tests do
-not complete storage, runtime, physical-source, or artistic acceptance.
+Status: historical A2b acceptance checkpoint. At the producer BASE below,
+manual-state persistence was still pending. The current canonical
+`HybridProjectCodec` format 6 (and later compatible formats) persists
+`MontageGraph.manualMontageState`, editable timing, sources and manual overrides;
+`ManualMontagePersistenceTest` and `HybridManualPayloadCompatibilityTest` cover
+durable round trips and legacy defaults. These JVM tests passed in the combined
+storage/reliability baseline; this document's earlier unobserved-RED status is
+not the current storage status. Physical-source, device-runtime and artistic
+acceptance remain open and are not implied by the JVM result.
 
 ## Producer and storage authority
 

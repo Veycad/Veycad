@@ -11,14 +11,15 @@ Runtime permission tests run first with denied grants; all other tests run after
 param(
     [string]$Serial = 'emulator-5556',
     [string]$AvdName = 'AutoEditUi_API36',
-    [string]$SdkRoot = ''
+    [string]$SdkRoot = '',
+    [switch]$LegacySaveOnly
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $uiProjectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $uiPackage = 'com.veycad.app.uitest'
-$uiPermissionClass = 'com.veycad.app.RuntimePermissionsTest'
+$uiPermissionClass = if ($LegacySaveOnly) { 'com.veycad.app.AutomaticSaveDestinationTest' } else { 'com.veycad.app.RuntimePermissionsTest' }
 $uiWindows = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
 $uiNativeExtension = if ($uiWindows) { '.exe' } else { '' }
 $uiWrapper = Join-Path $uiProjectRoot $(if ($uiWindows) { 'gradlew.bat' } else { 'gradlew' })
@@ -34,9 +35,12 @@ function Invoke-UiNative {
     $ErrorActionPreference = 'Continue'
     # Invocation errors must not inherit a previous successful native exit code.
     $global:LASTEXITCODE = $null
-    $uiLines = @(& $Executable @Arguments 2>&1 | ForEach-Object { $_.ToString() })
+    $uiLines = @(& $Executable @Arguments 2>&1 | ForEach-Object {
+        $uiLine = $_.ToString()
+        if ($EchoOutput) { Write-Host $uiLine }
+        $uiLine
+    })
     $uiExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { $LASTEXITCODE }
-    if ($EchoOutput) { $uiLines | ForEach-Object { Write-Host $_ } }
     [pscustomobject]@{ ExitCode = $uiExitCode; Output = ($uiLines -join "`n") }
 }
 
@@ -98,6 +102,10 @@ function Invoke-UiPhase {
     if (Test-Path -LiteralPath $uiLatestXml) { Remove-Item -LiteralPath $uiLatestXml }
     # Delete exactly one report owned by the isolated app before instrumentation.
     Invoke-UiAdb @('shell', 'run-as', $uiPackage, 'rm', '-f', 'files/ui-test-results.xml') | Out-Null
+    if ($Name -eq 'screens') {
+        # Fresh evidence for this run; later per-test resets must retain it for collection.
+        Invoke-UiAdb @('shell', 'run-as', $uiPackage, 'rm', '-rf', '--', 'files/source-audio-native-evidence') | Out-Null
+    }
     $uiResult = Invoke-UiNative -Executable $uiAdb -EchoOutput -Arguments @(
         '-s', $Serial, 'shell', 'am', 'instrument', '-w', '-r',
         '-e', 'listener', 'com.veycad.app.UiXmlRunListener',
@@ -107,6 +115,57 @@ function Invoke-UiPhase {
     $uiResult.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'instrumentation.txt') -Encoding UTF8
     $uiLogcat = Invoke-UiNative -Executable $uiAdb -Arguments @('-s', $Serial, 'logcat', '-d', '-v', 'threadtime')
     $uiLogcat.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'logcat.txt') -Encoding UTF8
+    $uiMediaFailure = $null
+    if ($Name -eq 'screens') {
+        # Binary-safe on Windows PowerShell 5 as well as pwsh: no native redirection or text
+        # pipeline may touch the emulator-produced AAC/WAV/MP4 bytes, including failed tests.
+        $uiMediaPath = Join-Path $uiArchive 'source-audio-native-evidence.tar'
+        $uiMediaPartial = "$uiMediaPath.partial"
+        $uiStart = [Diagnostics.ProcessStartInfo]::new()
+        $uiStart.FileName = $uiAdb
+        $uiStart.Arguments = "-s $Serial exec-out run-as $uiPackage tar -cf - files/source-audio-native-evidence"
+        $uiStart.UseShellExecute = $false
+        $uiStart.CreateNoWindow = $true
+        $uiStart.RedirectStandardOutput = $true
+        $uiStart.RedirectStandardError = $true
+        $uiMediaError = ''
+        try {
+            $uiProcess = [Diagnostics.Process]::Start($uiStart)
+            try {
+                $uiMedia = [IO.File]::Create($uiMediaPartial)
+                try {
+                    $uiErrorRead = $uiProcess.StandardError.ReadToEndAsync()
+                    $uiProcess.StandardOutput.BaseStream.CopyTo($uiMedia)
+                    $uiProcess.WaitForExit()
+                    $uiMediaError = $uiErrorRead.GetAwaiter().GetResult()
+                    if ($uiProcess.ExitCode -ne 0) { throw "Source AAC evidence collection failed: $uiMediaError" }
+                } finally { $uiMedia.Dispose() }
+            } finally { $uiProcess.Dispose() }
+            # exec-out can merge remote stderr into stdout and report zero even for missing files.
+            $uiPython = if (-not [string]::IsNullOrWhiteSpace($env:PYTHON)) { $env:PYTHON }
+                elseif ($uiWindows) { 'python' } else { 'python3' }
+            $uiValidation = Invoke-UiNative -Executable $uiPython -Arguments @(
+                (Join-Path $uiProjectRoot 'tools/verify_source_aac.py'), '--validate-archive', $uiMediaPartial)
+            if ($uiValidation.ExitCode -ne 0) { throw "Invalid source AAC transfer: $($uiValidation.Output)" }
+            Move-Item -LiteralPath $uiMediaPartial -Destination $uiMediaPath
+            (Get-FileHash -LiteralPath $uiMediaPath -Algorithm SHA256).Hash | Set-Content -LiteralPath "$uiMediaPath.sha256" -Encoding ASCII
+        } catch {
+            $uiPrefixHex = ''
+            if (Test-Path -LiteralPath $uiMediaPartial) {
+                $uiPrefixStream = [IO.File]::OpenRead($uiMediaPartial)
+                try {
+                    $uiPrefix = [byte[]]::new(96)
+                    $uiPrefixCount = $uiPrefixStream.Read($uiPrefix, 0, $uiPrefix.Length)
+                    $uiPrefixHex = [BitConverter]::ToString($uiPrefix, 0, $uiPrefixCount)
+                } finally { $uiPrefixStream.Dispose() }
+            }
+            $uiMediaFailure = "$($_.Exception.Message)`nstderr=$uiMediaError`ntransferPrefixHex=$uiPrefixHex"
+            $uiMediaFailure | Set-Content -LiteralPath (Join-Path $uiArchive 'source-audio-collection-error.txt') -Encoding UTF8
+            if (Test-Path -LiteralPath $uiMediaPartial) { Remove-Item -LiteralPath $uiMediaPartial }
+            Write-Warning $uiMediaFailure
+            # Continue pulling native XML: a transfer failure must not hide test failures/counts.
+        }
+    }
     $uiPulled = Invoke-UiNative -Executable $uiAdb -Arguments @(
         '-s', $Serial, 'exec-out', 'run-as', $uiPackage, 'cat', 'files/ui-test-results.xml'
     )
@@ -159,7 +218,8 @@ function Invoke-UiPhase {
         instrumentation_exit_code = $uiResult.ExitCode; executed = $uiExecuted
         instrumentation_finished = $uiFinished; report_totals_match = $uiTotalsMatch
         xml_reports = $uiReportCount; report_directory = $uiArchive
-        passed = ($uiResult.ExitCode -eq 0 -and $uiFinished -and $uiTotalsMatch -and $Expected.Count -gt 0 -and $uiReportCount -gt 0 -and
+        source_audio_collection_error = $uiMediaFailure
+        passed = ($null -eq $uiMediaFailure -and $uiResult.ExitCode -eq 0 -and $uiFinished -and $uiTotalsMatch -and $Expected.Count -gt 0 -and $uiReportCount -gt 0 -and
             $uiExecuted -eq $Expected.Count -and $uiCases.Count -eq $Expected.Count -and $uiFailures -eq 0 -and $uiErrors -eq 0 -and
             $uiSkipped -eq 0 -and $uiDuplicateCount -eq 0 -and $uiMissing.Count -eq 0 -and $uiUnexpected.Count -eq 0)
     }
@@ -169,8 +229,10 @@ function Invoke-UiPhase {
 
 $uiSucceeded = $false
 $uiFailureMessage = $null
+$uiRestart = $null
 Push-Location -LiteralPath $uiProjectRoot
 try {
+    & (Join-Path $uiProjectRoot 'tools/test_ui_runner.ps1')
     if ($Serial -notmatch '^emulator-(\d+)$' -or [int]$Matches[1] -lt 5556 -or [int]$Matches[1] % 2 -ne 0) {
         throw 'Use a dedicated emulator on an even port >=5556; the owner emulator-5554 is excluded.'
     }
@@ -199,8 +261,9 @@ try {
         throw "$Serial must run dedicated AVD '$AvdName'; actual '$($uiActualAvd -join ',')'."
     }
     if ((Invoke-UiAdb @('shell', 'getprop', 'sys.boot_completed')).Trim() -ne '1') { throw 'The UI emulator has not completed boot.' }
-    if ([int](Invoke-UiAdb @('shell', 'getprop', 'ro.build.version.sdk')).Trim() -ne 36) {
-        throw 'The permission-dialog selectors in this complete runner are verified on API 36.'
+    $uiExpectedApi = if ($LegacySaveOnly) { 28 } else { 36 }
+    if ([int](Invoke-UiAdb @('shell', 'getprop', 'ro.build.version.sdk')).Trim() -ne $uiExpectedApi) {
+        throw "This test selection requires API $uiExpectedApi."
     }
     # Only the verified dedicated emulator receives temporary display/animation settings.
     foreach ($uiSetting in @(
@@ -226,29 +289,46 @@ try {
         throw 'Expected two permission tests and a nonempty ordinary UI suite.'
     }
     $uiBuild = Invoke-UiNative -Executable $uiWrapper -EchoOutput -Arguments @(
-        '--no-daemon', '--console=plain', ':app:assembleUiTest', ':app:assembleUiTestAndroidTest'
+        '--no-daemon', '--max-workers=2', '--console=plain', '-PpreviewNativeCi=true', ':app:assembleUiTest', ':app:assembleUiTestAndroidTest'
     )
     if ($uiBuild.ExitCode -ne 0) { throw 'Could not assemble isolated UI APKs.' }
     Assert-UiApk -MetadataPath (Join-Path $uiProjectRoot 'app/build/outputs/apk/uiTest/output-metadata.json') -ExpectedPackage $uiPackage
     Assert-UiApk -MetadataPath (Join-Path $uiProjectRoot 'app/build/outputs/apk/androidTest/uiTest/output-metadata.json') -ExpectedPackage "$uiPackage.test" -Instrumentation
     Invoke-UiAdb @('install', '-r', (Join-Path $uiProjectRoot 'app/build/outputs/apk/uiTest/app-universal-uiTest.apk')) | Out-Null
     Invoke-UiAdb @('install', '-r', (Join-Path $uiProjectRoot 'app/build/outputs/apk/androidTest/uiTest/app-uiTest-androidTest.apk')) | Out-Null
-    foreach ($uiPermission in @('android.permission.READ_MEDIA_VIDEO', 'android.permission.POST_NOTIFICATIONS')) {
-        Invoke-UiAdb @('shell', 'pm', 'revoke', $uiPackage, $uiPermission) | Out-Null
-        Invoke-UiAdb @('shell', 'pm', 'clear-permission-flags', $uiPackage, $uiPermission, 'user-set', 'user-fixed') | Out-Null
+    if (-not $LegacySaveOnly) {
+        Invoke-UiAdb @('shell', 'pm', 'revoke', $uiPackage, 'android.permission.POST_NOTIFICATIONS') | Out-Null
+        Invoke-UiAdb @('shell', 'pm', 'clear-permission-flags', $uiPackage, 'android.permission.POST_NOTIFICATIONS', 'user-set', 'user-fixed') | Out-Null
     }
-    $uiPackageState = Invoke-UiAdb @('shell', 'dumpsys', 'package', $uiPackage)
-    if ($uiPackageState -match 'android\.permission\.READ_MEDIA_VISUAL_USER_SELECTED:\s+granted=true') {
-        Invoke-UiAdb @('shell', 'pm', 'revoke', $uiPackage, 'android.permission.READ_MEDIA_VISUAL_USER_SELECTED') | Out-Null
-        Invoke-UiAdb @('shell', 'pm', 'clear-permission-flags', $uiPackage, 'android.permission.READ_MEDIA_VISUAL_USER_SELECTED', 'user-set', 'user-fixed') | Out-Null
+    if ($LegacySaveOnly) {
+        Invoke-UiPhase -Name 'legacy-save' -SelectionArgument 'class' -Expected $uiPermissionExpected
+    } else {
+        Invoke-UiPhase -Name 'permissions' -SelectionArgument 'class' -Expected $uiPermissionExpected
+        Invoke-UiPhase -Name 'screens' -SelectionArgument 'notClass' -Expected $uiOrdinaryExpected
     }
-    Invoke-UiPhase -Name 'permissions' -SelectionArgument 'class' -Expected $uiPermissionExpected
-    Invoke-UiPhase -Name 'screens' -SelectionArgument 'notClass' -Expected $uiOrdinaryExpected
-    $uiSucceeded = $uiPhases.Count -eq 2 -and @($uiPhases | Where-Object { -not $_.passed }).Count -eq 0
+    $uiExpectedPhases = if ($LegacySaveOnly) { 1 } else { 2 }
+    $uiSucceeded = $uiPhases.Count -eq $uiExpectedPhases -and @($uiPhases | Where-Object { -not $_.passed }).Count -eq 0
+    if ($uiSucceeded -and -not $LegacySaveOnly) {
+        $uiRestartRun = Invoke-UiNative -Executable (Get-Process -Id $PID).Path -EchoOutput -Arguments @(
+            '-NoProfile', '-File', (Join-Path $uiProjectRoot 'tools/run_atomic_import_restart_tests.ps1'),
+            '-Serial', $Serial, '-AvdName', $AvdName, '-SdkRoot', $SdkRoot
+        )
+        if ($uiRestartRun.ExitCode -ne 0) { throw 'Atomic import process restart checks failed.' }
+        $uiRestart = Get-Content -LiteralPath (Join-Path $uiProjectRoot 'build/reports/ui-tests/atomic-import-restart.json') -Raw | ConvertFrom-Json
+        $uiSucceeded = $uiRestart.passed -eq $true -and @($uiRestart.phases).Count -eq 2
+    }
 } catch {
+    $uiSucceeded = $false
     $uiFailureMessage = $_.Exception.Message
     Write-Host "UI verification failed: $uiFailureMessage"
 } finally {
+    # Pull while emulator-runner still owns a live device, even when instrumentation failed.
+    # Only the isolated synthetic fixture screenshots are collected.
+    try {
+        $uiPreviewEvidence = Join-Path $uiProjectRoot 'build/reports/ui-tests/preview-evidence'
+        New-Item -ItemType Directory -Path $uiPreviewEvidence -Force | Out-Null
+        Invoke-UiAdb @('pull', '/sdcard/Android/data/com.veycad.app.uitest/files/preview-evidence/.', $uiPreviewEvidence) | Out-Null
+    } catch { Write-Host "Preview evidence unavailable: $($_.Exception.Message)" }
     foreach ($uiOriginalSetting in $uiOriginalSettings) {
         try {
             if ($uiOriginalSetting.Value -eq 'null' -or [string]::IsNullOrWhiteSpace($uiOriginalSetting.Value)) {
@@ -273,6 +353,7 @@ try {
         serial = $Serial; avd = $AvdName; package = $uiPackage; run_id = $uiRunId
         run = $(if ($null -eq $uiTotalRun) { 0 } else { $uiTotalRun })
         passed = $uiSucceeded; error = $uiFailureMessage; phases = $uiPhases.ToArray()
+        atomic_import_restart = $uiRestart
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $uiSummaryFile -Encoding UTF8
 }
 if (-not $uiSucceeded) { exit 1 }
