@@ -221,11 +221,28 @@ class MediaWorkSessionDeviceTest {
         ui.awaitIdle(); idle()
         ui.click(R.id.backFromSettingsButton)
         ui.importVideos("new-selection.mp4")
+        val session = EditSession.get(ui.context)
+        val snapshot = requireNotNull(SourceDraftStore(ui.context.filesDir).read())
+        val sources = ui.selectedSources().associateWith(File::readBytes)
         ui.startRender(); ui.renderer.complete(); ui.awaitIdle(); idle()
-        assertNull(EditSession.get(ui.context).state.value!!.draft)
+        val entry = requireNotNull(session.state.value!!.entry)
+        val exportBytes = entry.file.readBytes()
+        fun assertRetained() {
+            val state = session.state.value!!
+            assertTrue(state.sourceSelectionConfirmed)
+            assertEquals(listOf("new-selection.mp4"), state.draft!!.names)
+            assertEquals(sources.keys.map { it.canonicalFile }, state.draft.files.map { it.canonicalFile })
+            assertEquals(snapshot, SourceDraftStore(ui.context.filesDir).read())
+            sources.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
+            assertEquals(entry, state.entry)
+            assertArrayEquals(exportBytes, entry.file.readBytes())
+        }
+        assertRetained()
         ui.recreate()
+        ui.awaitIdle(); idle()
+        assertRetained()
         assertEquals("new-selection.mp4", ui.text(R.id.videoSelection))
-        assertTrue(File(ui.context.filesDir, "source-draft").listFiles().orEmpty().any { it.extension == "mp4" })
+        assertEquals(sources.keys.map { it.canonicalFile }, ui.selectedSources().map { it.canonicalFile })
     }
 
     @Test fun interruptedTextImportRecoveryPreservesSourcesLinksAndProviderFiles() {
