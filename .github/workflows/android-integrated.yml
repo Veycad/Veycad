@@ -45,7 +45,26 @@ jobs:
           cd build/reports/integrated
           sha256sum Veycad-integrated-universal.apk > sha256.txt
           cat sha256.txt >> provenance.txt
+      - name: Build existing gallery-enabled import test harness
+        run: ./gradlew --no-daemon --console=plain --max-workers=2 :app:assembleMvp :app:assembleMvpAndroidTest -PdeviceTestBuildType=mvp -PsourceSha="$(git rev-parse HEAD)"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify twenty-source gallery admission and durable restore
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          avd-name: IntegratedGallery_API36
+          emulator-port: 5556
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash tools/run_mvp_smoke.sh gallery-import
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: integrated-universal-apk
           path: build/reports/integrated/

@@ -21,6 +21,7 @@ val prepareMvpSmokeSources by tasks.registering(Sync::class) {
             "com/example/autoedit/TextEditActivityDeviceTest.kt")
     }
     from("src/uiTest/java") { include("com/example/autoedit/SyntheticVideo.kt") }
+    from("src/mvpSmoke/java") { include("com/example/autoedit/GalleryImportDeviceTest.kt") }
     into(mvpSmokeSources)
 }
 if (mvpDeviceTests) tasks.configureEach {

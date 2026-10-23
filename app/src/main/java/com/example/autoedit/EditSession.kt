@@ -198,7 +198,7 @@ internal class EditSession internal constructor(
             val original = state.value ?: State()
             if (if (gallery) !BuildConfig.GALLERY_MVP || unique.size !in 1..GalleryImportPolicy.MAX_FILES
                 else style.sourceCount !in 1..2 || unique.size != style.sourceCount) {
-                publish(original.copy(error = "Выберите ${style.sourceCount} видео"))
+                publish(original.copy(error = if (gallery) "Выберите от 1 до 20 видео" else "Выберите ${style.sourceCount} видео"))
                 return
             }
             val previousSnapshot = try {
