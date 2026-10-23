@@ -167,7 +167,7 @@ class GalleryMvpSmokeTest {
             assertNotNull(session.state.value!!.error)
             assertEquals(draft.files, session.state.value!!.draft!!.files)
             main {
-                session.render(draft.files, draft.music.file, MontageStyleCatalog.galleryMontage)
+                session.render(draft.files, requireNotNull(draft.music).file, MontageStyleCatalog.galleryMontage)
                 assertTrue(session.cancelRender())
             }
             waitFor { session.state.value?.busy == false }

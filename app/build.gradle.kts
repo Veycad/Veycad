@@ -173,8 +173,11 @@ android {
     }
     androidResources { noCompress += "bin" }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/speechAssets").get().asFile)
-    if (mvpDeviceTests) sourceSets.getByName("androidTest").java.setSrcDirs(
-        listOf(mvpSmokeSources.get().asFile))
+    if (mvpDeviceTests) {
+        val selectedSmokeSources = listOf(mvpSmokeSources.get().asFile)
+        sourceSets.getByName("androidTest").java.setSrcDirs(selectedSmokeSources)
+        sourceSets.getByName("androidTest").kotlin.setSrcDirs(selectedSmokeSources)
+    }
 
     lint {
         // This product currently has one Russian-localized UI. Keep correctness, permissions,
