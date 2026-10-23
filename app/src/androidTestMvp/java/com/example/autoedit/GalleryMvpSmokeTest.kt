@@ -122,11 +122,14 @@ class GalleryMvpSmokeTest {
                 lateinit var video: VideoView
                 scenario.onActivity { video = it.findViewById(R.id.resultVideo) }
                 waitFor { video.isPlaying && video.currentPosition > 100 }
+                val encodedBytes = entry.file.readBytes()
                 onView(withId(R.id.saveButton)).perform(scrollTo(), click())
                 waitFor { session.state.value?.busy == false }
                 assertNull(session.state.value!!.error)
                 assertTrue(session.state.value!!.entry!!.saved)
-                assertArrayEquals(entry.file.readBytes(), File(context.filesDir, "my-edits/${entry.file.name}").readBytes())
+                val saved = CompletedRenderStore.savedFiles(context.filesDir).single { it.name == entry.file.name }
+                assertEquals(entry.file, saved)
+                assertArrayEquals(encodedBytes, saved.readBytes())
                 context.contentResolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                     arrayOf(MediaStore.Video.Media._ID), "${MediaStore.Video.Media.DISPLAY_NAME}=? AND " +
                         "${MediaStore.Video.Media.OWNER_PACKAGE_NAME}=?", arrayOf(entry.file.name, context.packageName), null)!!.use {
