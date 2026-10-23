@@ -101,7 +101,7 @@ internal object MediaFrameAnalysisCache {
             val semanticModelSuccesses = input.readInt()
             val observationCount = input.checkedCount(MAXIMUM_FRAMES)
             val observations = List(observationCount) { input.readObservation() }
-            val attachments = input.readTimeline()
+            val attachments = input.readTimeline(profile.retainsAttachments)
             require(input.read() == -1) { "Unexpected trailing source analysis cache data" }
             require(durationUs > 0L && observations.isNotEmpty())
             MediaFrameVisualAnalyzer.Result(
@@ -180,9 +180,13 @@ internal object MediaFrameAnalysisCache {
         value.maskRefinements.forEach { writeAttachment(it) }
     }
 
-    private fun DataInputStream.readTimeline(): FrameAttachmentTimeline {
-        val frames = List(checkedCount(MAXIMUM_FRAMES)) { readAttachment() }
-        val refinements = List(checkedCount(MAXIMUM_REFINEMENTS)) { readAttachment() }
+    private fun DataInputStream.readTimeline(retainsAttachments: Boolean): FrameAttachmentTimeline {
+        val frameCount = checkedCount(MAXIMUM_FRAMES)
+        require(retainsAttachments || frameCount == 0) { "Observation-only cache cannot retain render planes" }
+        val frames = List(frameCount) { readAttachment() }
+        val refinementCount = checkedCount(MAXIMUM_REFINEMENTS)
+        require(retainsAttachments || refinementCount == 0) { "Observation-only cache cannot retain render planes" }
+        val refinements = List(refinementCount) { readAttachment() }
         return FrameAttachmentTimeline(frames, refinements)
     }
 

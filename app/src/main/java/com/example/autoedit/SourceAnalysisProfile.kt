@@ -1,7 +1,9 @@
 package com.veycad.app
 
 /** Source capabilities, not montage styles or a claim that a measurement succeeded. */
-internal enum class SourceAnalysisProfile(val cacheToken: String, val requestsCorrespondence: Boolean) {
+internal enum class SourceAnalysisProfile(val cacheToken: String, val requestsCorrespondence: Boolean,
+    val retainsAttachments: Boolean = true) {
+    EDITORIAL_OBSERVATIONS("editorial-observations-v1", false, false),
     EDITORIAL_SEMANTICS("editorial-semantics-v1", false),
     EDITORIAL_WITH_CORRESPONDENCE("editorial-correspondence-v1", true);
 
@@ -15,7 +17,8 @@ internal enum class SourceAnalysisProfile(val cacheToken: String, val requestsCo
         if (requestsCorrespondence) work() else null
 
     fun supplies(required: SourceAnalysisProfile): Boolean =
-        !required.requestsCorrespondence || requestsCorrespondence
+        (!required.requestsCorrespondence || requestsCorrespondence) &&
+            (!required.retainsAttachments || retainsAttachments)
 
     fun validate(observations: List<VisualEventMap.Observation>, completedAssessments: Int) {
         require(observations.isNotEmpty())
@@ -36,10 +39,10 @@ internal enum class SourceAnalysisProfile(val cacheToken: String, val requestsCo
     companion object {
         /** Product requirements own this mapping; add capabilities before adding a new consumer. */
         fun requiredFor(recipe: MontageStyleCatalog.Recipe): SourceAnalysisProfile = when (recipe) {
+            MontageStyleCatalog.Recipe.DUALITY_LOOP -> EDITORIAL_OBSERVATIONS
             MontageStyleCatalog.Recipe.FEAR_STROBE -> EDITORIAL_WITH_CORRESPONDENCE
             MontageStyleCatalog.Recipe.SIGMA,
-            MontageStyleCatalog.Recipe.HEARTBEAT,
-            MontageStyleCatalog.Recipe.DUALITY_LOOP -> EDITORIAL_SEMANTICS
+            MontageStyleCatalog.Recipe.HEARTBEAT -> EDITORIAL_SEMANTICS
         }
 
         fun fromCacheToken(token: String): SourceAnalysisProfile =
