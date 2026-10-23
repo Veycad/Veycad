@@ -104,7 +104,7 @@ class MultiSourceRequestDeviceTest {
             })
             session.render(source, null, music, MontageStyleCatalog.fearStrobe,
                 captureSessionId = capture.id, captureTakeOrdinal = 2,
-                captureAutoRecommendation = true, musicStartUs = 1_000_000L,
+                captureAutoRecommendation = true,
                 exportOperationId = "legacy-capture-share")
         }
         try {
@@ -112,7 +112,7 @@ class MultiSourceRequestDeviceTest {
             assertNotSame(Looper.getMainLooper().thread, inspectionThread)
             assertEquals(listOf(source), requireNotNull(observed).sources.items.map { it.file })
             assertEquals(descriptor.fingerprint, observed!!.sources.items.single().fingerprint)
-            assertEquals(1_000_000L, observed!!.musicStartUs)
+            assertEquals(0L, observed!!.musicStartUs)
             awaitIdle(session)
             assertEquals("legacy-capture-share", session.state.value!!.exportOperationId)
             assertEquals(CompletedRenderStore.CaptureLink(capture.id, 2, true),
