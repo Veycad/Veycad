@@ -125,7 +125,7 @@ class RenderProgressScreenTest {
         ui.awaitDisplayed(R.id.resultContent)
         pressBack()
         ui.importVideos("cancel-source.mp4")
-        val source = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().single()
+        val source = ui.selectedSources().single()
         val sourceBytes = source.readBytes()
         ui.startRender()
         val request = requireNotNull(ui.renderer.currentRequest)

@@ -20,6 +20,18 @@ internal class UiFixtureProvider : ContentProvider() {
     override fun getType(uri: Uri) = "video/mp4"
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         require(mode == "r")
+        uri.getQueryParameter("failAfter")?.toInt()?.let { limit ->
+            require(limit in 1..1024)
+            val pipe = ParcelFileDescriptor.createReliablePipe()
+            Thread {
+                try {
+                    val bytes = file(uri).inputStream().use { it.readBytes().take(limit).toByteArray() }
+                    check(android.system.Os.write(pipe[1].fileDescriptor, bytes, 0, bytes.size) == bytes.size)
+                    pipe[1].closeWithError("Controlled provider read failure")
+                } catch (failure: Exception) { pipe[1].closeWithError(failure.message ?: "provider") }
+            }.start()
+            return pipe[0]
+        }
         return ParcelFileDescriptor.open(file(uri), ParcelFileDescriptor.MODE_READ_ONLY)
     }
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?,

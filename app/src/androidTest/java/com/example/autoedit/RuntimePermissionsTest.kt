@@ -49,7 +49,7 @@ class RuntimePermissionsTest {
         assertPermission(Manifest.permission.READ_MEDIA_VIDEO, PackageManager.PERMISSION_DENIED)
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
         onView(withId(R.id.selectVideoButton)).check(matches(isEnabled()))
-        assertTrue(RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty().isEmpty())
+        assertTrue(ui.selectedSources().isEmpty())
         assertTrue("Denied access must not open the gallery",
             Intents.getIntents().none { it.action == Intent.ACTION_PICK })
 
@@ -59,7 +59,7 @@ class RuntimePermissionsTest {
         ui.awaitEnabled(R.id.renderButton)
         ui.awaitText(R.id.videoSelection, "permission-retry-source.mp4")
         assertPermission(Manifest.permission.READ_MEDIA_VIDEO, PackageManager.PERMISSION_GRANTED)
-        val imported = RenderWorkspace.sourceDraftDirectory(ui.context.filesDir).listFiles().orEmpty()
+        val imported = ui.selectedSources()
         assertEquals(1, imported.size)
         assertArrayEquals(File(ui.context.getDir("ui-imports", 0), "permission-retry-source.mp4").readBytes(),
             imported.single().readBytes())
