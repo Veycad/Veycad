@@ -24,7 +24,7 @@ collect_evidence() {
   adb logcat -d -v threadtime > "$report/logcat.txt" || true
   adb exec-out run-as "$package" cat files/ui-test-results.xml > "$report/smoke.xml" || true
   if $gallery_only; then return; fi
-    adb exec-out run-as "$package" tar -cf - files/mvp-smoke files/render-inspector > "$report/media-evidence.tar"
+    adb exec-out run-as "$package" tar -cf - files/mvp-smoke files/render-inspector files/completed-renders > "$report/media-evidence.tar"
     for index in 0 1 2; do
         adb exec-out run-as "$package" cat "files/mvp-smoke/input-$index.mp4" > "$report/input-$index.mp4"
     done
