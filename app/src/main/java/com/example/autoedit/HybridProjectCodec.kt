@@ -12,7 +12,7 @@ class ProjectLoadResult(val project: HybridProject, missingAnalysisHashes: Set<S
     val analysisRegenerationRequired: Boolean get() = missingAnalysisHashes.isNotEmpty()
 }
 
-/** Primitive format: v5 authored maps/source facts; v6 manual graph payload; v7 music source offset. Schema stays 1. */
+/** Primitive format: v5 source facts; v6 manual graph; v7 music offset; v8 rich text. Schema stays 1. */
 class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
     private val authoredMaps: AuthoredSourceMapStore = sidecars.authoredMaps()) {
     fun encode(project: HybridProject): ByteArray {
@@ -175,10 +175,17 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
         }
         fun textStyle(value: TextStyle) = with(value) {
             enum(position); enum(font); out.writeFloat(sizeRatio); out.writeInt(color); out.writeBoolean(darkPlate); enum(animation)
+            optional(plate) { enum(it) }
         }
         fun textState(value: HybridTextState) = with(value) {
-            list(layers) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs); textStyle(it.style) }
-            list(captions) { string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs) }
+            list(layers) {
+                string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs); textStyle(it.style); enum(it.kind)
+            }
+            list(captions) {
+                string(it.id); string(it.text); out.writeLong(it.startUs); out.writeLong(it.endUs)
+                optional(it.confidence) { confidence -> out.writeDouble(confidence) }
+                out.writeBoolean(it.manuallyReviewed); out.writeBoolean(it.confidenceCalibrated)
+            }
             textStyle(captionStyle); out.writeBoolean(captionsEdited); string(language)
         }
         fun revision(value: HybridRevision) = with(value) {
@@ -362,11 +369,16 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(framings.map { it.first }.distinct().size == framings.size)
             return ProjectVisualSettings(aspect, explicit, framings.toMap())
         }
-        fun textStyle() = TextStyle(enum(), enum(), input.readFloat(), input.readInt(), input.readBoolean(), enum())
-        fun textState() = HybridTextState(
-            list { TextLayer(string(), string(), input.readLong(), input.readLong(), textStyle()) },
-            list { CaptionCue(string(), string(), input.readLong(), input.readLong()) },
-            textStyle(), input.readBoolean(), string())
+        fun textStyle(format: Int) = TextStyle(enum(), enum(), input.readFloat(), input.readInt(), input.readBoolean(), enum(),
+            if (format >= 8) optional { enum<TextPlate>() } else null)
+        fun textState(format: Int) = HybridTextState(
+            list { TextLayer(string(), string(), input.readLong(), input.readLong(), textStyle(format),
+                if (format >= 8) enum<TextLayerKind>() else TextLayerKind.LEGACY) },
+            list { CaptionCue(string(), string(), input.readLong(), input.readLong(),
+                if (format >= 8) optional { input.readDouble() } else null,
+                if (format >= 8) input.readBoolean() else false,
+                if (format >= 8) input.readBoolean() else false) },
+            textStyle(format), input.readBoolean(), string())
         fun formatVersion(): Int = input.readInt().also {
             require(it in 1..FORMAT_VERSION) { "Unsupported hybrid format $it" }
         }
@@ -376,7 +388,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
                 val clip = HybridClip(string(), string(), span(), sourceMap(format), clip())
                 when (format) {
                     1 -> clip
-                    2, 3, 4, 5, 6, 7 -> clip.copy(originalFrameOffset = input.readInt())
+                    in 2..FORMAT_VERSION -> clip.copy(originalFrameOffset = input.readInt())
                     else -> error("Unsupported hybrid format")
                 }
             }
@@ -387,11 +399,11 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             require(locked.distinct().size == locked.size)
             val resetsSources = when (format) {
                 1, 2 -> false
-                3, 4, 5, 6, 7 -> input.readBoolean()
+                in 3..FORMAT_VERSION -> input.readBoolean()
                 else -> error("Unsupported hybrid format")
             }
             val visuals = if (format >= 4) visuals() else ProjectVisualSettings(ProjectAspect.PORTRAIT_9_16, false)
-            val text = if (format >= 4) textState() else HybridTextState()
+            val text = if (format >= 4) textState(format) else HybridTextState()
             val backings = if (format >= 5) list {
                 string() to HybridSourceBacking(string(), sourceMap(format), input.readInt(), input.readLong(), input.readLong(), input.readBoolean())
             } else emptyList()
@@ -426,10 +438,10 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             "music" -> EffectAnchor.Music(input.readLong(), input.readLong())
             else -> throw IllegalArgumentException("Unknown manual effect anchor $kind")
         }
-        fun manualState() = ManualMontageState(
+        fun manualState(format: Int) = ManualMontageState(
             list { ManualClipState(string(), range(), input.readLong(), list { track() }, optional { phase() }) },
             list { AnchoredMontageEffect(string(), string(), string(), anchor(), input.readBoolean(),
-                optional { overlay(6) }, optional { node(6) }, input.readFloat(), input.readFloat()) })
+                optional { overlay(format) }, optional { node(format) }, input.readFloat(), input.readFloat()) })
         fun timeMapping(): ClipTimeMapping {
             val fps = input.readInt(); val duration = input.readLong(); val origin = input.readLong()
             val count = input.readInt()
@@ -459,7 +471,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
             val attachments = timeline()
             val effects = GpuEffectGraph(list { node(format) })
             val timing = if (format >= 6) optional { editableTiming() } else null
-            val manual = if (format >= 6) optional { manualState() } else null
+            val manual = if (format >= 6) optional { manualState(format) } else null
             val sources = if (format >= 6) list { SourceAttachments(input.readInt(), timeline()) } else emptyList()
             val overrides = if (format >= 6) optional { ManualRenderOverrides(stringSet(), stringSet()) } else null
             return MontageGraph(source, duration, profile, clips, audio, overlays, metadata, tracks,
@@ -510,7 +522,7 @@ class HybridProjectCodec(private val sidecars: AnalysisSidecarStore,
 
     companion object {
         private const val MAGIC = 0x56485942
-        private const val FORMAT_VERSION = 7
+        private const val FORMAT_VERSION = 8
         internal const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
         internal const val MAX_SOURCE_POINTS = MAX_MANIFEST_BYTES / 12
         private const val MAX_STRING_BYTES = 1024 * 1024

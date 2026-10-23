@@ -1,0 +1,34 @@
+New capture of unchanged old encoder; not historic archived bytes.
+semanticAnchor=a53101496244fbb8476dfb314c701380a7eff80a
+executionBase=1d533e3554dae0d9f3d04286ad7dee0ad5027cc0
+executionHEAD=ad7fcb17d45d854cd38c01b1e4af4baa1cf5bb8c
+captureTestGitBlob=812a8e6387ea4eb61a733ae71186b40f1ae15150
+startedUTC=2026-10-20T08:46:58.214671631Z completedUTC=2026-10-20T08:46:58.640467076Z
+command=./gradlew --no-daemon clean baselineVerify -PpythonExecutable=python
+workflowArtifact=test-reports; directory=app/build/reports/tests/text-v4-a531-capture/
+GITHUB_SHA=ad7fcb17d45d854cd38c01b1e4af4baa1cf5bb8c
+GITHUB_REF=refs/heads/codex/hybrid-text-v4-capture
+GITHUB_RUN_ID=39395192746
+GITHUB_RUN_ATTEMPT=1
+GITHUB_WORKFLOW=Android baseline
+GITHUB_WORKFLOW_REF=Veycad/Veycad/.github/workflows/android-baseline.yml@refs/heads/codex/hybrid-text-v4-capture
+GITHUB_REPOSITORY=Veycad/Veycad
+GITHUB_SERVER_URL=https://github.com
+GITHUB_JOB=baseline
+producerGitBlob 2505cd323fc16d7eaffdbe393f3ab9760c7a94fd app/src/main/java/com/example/autoedit/HybridProjectCodec.kt
+producerGitBlob c975659e92399709935ec2d4220b9fb7ad82539f app/src/main/java/com/example/autoedit/TextEditProject.kt
+producerGitBlob 7c60ae4869ee587302c16d092e1888e0d994b139 app/src/main/java/com/example/autoedit/HybridProjectStore.kt
+producerGitBlob cb1923fc9e9d157fe41295cf42d5eb76d978e10e app/src/main/java/com/example/autoedit/HybridProject.kt
+producerGitBlob d15511b52bfdc6990146984fb6373754a0fa3d5e app/src/main/java/com/example/autoedit/HybridTextState.kt
+producerGitBlob db36fd91eb9f09d4a05fc2b9f3c2746e285f4ad3 app/src/main/java/com/example/autoedit/ProjectAssetStore.kt
+producerGitBlob 7caeca32f8c31056d04fe91055ad0f2f9d5fe5dd app/src/main/java/com/example/autoedit/AnalysisSidecarStore.kt
+producerGitBlob 0750ef9f7ea9c4a7ca16a90143a3c923871cff5a app/src/main/java/com/example/autoedit/HybridEditCommands.kt
+producerGitBlob 7836726f99b0175f369f003d81acd84a4d294b29 app/src/test/java/com/example/autoedit/HybridProjectCodecTest.kt
+producerGitBlob 6d4407ed5ddc01f6ef014ae8290eb8ece35d1c80 app/src/test/java/com/example/autoedit/HybridProjectStoreTest.kt
+producerGitBlob f68ab10e9eff53fde211a679808e38500308c662 build.gradle.kts
+producerGitBlob 696f19073427c076049138e5b4deb52ee7ca62d7 app/build.gradle.kts
+producerGitBlob f35bf6385ef50044e326172d9589f3e918132fd9 .github/workflows/android-baseline.yml
+producerGitBlob 00cb6d4349f888dbdf1beaacc6874b81d01d0160 .github/workflows/android-ui.yml
+captureAssertions=completed; testCount=1; final JUnit/baseline result and artifact ID are supplied by the surrounding runner XML/log/API, not invented here
+Every extracted payload and immutable revision was written by production HybridProjectStore/HybridProjectCodec. Wrapper extraction only reads bytes.
+Store copies and ZIPs include every actual file below filesDir, including projects/.store.lock; copies reopened and ZIP byte inventories verified.

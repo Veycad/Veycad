@@ -79,6 +79,52 @@ jobs:
           bash tools/install_source_aac_oracle.sh
           export PATH="$PWD/build/tools/source-aac-oracle/bin:$PATH"
           python3 tools/verify_source_aac.py build/reports/ui-tests/runs
+      - name: Record isolated test APK provenance
+        env:
+          VEYCAD_BUILD_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          apk_dir = Path('app/build/outputs/apk/uiTest')
+          metadata = json.loads((apk_dir / 'output-metadata.json').read_text())
+          if metadata['applicationId'] != 'com.veycad.app.uitest':
+              raise ValueError('Refusing to distribute a test APK with the production identity')
+          element = next(item for item in metadata['elements']
+                         if any(f['filterType'] == 'ABI' and f['value'] == 'arm64-v8a'
+                                for f in item['filters']))
+          apk = apk_dir / element['outputFile']
+          with apk.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          record = {
+              'head': os.environ['VEYCAD_BUILD_HEAD'],
+              'checkout': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'apk': apk.name,
+              'bytes': apk.stat().st_size,
+              'sha256': digest,
+              'applicationId': metadata['applicationId'],
+              'versionName': element['versionName'],
+              'versionCode': element['versionCode'],
+              'abi': 'arm64-v8a',
+              'variant': 'uiTest',
+              'minSdk': metadata['minSdkVersionForDexing'],
+          }
+          Path('build/reports/test-apk-source.json').write_text(
+              json.dumps(record, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Save isolated ARM64 test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: veycad-text-test-arm64
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/uiTest/app-arm64-v8a-uiTest.apk
+            build/reports/test-apk-source.json
       - name: Save UI reports and device failures
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,5 +1,27 @@
 # Текст и автосубтитры Implementation Plan
 
+## Завершение функции до пользовательского теста, 19 октября 2026
+
+Продолжение согласованной реализации от main `f96dcc54`, ветка
+`codex/text-completion`, follow-up PR 61. Пользователь проверяет функцию после
+реализации и автоматических gates; ранняя APK не считается финальной выдачей.
+
+- [x] Сохранить нечитаемый/будущий v1 draft без null→empty→overwrite;
+  malformed flags не превращать в false. JVM regression и экранная проверка:
+  файл и исходник целы, ошибка видна, другое видео открывается без старой ошибки.
+- [x] Интегрировать A2x единственного владельца core codec: nullable
+  plate/kind/cue evidence, старые MONO/SCALE и caption projection SUBTITLE.
+  Ни второго DTO/store/STT, ни нового проекта word-calibration research.
+- [ ] Сохранить свежую ARM64 APK и source/checksum manifest из успешного CI;
+  проверить единый последний commit, UI/STT/реальный MP4 и одно итоговое ревью.
+
+Исходные задачи и доказательства ниже сохраняют свою историческую привязку.
+
+20 октября: в follow-up включён core `2eea5838` (physical format 7, старые
+форматы 1–6 читаются со своими defaults). Узкое ревью интеграции не выявило
+замечаний P1/P2/P3; модель `TextEditProject.kt` не менялась. Состояние итоговой
+сборки и приёмки последнего коммита фиксируется в PR 61.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking. Execution is authorized by the owner's request to prepare the plan and implement the whole feature in PR 12.
 
 **Goal:** Добавить пользовательский текст и редактируемые локальные автосубтитры для исходного видео и готового MP4.

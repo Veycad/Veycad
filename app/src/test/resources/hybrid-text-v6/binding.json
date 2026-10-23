@@ -1,0 +1,36 @@
+{
+  "producer": "ae8f75842224ddc5c64a85266d22ef2f8b772f23",
+  "base": "f96dcc54ec55c46fbf436c74b34dbdf8b091cdc1",
+  "physical": 6,
+  "testBlob": "7412780f0b46988a1fa3589534c87ef83c9c25cc",
+  "sourceGuards": {
+    "app/src/test/java/com/example/autoedit/HybridProjectCodecTest.kt": "9c54aa83def4c2e06e9599b3990d5b2bb2bf0fc4",
+    "app/src/main/java/com/example/autoedit/HybridTextState.kt": "d15511b52bfdc6990146984fb6373754a0fa3d5e",
+    "build.gradle.kts": "f68ab10e9eff53fde211a679808e38500308c662",
+    "app/src/main/java/com/example/autoedit/AnalysisSidecarStore.kt": "5b5597ba63e80b65a603286b0f664cf7b3029980",
+    "app/src/main/java/com/example/autoedit/HybridProject.kt": "e99de3a9a72efd6c2774f82e7f31023bf3151f2d",
+    "app/src/main/java/com/example/autoedit/HybridEditCommands.kt": "039b538a5ca7b77e8a74bd7e121603f3d07790a9",
+    "app/src/main/java/com/example/autoedit/HybridProjectStore.kt": "c0fc58ea5b4a2689b9b470f4cabf712e9e139afe",
+    "app/src/test/java/com/example/autoedit/HybridProjectStoreTest.kt": "6d4407ed5ddc01f6ef014ae8290eb8ece35d1c80",
+    "app/build.gradle.kts": "696f19073427c076049138e5b4deb52ee7ca62d7",
+    "app/src/main/java/com/example/autoedit/TextEditProject.kt": "c975659e92399709935ec2d4220b9fb7ad82539f",
+    "app/src/main/java/com/example/autoedit/ProjectAssetStore.kt": "db36fd91eb9f09d4a05fc2b9f3c2746e285f4ad3",
+    ".github/workflows/android-ui.yml": "00cb6d4349f888dbdf1beaacc6874b81d01d0160",
+    ".github/workflows/android-baseline.yml": "f35bf6385ef50044e326172d9589f3e918132fd9",
+    "app/src/main/java/com/example/autoedit/HybridProjectCodec.kt": "59c8ba57b39a1ac4c89ac550f507f98d18ff763b",
+    "app/src/main/java/com/example/autoedit/ProjectSources.kt": "79cd280fc78750cc6e43715bfd72aff05063316b"
+  },
+  "run": 39395888593,
+  "job": 118538405704,
+  "artifact": 12252555074,
+  "artifactSHA256": "58e088d339cbb00230f512bf209d4630f8e1804948d0cb4d65d70fa439a338b5",
+  "jvmTests": 999,
+  "failures": 2,
+  "expectedRED": [
+    "captionProjectionUsesSubtitleAndEndExclusiveBeforeAndAfterReopen",
+    "richStylesKindsAndConfidenceSurviveStoreHistoryExportAndReopen"
+  ],
+  "captureTestsPassed": 1,
+  "genuinePreceding6": true,
+  "rootVerification": "a2x-v6-ae8-capture-verification.json"
+}
