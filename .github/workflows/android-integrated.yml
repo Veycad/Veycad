@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   integrated:
-    if: github.head_ref == 'codex/samsung-integrated' || github.ref_name == 'codex/samsung-integrated'
+    if: github.head_ref == 'codex/samsung-integrated' || github.ref_name == 'codex/samsung-integrated' || github.head_ref == 'codex/custom-music-editor-mvp' || github.ref_name == 'codex/custom-music-editor-mvp'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
