@@ -77,14 +77,21 @@ class AtomicImportDeviceTest {
     }
     @Test fun failedReplacementAfterRenderRestoresConfirmedDraft() {
         ui.launch(); ui.importVideos("old.mp4"); val previous = snapshot()
+        val sources = ui.selectedSources().associateWith(File::readBytes)
         ui.startRender(); ui.renderer.complete(); ui.awaitIdle(); ui.awaitDisplayed(R.id.resultContent)
-        assertNull(app.editSession.state.value!!.draft)
+        val retained = app.editSession.state.value!!
+        assertEquals(sources.keys.map { it.canonicalFile }, retained.draft!!.files.map { it.canonicalFile })
+        assertEquals(listOf("old.mp4"), retained.draft.names)
+        assertTrue(retained.sourceSelectionConfirmed)
+        assertEquals(previous, snapshot())
+        sources.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
         val entry = app.editSession.state.value!!.entry
         pressBack(); ui.awaitDisplayed(R.id.directorContent)
         val missing = ui.videoUri("missing.mp4").buildUpon().appendPath("absent.mp4").build()
         ui.returnVideos(listOf(missing)); ui.awaitIdle()
         assertEquals(previous, snapshot()); assertEquals(entry, app.editSession.state.value!!.entry)
         assertEquals(listOf("old.mp4"), app.editSession.state.value!!.draft!!.names)
+        sources.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
         onView(withId(R.id.renderButton)).check(matches(isEnabled())); assertIdle()
     }
     @Test fun recreationDuringReplacementShowsOldSelection() = recreationBarrier(false)
@@ -113,6 +120,13 @@ class AtomicImportDeviceTest {
     }
     @Test fun unreadableCommitStatusBlocksRender() {
         ui.launch(); ui.importVideos("old.mp4"); val old = ui.selectedSources().single()
+        val oldBytes = old.readBytes()
+        val selection = requireNotNull(app.editSession.state.value!!.draft!!.music)
+        val music = selection.file
+        val style = MontageStyleCatalog.restore(selection.styleId)
+        assertTrue(music.isFile && music.length() > 0)
+        // The immutable overload receives inspected sources; inspection stays off the main thread.
+        val inspected = MediaSourceSet(listOf(MediaInputInspector().inspect("old", old, "old.mp4")))
         var committed = false
         app.sourceIo = object : SourceDraftStore.Io by SourceDraftStore.DiskIo {
             override fun replaceManifest(target: File, bytes: ByteArray) { atomicWrite(target, bytes); committed = true; throw IOException("after") }
@@ -125,8 +139,23 @@ class AtomicImportDeviceTest {
         assertTrue(old.exists()); assertEquals(listOf("new.mp4"), names())
         assertFalse(app.editSession.state.value!!.sourceSelectionConfirmed)
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
-        main { app.editSession.render(old, null, File(ui.context.filesDir, "music"), MontageStyleCatalog.restore(null)) }
-        assertFalse(app.editSession.state.value!!.busy)
+        val requestCount = ui.renderer.requestCount
+        val requests = listOf<() -> Unit>(
+            { app.editSession.render(old, null, music, style) },
+            { app.editSession.render(listOf(old), music, style) },
+            { app.editSession.render(inspected, music, style) }
+        )
+        requests.forEach { request ->
+            main(request); ui.awaitIdle()
+            assertFalse(app.editSession.state.value!!.busy)
+            assertFalse(app.editSession.state.value!!.sourceSelectionConfirmed)
+            assertTrue(app.editSession.state.value!!.error.orEmpty().contains("Выбор исходников не подтверждён"))
+            assertEquals(requestCount, ui.renderer.requestCount)
+            assertNull(ui.renderer.currentRequest)
+            assertArrayEquals(oldBytes, old.readBytes())
+            onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
+            assertIdle()
+        }
         app.sourceIo = SourceDraftStore.DiskIo
         main { app.editSession.restoreDraft(MontageStyleCatalog.restore(null)) }; ui.awaitIdle()
         assertTrue(app.editSession.state.value!!.sourceSelectionConfirmed)
