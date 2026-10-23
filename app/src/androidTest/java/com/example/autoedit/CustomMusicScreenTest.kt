@@ -17,6 +17,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.hamcrest.Matchers.not
 import java.io.File
 
 @RunWith(AndroidJUnit4::class)
@@ -90,7 +91,7 @@ class CustomMusicScreenTest {
             }
             ready
         }
-        onView(withId(R.id.renderButton)).check(matches(isNotEnabled()))
+        onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
         assertEquals(pair, store.read())
         ui.cancelVideoPicker()
         assertEquals(pair, store.read())
@@ -99,7 +100,7 @@ class CustomMusicScreenTest {
         ui.awaitIdle()
         assertEquals(pair, store.read())
         pairBytes.forEach { (name, bytes) -> assertArrayEquals(bytes, store.child(name).readBytes()) }
-        onView(withId(R.id.renderButton)).check(matches(isNotEnabled()))
+        onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
 
         ui.importVideos("confirmed-single.mp4")
         val single = requireNotNull(store.read())
