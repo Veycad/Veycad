@@ -204,19 +204,13 @@ class SourceAudioDeviceTest {
                 assertEquals(fps,videoPts.size)
                 assertEquals(500_000,videoPts[fps/2])
                 for (encoded in listOf(retained,output)) {
-                val extractor=MediaExtractor()
-                try {
-                    extractor.setDataSource(encoded.path)
-                    extractor.selectTrack((0 until extractor.trackCount).first { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)!!.startsWith("audio/") })
-                    val packetPts=mutableListOf<Long>()
-                    while (extractor.sampleTrackIndex>=0) { packetPts+=extractor.sampleTime; extractor.advance() }
-                    File(dir,"${encoded.name}-encoded-pts.txt").writeText(packetPts.joinToString("\n"))
-                    assertTrue("priming packets preserved ${encoded.name}",packetPts.first()<0)
-                } finally { extractor.release() }
+                assertTrue("priming packets preserved ${encoded.name}",recordAudioPackets(encoded)<0)
                 val peaks=DoubleArray(3); val peakUs=LongArray(3) { -1 }; var audioEndUs = 0L; var decodedFrames=0L
+                File(dir,"${encoded.name}-decoded-chunks.txt").bufferedWriter().use { ledger ->
                 source(mapOf("out" to encoded)).open("out",0)!!.use { stream ->
                     while (true) {
                         val chunk = stream.read() ?: break
+                        ledger.appendLine("start=${chunk.startPtsUs} frames=${chunk.frames} format=${stream.format}")
                         repeat(chunk.frames) { frame ->
                             val value = abs(chunk.sample(frame,0))
                             val pts=chunk.startPtsUs+frame*1_000_000L/48_000
@@ -226,6 +220,8 @@ class SourceAudioDeviceTest {
                         audioEndUs=chunk.startPtsUs+chunk.frames*1_000_000L/48_000
                         decodedFrames+=chunk.frames
                     }
+                }
+                ledger.appendLine("decodedFrames=$decodedFrames endUs=$audioEndUs EOF=true")
                 }
                 File(dir,"${encoded.name}-evidence.txt").writeText("format=${trackFormat(encoded,"audio/")} videoMarkers=${listOf(videoPts[fps/30],videoPts[fps/2],videoPts[fps-fps/30])}, audioPeaks=${peakUs.toList()}, audioEnd=$audioEndUs, frames=$decodedFrames peaks=${peaks.toList()}")
                 for ((index, expected) in listOf(33_333L,500_000L,966_667L).withIndex()) {
@@ -280,19 +276,29 @@ class SourceAudioDeviceTest {
     @Test fun actual_nonintegral_movie_tick_lengths_trim_to_exact_pcm_samples_at_30_and_60() {
         val dir=directory("partial-frame-trim")
         val wav=SourceAudioNativeFixtures.wav(File(dir,"source.wav"),2) { SourceAudioNativeFixtures.tone(it) }
-        for ((fps,frames) in listOf(30 to 49_600L,60 to 48_800L)) {
-            val endUs=if(fps==30) 1_033_333L else 1_016_666L
-            val composer=SourceAudioComposer(ProjectClock(fps),listOf(clip("a",0,fps+1,0,endUs)),source(mapOf("a" to wav)))
+        for (fps in listOf(30,60)) for (full in listOf(false,true)) {
+            val frames=if(full) 51_200L else if(fps==30) 49_600L else 48_800L
+            val endUs=if(full) 1_066_666L else if(fps==30) 1_033_333L else 1_016_666L
+            val videoFrames=if(full) fps*16/15 else fps+1
+            val kind=if(full) "full" else "partial"
+            val composer=SourceAudioComposer(ProjectClock(fps),listOf(clip("a",0,videoFrames,0,endUs)),source(mapOf("a" to wav)))
             AacEncoderMuxer.prepareSourceAudio(composer,AudioMixSettings(AudioMixMode.SOURCE),dir).use { prepared ->
                 assertEquals(frames,prepared.sampleFrames)
-                val retained=File(dir,"prepared-$fps-partial.m4a"); prepared.aacFile.copyTo(retained)
-                val video=SyntheticVideo.create(File(dir,"video-$fps.mp4"),if(fps==30) 1034 else 1017,fps=fps)
-                val output=File(dir,"final-$fps-partial.mp4")
+                val retained=File(dir,"prepared-$fps-$kind.m4a"); prepared.aacFile.copyTo(retained)
+                val video=SyntheticVideo.create(File(dir,"video-$fps-$kind.mp4"),if(full) 1067 else if(fps==30) 1034 else 1017,fps=fps)
+                val output=File(dir,"final-$fps-$kind.mp4")
                 AacEncoderMuxer.muxPreparedAudio(prepared,video,output,endUs)
                 for(file in listOf(retained,output)) {
+                    assertTrue(recordAudioPackets(file)<0)
                     var count=0L
-                    source(mapOf("a" to file)).open("a",0)!!.use { stream -> while(true) { count+=(stream.read() ?: break).frames } }
-                    File(dir,"${file.name}-samples.txt").writeText("expected=$frames actual=$count format=${trackFormat(file,"audio/")}")
+                    File(dir,"${file.name}-samples.txt").bufferedWriter().use { ledger ->
+                        source(mapOf("a" to file)).open("a",0)!!.use { stream -> while(true) {
+                            val chunk=stream.read() ?: break
+                            ledger.appendLine("start=${chunk.startPtsUs} frames=${chunk.frames} format=${stream.format}")
+                            count+=chunk.frames
+                        } }
+                        ledger.appendLine("expected=$frames actual=$count EOF=true format=${trackFormat(file,"audio/")}")
+                    }
                     assertEquals("sample-exact ${file.name}",frames,count)
                 }
             }
@@ -400,6 +406,27 @@ class SourceAudioDeviceTest {
             }
         }
         // Audible-source eligibility for captions is intentionally owned by T4/T8, not this PCM seam.
+    }
+
+    private fun recordAudioPackets(file: File): Long {
+        val extractor=MediaExtractor()
+        try {
+            extractor.setDataSource(file.path)
+            val track=(0 until extractor.trackCount).first { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)!!.startsWith("audio/") }
+            extractor.selectTrack(track)
+            val first=extractor.sampleTime
+            File(file.parentFile,"${file.name}-encoded-pts.txt").bufferedWriter().use { ledger ->
+                ledger.appendLine("format=${extractor.getTrackFormat(track)}")
+                var packets=0L
+                while (extractor.sampleTrackIndex>=0) {
+                    val size=if(android.os.Build.VERSION.SDK_INT>=28) extractor.sampleSize else -1L
+                    ledger.appendLine("packet=$packets pts=${extractor.sampleTime} bytes=$size flags=${extractor.sampleFlags}")
+                    packets++; extractor.advance()
+                }
+                ledger.appendLine("packets=$packets EOF=true")
+            }
+            return first
+        } finally { extractor.release() }
     }
 
     private fun trackFormat(file: File, prefix: String): MediaFormat {
