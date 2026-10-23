@@ -56,6 +56,14 @@ internal object CompletedRenderStore {
 
     fun markSaved(entry: Entry) = writeMetadata(entry.copy(saved = true))
 
+    fun savedFiles(filesDir: File): List<File> {
+        val published = list(filesDir).filter { it.saved }.map { it.file }
+        val legacy = File(filesDir, "my-edits").listFiles()
+            ?.filter { it.isFile && it.extension.equals("mp4", true) }.orEmpty()
+        // Exports retain the result filename; prefer its canonical publication over a legacy copy.
+        return (published + legacy).distinctBy(File::getName).sortedByDescending(File::lastModified)
+    }
+
     /** Idempotent repair after a process dies between publication and capture manifest update. */
     fun recoverCaptureLinks(filesDir: File): List<String> {
         val captureStore = CaptureSessionStore(filesDir)

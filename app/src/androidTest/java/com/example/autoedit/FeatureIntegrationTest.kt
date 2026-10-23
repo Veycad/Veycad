@@ -41,6 +41,8 @@ class FeatureIntegrationTest {
         ui.awaitText(R.id.videoSelection, "z-selected-first.mp4")
         ui.awaitText(R.id.videoSelection, "a-selected-second.mp4")
 
+        assertEquals(listOf("z-selected-first.mp4", "a-selected-second.mp4"),
+            SourceDraftStore(ui.context.filesDir).read()!!.entries.map { it.displayName })
         ui.startRender()
         val request = requireNotNull(ui.renderer.currentRequest)
         assertEquals(MontageStyleCatalog.Recipe.DUALITY_LOOP, request.recipe)

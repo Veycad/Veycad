@@ -16,12 +16,18 @@ internal object RenderWorkspace {
     fun transientImportsDirectory(cacheDir: File): File =
         File(cacheDir, "imports").apply { mkdirs() }
 
-    fun clearTransient(filesDir: File, cacheDir: File) {
-        File(cacheDir, "imports").deleteRecursively()
-        File(filesDir, "pending-renders").deleteRecursively()
-    }
+    fun clearTransient(filesDir: File, cacheDir: File, lease: MediaWorkCoordinator.Lease? = null) =
+        withCleanup(lease) { TemporaryFileCleanup.clear(filesDir, cacheDir,
+            TemporaryFileCleanup.Scope.TRANSIENT_RENDER, it) }
 
-    fun clearSourceDraft(filesDir: File) {
-        File(filesDir, "source-draft").deleteRecursively()
+    fun clearSourceDraft(filesDir: File, lease: MediaWorkCoordinator.Lease? = null) =
+        withCleanup(lease) { TemporaryFileCleanup.clear(filesDir, filesDir,
+            TemporaryFileCleanup.Scope.SOURCE_DRAFT, it) }
+
+    private fun <T> withCleanup(lease: MediaWorkCoordinator.Lease?, action: (MediaWorkCoordinator.Lease) -> T): T {
+        if (lease != null) return action(lease)
+        return checkNotNull(MediaWorkCoordinator.process.tryBeginCleanup()) {
+            MediaWorkCoordinator.BUSY_MESSAGE
+        }.use(action)
     }
 }

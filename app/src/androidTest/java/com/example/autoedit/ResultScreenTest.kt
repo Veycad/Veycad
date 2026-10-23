@@ -31,6 +31,30 @@ import org.junit.runner.RunWith
 class ResultScreenTest {
     @get:Rule val ui = UiTestFixtureRule()
 
+    @Test fun failed_source_cleanup_keeps_current_result_and_sources_usable() {
+        ui.launch()
+        ui.importVideos("cleanup-failure-source.mp4")
+        ui.startRender()
+        ui.renderer.complete()
+        ui.awaitDisplayed(R.id.resultContent)
+        ui.awaitIdle()
+        val files = ui.selectedSources().associateWith(java.io.File::readBytes)
+        val app = ui.context.applicationContext as UiTestApplication
+        app.sourceIo = object : SourceDraftStore.Io by SourceDraftStore.DiskIo {
+            override fun replaceManifest(target: java.io.File, bytes: ByteArray) {
+                throw java.io.IOException("deny replacement")
+            }
+        }
+        try {
+            ui.click(R.id.newEditButton)
+            ui.awaitIdle()
+            ui.awaitDisplayed(R.id.resultContent)
+            files.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
+            assertEquals("deny replacement", app.editSession.state.value!!.error)
+            onView(withId(R.id.saveButton)).check(matches(isEnabled()))
+        } finally { app.sourceIo = SourceDraftStore.DiskIo }
+    }
+
     @Test fun real_preview_plays_pauses_and_resumes_without_losing_requested_pause() {
         ui.seedCompleted("preview-controls.mp4")
         ui.launch()
@@ -63,7 +87,7 @@ class ResultScreenTest {
         onView(withId(R.id.saveButton)).check(matches(not(isEnabled())))
         assertTrue(requireNotNull(CompletedRenderStore.latest(ui.context.filesDir)).saved)
         ui.assertGalleryCopy(original.name)
-        assertArrayEquals(bytes, java.io.File(ui.context.filesDir, "my-edits/${original.name}").readBytes())
+        assertFalse("Saving must not duplicate the private MP4", java.io.File(ui.context.filesDir, "my-edits/${original.name}").exists())
         assertArrayEquals(bytes, original.readBytes())
 
         ui.recreate()

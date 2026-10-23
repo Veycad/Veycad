@@ -32,12 +32,12 @@ internal object AacEncoderMuxer {
             setInteger(MediaFormat.KEY_BIT_RATE, config.bitrate)
             setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, AAC_SAMPLES_PER_ACCESS_UNIT * config.channelCount * 2)
         }
-        val encoder = if (codecName == null) MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-            else MediaCodec.createByCodecName(codecName)
-        try { encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE); return encoder }
-        catch (failure: Throwable) {
-            runCatching { encoder.release() }.exceptionOrNull()?.let(failure::addSuppressed)
-            throw failure
+        return NativeResources().use { resources ->
+            val encoder = resources.own(if (codecName == null) MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
+                else MediaCodec.createByCodecName(codecName), MediaCodec::release)
+            encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            resources.transfer()
+            encoder
         }
     }
 
@@ -419,11 +419,13 @@ internal object AacEncoderMuxer {
      * Decodes the bundled music once, loops/cuts PCM on the sample clock, encodes AAC-LC and
      * muxes it with the VME H.264 stream. No Media3 audio clock participates in this path.
      */
-    fun muxMusic(context: Context, resourceId: Int, videoFile: File, outputFile: File, durationUs: Long) {
+    fun muxMusic(context: Context, resourceId: Int, videoFile: File, outputFile: File, durationUs: Long,
+                 checkCancelled: () -> Unit = {}) {
+        checkCancelled()
         val decoded = MediaCodecAudioDecoder.decodeResource(context, resourceId, durationUs,
-            preserveFloatHeadroom = true)
-        val pcm = prepareMusicPcm(decoded)
-        muxPcm(pcm, videoFile, outputFile, durationUs)
+            preserveFloatHeadroom = true, checkCancelled = checkCancelled)
+        val pcm = prepareMusicPcm(decoded, checkCancelled)
+        muxPcm(pcm, videoFile, outputFile, durationUs, checkCancelled)
     }
 
     /** Same owned AAC path for user-selected files; the source never has to be packaged in APK. */
@@ -449,14 +451,16 @@ internal object AacEncoderMuxer {
         val targetSamples = durationUs * config.sampleRate / 1_000_000L
         val looped = loopPcm(pcm.bytes, pcm.bytesPerFrame, targetSamples)
         val encoded = encode(looped, targetSamples, config, checkCancelled)
-        val video = MediaExtractor().apply { setDataSource(videoFile.absolutePath) }
-        val videoTrack = (0 until video.trackCount).first { video.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
-        val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        try {
+        NativeResources().use { resources ->
+            val video = resources.own(MediaExtractor(), MediaExtractor::release)
+            video.setDataSource(videoFile.absolutePath)
+            val videoTrack = (0 until video.trackCount).first { video.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+            val muxer = resources.own(MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4), MediaMuxer::release)
             val videoFormat = video.getTrackFormat(videoTrack)
             val outVideo = muxer.addTrack(videoFormat)
             val outAudio = muxer.addTrack(encoded.format)
             muxer.start()
+            resources.defer { muxer.stop() }
             video.selectTrack(videoTrack)
             // KEY_MAX_INPUT_SIZE is normally populated for an MP4 track. On API 26–27 we
             // cannot read the current sample size, so retain a conservative fallback for a
@@ -478,9 +482,10 @@ internal object AacEncoderMuxer {
                 info.set(0, size, video.sampleTime, muxerFlags)
                 muxer.writeSampleData(outVideo, buffer, info); video.advance()
             }
-            encoded.samples.forEach { sample -> muxer.writeSampleData(outAudio, sample.data.duplicate(), sample.info) }
-        } finally {
-            video.release(); runCatching { muxer.stop() }; muxer.release()
+            encoded.samples.forEach { sample ->
+                checkCancelled()
+                muxer.writeSampleData(outAudio, sample.data.duplicate(), sample.info)
+            }
         }
     }
 
@@ -497,14 +502,68 @@ internal object AacEncoderMuxer {
         return out
     }
 
-    private fun encode(pcm: ByteArray, targetSamples: Long, config: Config, checkCancelled: () -> Unit): Encoded {
-        val encoder = createEncoder(config); val samples = mutableListOf<Sample>(); var format: MediaFormat? = null; var byteOffset = 0; var sampleOffset = 0L; var eosQueued = false; val info = MediaCodec.BufferInfo()
-        encoder.start()
-        try { while (true) {
-            checkCancelled()
-            if (!eosQueued) { val index = encoder.dequeueInputBuffer(10_000); if (index >= 0) { val input = encoder.getInputBuffer(index)!!; val bytes = minOf(input.capacity(), pcm.size - byteOffset); if (bytes > 0) { input.put(pcm, byteOffset, bytes); encoder.queueInputBuffer(index, 0, bytes, AudioExportPlan.presentationTimeUs(sampleOffset, config.sampleRate), 0); byteOffset += bytes; sampleOffset += bytes / (config.channelCount * 2) } else { encoder.queueInputBuffer(index, 0, 0, AudioExportPlan.presentationTimeUs(targetSamples, config.sampleRate), MediaCodec.BUFFER_FLAG_END_OF_STREAM); eosQueued = true } } }
-            when (val index = encoder.dequeueOutputBuffer(info, 10_000)) { MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> format = encoder.outputFormat; MediaCodec.INFO_TRY_AGAIN_LATER -> Unit; else -> if (index >= 0) { if (info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 && info.presentationTimeUs <= AudioExportPlan.presentationTimeUs(targetSamples, config.sampleRate)) { val source = encoder.getOutputBuffer(index)!!; source.position(info.offset); source.limit(info.offset + info.size); val copy = ByteBuffer.allocateDirect(info.size); copy.put(source); copy.flip(); samples += Sample(copy, MediaCodec.BufferInfo().also { it.set(0, info.size, info.presentationTimeUs, info.flags) }) }; val end = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0; encoder.releaseOutputBuffer(index, false); if (end) break } }
-        } } finally { runCatching { encoder.stop() }; encoder.release() }
-        return Encoded(requireNotNull(format), samples)
-    }
+    private fun encode(pcm: ByteArray, targetSamples: Long, config: Config, checkCancelled: () -> Unit): Encoded =
+        NativeResources().use { resources ->
+            val encoder = resources.own(createEncoder(config), MediaCodec::release)
+            val samples = mutableListOf<Sample>()
+            var format: MediaFormat? = null
+            var byteOffset = 0
+            var sampleOffset = 0L
+            var eosQueued = false
+            val info = MediaCodec.BufferInfo()
+            encoder.start()
+            resources.defer { encoder.stop() }
+            AacEncodingLoop.run(checkCancelled, feedInput = {
+                val index = if (eosQueued) -1 else encoder.dequeueInputBuffer(10_000)
+                if (index < 0) false else {
+                    val input = requireNotNull(encoder.getInputBuffer(index)) { "Missing AAC encoder input" }
+                    input.clear()
+                    val bytes = minOf(input.capacity(), pcm.size - byteOffset)
+                    if (bytes > 0) {
+                        input.put(pcm, byteOffset, bytes)
+                        encoder.queueInputBuffer(index, 0, bytes,
+                            AudioExportPlan.presentationTimeUs(sampleOffset, config.sampleRate), 0)
+                        byteOffset += bytes
+                        sampleOffset += bytes / (config.channelCount * 2)
+                    } else {
+                        encoder.queueInputBuffer(index, 0, 0,
+                            AudioExportPlan.presentationTimeUs(targetSamples, config.sampleRate),
+                            MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        eosQueued = true
+                    }
+                    true
+                }
+            }, drainOutput = {
+                when (val index = encoder.dequeueOutputBuffer(info, 10_000)) {
+                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        val firstFormat = format == null
+                        format = encoder.outputFormat
+                        if (firstFormat) AacEncodingLoop.Output.PROGRESS else AacEncodingLoop.Output.IDLE
+                    }
+                    else -> if (index < 0) AacEncodingLoop.Output.IDLE else {
+                        val media = info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0 &&
+                            info.presentationTimeUs <= AudioExportPlan.presentationTimeUs(targetSamples, config.sampleRate)
+                        if (media) {
+                            val source = requireNotNull(encoder.getOutputBuffer(index)) { "Missing AAC encoder output" }
+                            source.position(info.offset)
+                            source.limit(info.offset + info.size)
+                            val copy = ByteBuffer.allocateDirect(info.size)
+                            copy.put(source)
+                            copy.flip()
+                            samples += Sample(copy, MediaCodec.BufferInfo().also {
+                                it.set(0, info.size, info.presentationTimeUs, info.flags)
+                            })
+                        }
+                        val end = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                        encoder.releaseOutputBuffer(index, false)
+                        when {
+                            end -> AacEncodingLoop.Output.END
+                            media -> AacEncodingLoop.Output.PROGRESS
+                            else -> AacEncodingLoop.Output.IDLE
+                        }
+                    }
+                }
+            })
+            Encoded(requireNotNull(format), samples)
+        }
 }

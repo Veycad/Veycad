@@ -17,7 +17,13 @@ internal object MediaFrameVisualAnalyzer {
         val maskFrames: Int,
         val semanticModelSuccesses: Int
     ) {
-        init { profile.validate(observations, correspondenceAssessmentsCompleted) }
+        init {
+            profile.validate(observations, correspondenceAssessmentsCompleted)
+            require(profile.retainsAttachments ||
+                (attachments.frames.isEmpty() && attachments.maskRefinements.isEmpty())) {
+                "Observation-only analysis cannot retain render planes"
+            }
+        }
 
         fun requireCapabilities(required: SourceAnalysisProfile) {
             require(profile.supplies(required)) {
@@ -31,6 +37,8 @@ internal object MediaFrameVisualAnalyzer {
         checkCancelled()
         require(file.isFile && intervalUs in 100_000L..1_000_000L)
         val startedNs = System.nanoTime()
+        SourceAnalysisBudget.preflight(SequentialBitmapDecoder.metadata(file).durationUs,
+            intervalUs, context.cacheDir.usableSpace)
         val cacheKey = MediaFrameAnalysisCache.key(file, intervalUs, profile)
         MediaFrameAnalysisCache.load(context, cacheKey)?.let { return it }
         // A failed sequential decode must not silently become sync-frame-only observations
@@ -65,7 +73,7 @@ internal object MediaFrameVisualAnalyzer {
                     val plane = motionPlane(bitmap)
                     val correspondence = profile.correspondence { correspondencePlane(bitmap) }
                     val estimate = LumaMotionEstimator.estimate(previous, plane)
-                    val denseFlow = DenseOpticalFlowEstimator.estimate(previous, plane)
+                    val denseFlow = if (profile.retainsAttachments) DenseOpticalFlowEstimator.estimate(previous, plane) else null
                     val semanticStartedNs = System.nanoTime()
                     val semantic = if (semanticAnalyzer != null) {
                         semanticFrames++
@@ -109,7 +117,8 @@ internal object MediaFrameVisualAnalyzer {
                         (semanticScore * (1f - subjectOcclusion * .82f)).coerceIn(0f, 1f)
                     }
                     if (mask != null) maskFrames++
-                    if (semantic != null && (mask != null || semantic.depth != null || denseFlow != null)) {
+                    if (profile.retainsAttachments && semantic != null &&
+                        (mask != null || semantic.depth != null || denseFlow != null)) {
                         attachments += FrameAttachments(
                             sourceTimeUs = timeUs,
                             mask = mask,

@@ -11,14 +11,15 @@ Runtime permission tests run first with denied grants; all other tests run after
 param(
     [string]$Serial = 'emulator-5556',
     [string]$AvdName = 'AutoEditUi_API36',
-    [string]$SdkRoot = ''
+    [string]$SdkRoot = '',
+    [switch]$LegacySaveOnly
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $uiProjectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $uiPackage = 'com.veycad.app.uitest'
-$uiPermissionClass = 'com.veycad.app.RuntimePermissionsTest'
+$uiPermissionClass = if ($LegacySaveOnly) { 'com.veycad.app.AutomaticSaveDestinationTest' } else { 'com.veycad.app.RuntimePermissionsTest' }
 $uiWindows = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
 $uiNativeExtension = if ($uiWindows) { '.exe' } else { '' }
 $uiWrapper = Join-Path $uiProjectRoot $(if ($uiWindows) { 'gradlew.bat' } else { 'gradlew' })
@@ -227,8 +228,10 @@ function Invoke-UiPhase {
 
 $uiSucceeded = $false
 $uiFailureMessage = $null
+$uiRestart = $null
 Push-Location -LiteralPath $uiProjectRoot
 try {
+    & (Join-Path $uiProjectRoot 'tools/test_ui_runner.ps1')
     if ($Serial -notmatch '^emulator-(\d+)$' -or [int]$Matches[1] -lt 5556 -or [int]$Matches[1] % 2 -ne 0) {
         throw 'Use a dedicated emulator on an even port >=5556; the owner emulator-5554 is excluded.'
     }
@@ -257,8 +260,9 @@ try {
         throw "$Serial must run dedicated AVD '$AvdName'; actual '$($uiActualAvd -join ',')'."
     }
     if ((Invoke-UiAdb @('shell', 'getprop', 'sys.boot_completed')).Trim() -ne '1') { throw 'The UI emulator has not completed boot.' }
-    if ([int](Invoke-UiAdb @('shell', 'getprop', 'ro.build.version.sdk')).Trim() -ne 36) {
-        throw 'The permission-dialog selectors in this complete runner are verified on API 36.'
+    $uiExpectedApi = if ($LegacySaveOnly) { 28 } else { 36 }
+    if ([int](Invoke-UiAdb @('shell', 'getprop', 'ro.build.version.sdk')).Trim() -ne $uiExpectedApi) {
+        throw "This test selection requires API $uiExpectedApi."
     }
     # Only the verified dedicated emulator receives temporary display/animation settings.
     foreach ($uiSetting in @(
@@ -284,26 +288,36 @@ try {
         throw 'Expected two permission tests and a nonempty ordinary UI suite.'
     }
     $uiBuild = Invoke-UiNative -Executable $uiWrapper -EchoOutput -Arguments @(
-        '--no-daemon', '--console=plain', '-PpreviewNativeCi=true', ':app:assembleUiTest', ':app:assembleUiTestAndroidTest'
+        '--no-daemon', '--max-workers=2', '--console=plain', '-PpreviewNativeCi=true', ':app:assembleUiTest', ':app:assembleUiTestAndroidTest'
     )
     if ($uiBuild.ExitCode -ne 0) { throw 'Could not assemble isolated UI APKs.' }
     Assert-UiApk -MetadataPath (Join-Path $uiProjectRoot 'app/build/outputs/apk/uiTest/output-metadata.json') -ExpectedPackage $uiPackage
     Assert-UiApk -MetadataPath (Join-Path $uiProjectRoot 'app/build/outputs/apk/androidTest/uiTest/output-metadata.json') -ExpectedPackage "$uiPackage.test" -Instrumentation
     Invoke-UiAdb @('install', '-r', (Join-Path $uiProjectRoot 'app/build/outputs/apk/uiTest/app-universal-uiTest.apk')) | Out-Null
     Invoke-UiAdb @('install', '-r', (Join-Path $uiProjectRoot 'app/build/outputs/apk/androidTest/uiTest/app-uiTest-androidTest.apk')) | Out-Null
-    foreach ($uiPermission in @('android.permission.READ_MEDIA_VIDEO', 'android.permission.POST_NOTIFICATIONS')) {
-        Invoke-UiAdb @('shell', 'pm', 'revoke', $uiPackage, $uiPermission) | Out-Null
-        Invoke-UiAdb @('shell', 'pm', 'clear-permission-flags', $uiPackage, $uiPermission, 'user-set', 'user-fixed') | Out-Null
+    if (-not $LegacySaveOnly) {
+        Invoke-UiAdb @('shell', 'pm', 'revoke', $uiPackage, 'android.permission.POST_NOTIFICATIONS') | Out-Null
+        Invoke-UiAdb @('shell', 'pm', 'clear-permission-flags', $uiPackage, 'android.permission.POST_NOTIFICATIONS', 'user-set', 'user-fixed') | Out-Null
     }
-    $uiPackageState = Invoke-UiAdb @('shell', 'dumpsys', 'package', $uiPackage)
-    if ($uiPackageState -match 'android\.permission\.READ_MEDIA_VISUAL_USER_SELECTED:\s+granted=true') {
-        Invoke-UiAdb @('shell', 'pm', 'revoke', $uiPackage, 'android.permission.READ_MEDIA_VISUAL_USER_SELECTED') | Out-Null
-        Invoke-UiAdb @('shell', 'pm', 'clear-permission-flags', $uiPackage, 'android.permission.READ_MEDIA_VISUAL_USER_SELECTED', 'user-set', 'user-fixed') | Out-Null
+    if ($LegacySaveOnly) {
+        Invoke-UiPhase -Name 'legacy-save' -SelectionArgument 'class' -Expected $uiPermissionExpected
+    } else {
+        Invoke-UiPhase -Name 'permissions' -SelectionArgument 'class' -Expected $uiPermissionExpected
+        Invoke-UiPhase -Name 'screens' -SelectionArgument 'notClass' -Expected $uiOrdinaryExpected
     }
-    Invoke-UiPhase -Name 'permissions' -SelectionArgument 'class' -Expected $uiPermissionExpected
-    Invoke-UiPhase -Name 'screens' -SelectionArgument 'notClass' -Expected $uiOrdinaryExpected
-    $uiSucceeded = $uiPhases.Count -eq 2 -and @($uiPhases | Where-Object { -not $_.passed }).Count -eq 0
+    $uiExpectedPhases = if ($LegacySaveOnly) { 1 } else { 2 }
+    $uiSucceeded = $uiPhases.Count -eq $uiExpectedPhases -and @($uiPhases | Where-Object { -not $_.passed }).Count -eq 0
+    if ($uiSucceeded -and -not $LegacySaveOnly) {
+        $uiRestartRun = Invoke-UiNative -Executable (Get-Process -Id $PID).Path -EchoOutput -Arguments @(
+            '-NoProfile', '-File', (Join-Path $uiProjectRoot 'tools/run_atomic_import_restart_tests.ps1'),
+            '-Serial', $Serial, '-AvdName', $AvdName, '-SdkRoot', $SdkRoot
+        )
+        if ($uiRestartRun.ExitCode -ne 0) { throw 'Atomic import process restart checks failed.' }
+        $uiRestart = Get-Content -LiteralPath (Join-Path $uiProjectRoot 'build/reports/ui-tests/atomic-import-restart.json') -Raw | ConvertFrom-Json
+        $uiSucceeded = $uiRestart.passed -eq $true -and @($uiRestart.phases).Count -eq 2
+    }
 } catch {
+    $uiSucceeded = $false
     $uiFailureMessage = $_.Exception.Message
     Write-Host "UI verification failed: $uiFailureMessage"
 } finally {
@@ -338,6 +352,7 @@ try {
         serial = $Serial; avd = $AvdName; package = $uiPackage; run_id = $uiRunId
         run = $(if ($null -eq $uiTotalRun) { 0 } else { $uiTotalRun })
         passed = $uiSucceeded; error = $uiFailureMessage; phases = $uiPhases.ToArray()
+        atomic_import_restart = $uiRestart
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $uiSummaryFile -Encoding UTF8
 }
 if (-not $uiSucceeded) { exit 1 }

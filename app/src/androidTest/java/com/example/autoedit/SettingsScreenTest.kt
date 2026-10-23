@@ -152,7 +152,7 @@ class SettingsScreenTest {
         val sources = File(ui.context.filesDir, "source-draft").listFiles()!!
             .filter(File::isFile).associateWith(File::readBytes)
         assertTrue("The test must have a real imported source", sources.isNotEmpty())
-        val analysis = File(ui.context.cacheDir, "ui-analysis/cache.bin").apply {
+        val analysis = File(ui.context.cacheDir, "full-video-analysis/cache.bin").apply {
             parentFile!!.mkdirs()
             writeBytes(ByteArray(10_000) { (it % 251).toByte() })
         }
@@ -188,6 +188,31 @@ class SettingsScreenTest {
         ui.awaitDisplayed(R.id.directorContent)
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
         onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · от 15 секунд")))
+    }
+
+    @Test fun failed_source_clear_preserves_selection_and_owned_cache() {
+        ui.launch()
+        ui.importVideos("preserved-draft.mp4")
+        val sources = ui.selectedSources().associateWith(File::readBytes)
+        val cache = File(ui.context.cacheDir, "full-video-analysis/keep.bin").apply {
+            parentFile!!.mkdirs(); writeBytes(ByteArray(1024))
+        }
+        val app = ui.context.applicationContext as UiTestApplication
+        app.sourceIo = object : SourceDraftStore.Io by SourceDraftStore.DiskIo {
+            override fun replaceManifest(target: File, bytes: ByteArray) { throw IOException("force publication failure") }
+        }
+        try {
+            openSettings()
+            ui.click(R.id.clearCacheButton)
+            onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
+            ui.awaitIdle()
+            assertTrue(cache.exists())
+            sources.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
+            assertEquals("force publication failure", app.editSession.state.value!!.error)
+            ui.click(R.id.backFromSettingsButton)
+            ui.awaitText(R.id.videoSelection, "preserved-draft.mp4")
+            onView(withId(R.id.renderButton)).check(matches(isEnabled()))
+        } finally { app.sourceIo = SourceDraftStore.DiskIo }
     }
 
     @Test fun helpExportsCaptureFailureDetailsAndCancellationLeavesTheReportUntouched() {

@@ -258,7 +258,8 @@ object MediaCodecSpeedRampRenderer {
                 request.audioResourceId,
                 videoOnlyFile,
                 request.outputFile,
-                request.outputWindow?.durationUs ?: request.audioDurationUs
+                request.outputWindow?.durationUs ?: request.audioDurationUs,
+                request.checkCancelled
             )
             videoOnlyFile.delete()
         } else check(videoOnlyFile.renameTo(request.outputFile)) { "Unable to move video output" }
@@ -293,13 +294,11 @@ object MediaCodecSpeedRampRenderer {
             setInteger(MediaFormat.KEY_FRAME_RATE, request.fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
-        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        try {
+        return NativeResources().use { resources ->
+            val encoder = resources.own(MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC), MediaCodec::release)
             encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            return encoder
-        } catch (error: Throwable) {
-            runCatching { encoder.release() }
-            throw error
+            resources.transfer()
+            encoder
         }
     }
 

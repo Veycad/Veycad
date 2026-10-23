@@ -23,9 +23,39 @@ class GoldenRenderActivity : Activity() {
         })
         val wakeGuard = RenderWakeGuard.acquire(this)
         Thread({
+            val tracing = java.util.concurrent.atomic.AtomicBoolean(true)
+            val sampler = intent.getStringExtra("ram_trace")?.let { path ->
+                Thread({
+                    val file = File(path).apply { parentFile?.mkdirs() }
+                    try {
+                        file.printWriter().use { log ->
+                            log.println("elapsed_ms,java_used_bytes,java_limit_bytes,native_allocated_bytes,pss_kib,matte_pss_kib")
+                            val runtime = Runtime.getRuntime()
+                            val memory = android.os.Debug.MemoryInfo()
+                            val manager = getSystemService(android.app.ActivityManager::class.java)
+                            while (tracing.get()) {
+                                android.os.Debug.getMemoryInfo(memory)
+                                val mattePid = manager.runningAppProcesses?.firstOrNull {
+                                    it.processName == "$packageName:matte_engine"
+                                }?.pid
+                                val mattePss = mattePid?.let { manager.getProcessMemoryInfo(intArrayOf(it)).first().totalPss } ?: 0
+                                log.println("${android.os.SystemClock.elapsedRealtime()}," +
+                                    "${runtime.totalMemory() - runtime.freeMemory()},${runtime.maxMemory()}," +
+                                    "${android.os.Debug.getNativeHeapAllocatedSize()},${memory.totalPss},$mattePss")
+                                log.flush()
+                                Thread.sleep(250)
+                            }
+                        }
+                    } catch (_: OutOfMemoryError) {
+                        // Stop observing under pressure; let the render thread report its own failure.
+                    }
+                }, "veycad-ram-sampler").apply { isDaemon = true; start() }
+            }
             try {
                 runGolden()
             } finally {
+                tracing.set(false)
+                sampler?.join(1_000)
                 wakeGuard.close()
             }
         }, "veycad-golden-render").start()
@@ -196,7 +226,11 @@ class GoldenRenderActivity : Activity() {
                 heartbeatEchoOffsetMs = intent.getLongExtra("heartbeat_echo_offset_ms", -67L),
                 style = styleExtra.takeUnless { it.equals(AUTO_STYLE, ignoreCase = true) }
                     ?.let(EventMatchingDirector.Style::valueOf),
-                capabilities = RenderPassPlanner.DeviceCapabilities(3, 4_096, 512, false, true)
+                onProgress = { progress ->
+                    if (intent.hasExtra("ram_trace")) Log.i("VeycadRam", "stage=${progress.stage}")
+                },
+                capabilities = if (intent.hasExtra("ram_trace")) RenderPassPlanner.DeviceCapabilities.conservative()
+                    else RenderPassPlanner.DeviceCapabilities(3, 4_096, 512, false, true)
             )
             val edit = VeycadAutomaticEditor.render(editRequest)
             val analysis = edit.analysis
@@ -386,6 +420,8 @@ class GoldenRenderActivity : Activity() {
                     appendLine("${capabilityPrefix}profile=${sourceAnalysis.profile.cacheToken}")
                     appendLine("${capabilityPrefix}correspondence_state=${sourceAnalysis.profile.correspondenceState}")
                     appendLine("${capabilityPrefix}observations=${sourceAnalysis.observations.size}")
+                    appendLine("${capabilityPrefix}semantic_frames=${sourceAnalysis.semanticFrames}")
+                    appendLine("${capabilityPrefix}retained_attachment_frames=${sourceAnalysis.attachments.frames.size}")
                     appendLine("${capabilityPrefix}correspondence_assessments_completed=${sourceAnalysis.correspondenceAssessmentsCompleted}")
                     appendLine("${capabilityPrefix}subject_measured_samples=${sourceAnalysis.observations.count { it.motionMeasurement != null }}")
                     appendLine("${capabilityPrefix}camera_measured_samples=${sourceAnalysis.observations.count {
