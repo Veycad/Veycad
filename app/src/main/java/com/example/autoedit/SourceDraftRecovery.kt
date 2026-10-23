@@ -26,7 +26,9 @@ internal object SourceDraftRecovery {
         val sorted = candidates.sortedBy { sourceName.matchEntire(it.name)?.groupValues?.get(1) ?: it.name }
         val coherent = !unsafe && sorted.all { Files.isRegularFile(it.toPath(), NOFOLLOW_LINKS) && it.length() > 0 } && when (sorted.size) {
             0 -> true
-            1 -> prefs.secondName == null && sourceName.matchEntire(sorted[0].name)?.groupValues?.get(1) != "1"
+            1 -> prefs.secondName == null && sourceName.matchEntire(sorted[0].name)?.groupValues?.get(1).let {
+                it == null || it == "0"
+            }
             2 -> {
                 val a = sourceName.matchEntire(sorted[0].name); val b = sourceName.matchEntire(sorted[1].name)
                 a != null && b != null && a.groupValues[1] == "0" && b.groupValues[1] == "1" && a.groupValues[2] == b.groupValues[2]

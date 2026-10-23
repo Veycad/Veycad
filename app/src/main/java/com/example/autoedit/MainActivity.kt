@@ -171,7 +171,8 @@ class MainActivity : AppCompatActivity() {
                 musicRequests.invalidate()
                 musicSelection = null
                 setCaptureMode(false)
-        updateStyleLabel()
+                session.restoreDraft(montageStyle)
+                updateStyleLabel()
             })
         findViewById<TextView>(R.id.appVersion).text =
             "Veykad ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}"

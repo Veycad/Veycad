@@ -25,7 +25,7 @@ class SourceDraftRecoveryTest {
         assertEquals(restored.snapshot, SourceDraftStore(base).read())
     }
     @Test fun ambiguousLegacyGetsTombstoneBeforeCandidate() {
-        for (names in listOf(listOf("source-1-${UUID.randomUUID()}.mp4"),
+        for (names in listOf(listOf("source-1-${UUID.randomUUID()}.mp4"), listOf("source-19-${UUID.randomUUID()}.mp4"),
             listOf("source-0-${UUID.randomUUID()}.mp4", "source-1-${UUID.randomUUID()}.mp4"),
             listOf("one.mp4", "two.mp4"), listOf("one.mp4", "two.mp4", "three.mp4"))) {
             val base = temporary.newFolder(); val files = names.map { file(base, it) }
@@ -51,6 +51,18 @@ class SourceDraftRecoveryTest {
             as SourceDraftStore.ReplaceResult.Published
         assertEquals(committed.snapshot, SourceDraftStore(base).restore(legacy.copy(cleanupIncomplete = true)).snapshot)
     }
+    @Test fun galleryTailOwnedFilesAndStagingAreCollectedWithinTheTwentySourceBound() {
+        val base = temporary.newFolder(); val store = SourceDraftStore(base)
+        store.restore(legacy.copy(cleanupIncomplete = true))
+        val obsolete = file(base, "source-19-${UUID.randomUUID()}.mp4")
+        val unknown = file(base, "source-20-${UUID.randomUUID()}.mp4")
+        val staging = File(store.root, ".staging-${UUID.randomUUID()}").apply { mkdir() }
+        File(staging, "19.partial").writeBytes(byteArrayOf(1))
+        val owner = MediaWorkCoordinator()
+        requireNotNull(owner.tryBeginCleanup()).use { assertTrue(store.collectObsolete(it).isEmpty()) }
+        assertFalse(obsolete.exists()); assertFalse(staging.exists()); assertTrue(unknown.exists())
+    }
+
     @Test fun collectionRequiresExclusiveAdmissionAndPreservesUnknown() {
         val base = temporary.newFolder(); val store = SourceDraftStore(base)
         val current = file(base, "old.mp4")

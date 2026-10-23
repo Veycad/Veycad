@@ -129,7 +129,8 @@ internal class EditSession internal constructor(
         val names = snapshot.entries.map { it.displayName }
         val retained = confirmedDraft
         val music = retained?.takeIf { it.files == files && it.names == names && it.music?.styleId == style.id }?.music
-            ?: if (style.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC) null else selectMusic(style)
+            ?: if (style.recipe in setOf(MontageStyleCatalog.Recipe.CUSTOM_MUSIC, MontageStyleCatalog.Recipe.GALLERY_MONTAGE))
+                null else selectMusic(style)
         return Draft(files, names, music)
     }
 

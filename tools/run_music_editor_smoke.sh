@@ -29,6 +29,7 @@ expected = {
  'com.veycad.app.CustomMusicScreenTest#importing_wav_changes_to_custom_recipe_and_keeps_the_chosen_fragment_after_recreation',
  'com.veycad.app.CustomMusicScreenTest#cancelling_the_music_picker_keeps_the_authored_style_and_valid_track',
  'com.veycad.app.CustomMusicScreenTest#pending_import_and_offset_analysis_survive_recreation_and_block_all_style_entries',
+ 'com.veycad.app.CustomMusicScreenTest#customMusicActivationRequiresOneConfirmedSourceWithoutChangingTheSavedPair',
  'com.veycad.app.CustomMusicEditorDeviceTest#savedCustomMontageReopensAndEditsWithItsMusicOffset',
  'com.veycad.app.CustomMusicEditorDeviceTest#changedMusicOffsetSurvivesStoreCompilerAndNativeExport',
 }

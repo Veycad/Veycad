@@ -69,6 +69,52 @@ class CustomMusicScreenTest {
         assertNull(CustomMusicStore(ui.context).restore())
     }
 
+    @Test fun customMusicActivationRequiresOneConfirmedSourceWithoutChangingTheSavedPair() {
+        ui.launch()
+        ui.selectStyle("Диалог двух сцен")
+        ui.importVideos("pair-first.mp4", "pair-second.mp4")
+        val store = SourceDraftStore(ui.context.filesDir)
+        val pair = requireNotNull(store.read())
+        val pairBytes = pair.entries.associate { it.fileName to store.child(it.fileName).readBytes() }
+        val uri = ui.videoUri("pair-custom.wav")
+        SyntheticAudio.writeWave(File(ui.context.getDir("ui-imports", 0), "pair-custom.wav"))
+        intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(
+            android.app.Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(uri)))
+        ui.click(R.id.importMusicButton)
+        ui.awaitText(R.id.selectStyleButton, "Под свою музыку")
+        ui.waitUntil("custom music ready, pair requires a new one-source selection") {
+            var ready = false
+            ui.scenario.onActivity { activity ->
+                ready = !ViewModelProvider(activity)[CustomMusicSession::class.java].current.busy &&
+                    EditSession.get(activity).state.value?.sourceSelectionConfirmed == false
+            }
+            ready
+        }
+        onView(withId(R.id.renderButton)).check(matches(isNotEnabled()))
+        assertEquals(pair, store.read())
+        ui.cancelVideoPicker()
+        assertEquals(pair, store.read())
+        val failing = ui.videoUri("rejected-single.mp4").buildUpon().appendQueryParameter("failAfter", "1").build()
+        ui.returnVideos(listOf(failing))
+        ui.awaitIdle()
+        assertEquals(pair, store.read())
+        pairBytes.forEach { (name, bytes) -> assertArrayEquals(bytes, store.child(name).readBytes()) }
+        onView(withId(R.id.renderButton)).check(matches(isNotEnabled()))
+
+        ui.importVideos("confirmed-single.mp4")
+        val single = requireNotNull(store.read())
+        assertEquals(1, single.entries.size)
+        ui.startRender()
+        val request = requireNotNull(ui.renderer.currentRequest)
+        val music = requireNotNull(CustomMusicStore(ui.context).restore())
+        assertEquals(MontageStyleCatalog.Recipe.CUSTOM_MUSIC, request.recipe)
+        assertEquals(listOf(store.child(single.entries.single().fileName)), request.sources.items.map { it.file })
+        assertEquals(music.file, request.musicFile)
+        assertEquals(music.startUs, request.musicStartUs)
+        ui.renderer.complete()
+        ui.awaitIdle()
+    }
+
     @Test fun pending_import_and_offset_analysis_survive_recreation_and_block_all_style_entries() {
         ui.launch()
         ui.importVideos("portrait.mp4")
