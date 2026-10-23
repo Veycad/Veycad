@@ -20,6 +20,28 @@ class VideoDecoderCursorDeviceTest {
 
     @Test fun previous_sync_forward_exact_seek_and_backward_range_at_60_fps() = exactSeek(60)
 
+    @Test fun normalized_first_advance_without_begin_range_adds_raw_origin_exactly_once() {
+        val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
+            "cursor-initial-offset").apply { mkdirs() }
+        val original = SyntheticVideo.create(File(directory, "source.mp4"), 3_000, 64, 96,
+            iFrameIntervalSeconds = 1)
+        val file = SourceAudioNativeFixtures.remux(File(directory, "shifted.mp4"), listOf(original),
+            shiftVideoUs = 2_000_000, videoEndUs = 3_000_000)
+        val samples = samples(file)
+        val relative = 217_777L
+        val target = samples.pts.first() + relative
+        val expected = samples.pts.first { it >= target }
+        assertTrue("A double-added origin must cross a later sync sample in this regression fixture",
+            samples.syncPts.last { it <= target + samples.pts.first() } > expected)
+        DisplayHarness().use { display ->
+            VideoDecoderCursor(file, display.inputSurface, normalizeTimestamps = true).use { cursor ->
+                assertTrue(cursor.advanceTo(relative) { display.awaitTexture() })
+                assertEquals("Initial advance seeks and decodes the same physical timestamp", expected, cursor.currentTexturePtsUs)
+                display.draw(cursor, target)
+            }
+        }
+    }
+
     @Test fun text_relative_times_use_nonzero_source_origin_while_default_keeps_physical_pts() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val file = File(instrumentation.targetContext.cacheDir, "cursor-offset-source.mp4")

@@ -102,7 +102,7 @@ class ManualFramingTableTest {
         }
         val changedGeometry = this.table(ProjectAspect.SQUARE_1_1, SourceGeometry(1000, 1000, 180, 1f), FramingSettings(FramingMode.MANUAL))
         assertThrows(IllegalArgumentException::class.java) { table.requireCompatible(changedGeometry) }
-        for (mode in listOf(FramingMode.BLURRED_FIT, FramingMode.SMART_PERSON)) {
+        for (mode in listOf(FramingMode.SMART_PERSON)) {
             val core = PreviewTestFixtures.core()
             val visual = core.current.visualSettings.withFraming(FramingKey(core.selectedVideos!!.single().id,
                 core.current.visualSettings.aspect), SourceFramingSettings(mode = mode))
@@ -111,6 +111,46 @@ class ManualFramingTableTest {
                 ManualFramingTable.fromDraft(DraftProject(core.copy(original = revision, current = revision)))
             }
         }
+    }
+
+    @Test fun fit_preserves_whole_foreground_and_smart_samples_each_selection_in_source_time() {
+        val other = SourceId("second-selection")
+        val aspect = ProjectAspect.PORTRAIT_9_16
+        val settings = mapOf(id to SourceFramingSettings(mode = FramingMode.SMART_PERSON),
+            other to SourceFramingSettings(mode = FramingMode.SMART_PERSON))
+        val samples = settings.mapValues { FramingPlan.sample(square, aspect, it.value.current) }
+        val window = listOf(VisualEventMap.UsableWindow(0, 1_000_000))
+        fun track(x: Float) = SmartFramingTrack.fromPoints(listOf(
+            SmartFramingTrack.Point(0, x, .5f, SmartFramingStatus.TRACKING),
+            SmartFramingTrack.Point(999_999, x, .5f, SmartFramingStatus.TRACKING)), window)
+        val left = track(.3f); val right = track(.7f)
+        val table = ManualFramingTable(listOf(id, other), mapOf(id to square, other to square),
+            aspect, samples, settings, mapOf(id to left, other to right))
+        val first = table.crop(0, 250_000); val second = table.crop(1, 250_000)
+        assertEquals(.3f, first.centerX, .000001f)
+        assertEquals(.7f, second.centerX, .000001f)
+        for (pts in listOf(750_000L, 0L, 250_000L)) {
+            assertEquals(second, table.crop(1, pts)); assertEquals(first, table.crop(0, pts))
+        }
+        assertEquals(SmartFramingStatus.TRACKING, table.status(0, 250_000))
+        assertEquals(SmartFramingStatus.UNKNOWN, table.status(0, 1_000_000))
+        assertTrue(table.smartReservationBytes() >= 4 * 96L)
+        table.close()
+        assertThrows(IllegalStateException::class.java) { table.crop(0, 0) }
+        assertThrows(IllegalStateException::class.java) { table.sample(0, 0) }
+        assertThrows(IllegalStateException::class.java) { table.smartReservationBytes() }
+        assertEquals(2, left.points.size) // Closing the handoff does not mutate its producer's value.
+
+        val core = PreviewTestFixtures.core()
+        val selection = core.selectedVideos!!.single()
+        val visual = core.current.visualSettings.withFraming(FramingKey(selection.id, core.current.visualSettings.aspect),
+            SourceFramingSettings(mode = FramingMode.BLURRED_FIT))
+        val revision = core.current.copy(visualSettings = visual)
+        val fit = ManualFramingTable.fromDraft(DraftProject(core.copy(original = revision, current = revision)))
+        val sample = fit.sample(0, 0)
+        assertEquals(whole, sample.foregroundSource)
+        assertNotNull(sample.backgroundSource)
+        assertEquals(FramingPlan.BLUR_RADIUS_FRACTION, sample.blurRadiusFraction, 0f)
     }
 
     private fun table(aspect: ProjectAspect, geometry: SourceGeometry, settings: FramingSettings) =

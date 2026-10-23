@@ -7,9 +7,11 @@ import java.util.UUID
 /** Actual automatic winner; common stores own all sources, revisions and history. */
 internal object CustomMusicProjectHandoff {
     fun publish(context: Context, graph: MontageGraph, sources: MediaSourceSet, musicFile: java.io.File,
-        settings: ProjectExportSettings, checkCancelled: () -> Unit = {}): String {
+        settings: ProjectExportSettings, checkCancelled: () -> Unit = {},
+        recipe: MontageStyleCatalog.Recipe = MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
+        captureOrigin: CaptureOrigin? = null): String {
         val store = HybridProjectStore(context.filesDir)
-        val id = "music-${UUID.randomUUID()}"
+        val id = "${if (recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC) "music" else "edit"}-${UUID.randomUUID()}"
         val directory = store.directory(id)
         val assets = ProjectAssetStore(directory)
         try {
@@ -25,7 +27,8 @@ internal object CustomMusicProjectHandoff {
                 assets.importVideo(source, metadata.geometry.pixelAspectRatio)
             }
             val selections = inspected.mapIndexed { index, (source, _) ->
-                SelectedVideo.fromInspected(source, videos[index], SourceOwnership.IMPORTED)
+                SelectedVideo.fromInspected(source, videos[index],
+                    if (captureOrigin == null) SourceOwnership.IMPORTED else SourceOwnership.CAPTURE, captureOrigin)
             }
             checkCancelled()
             val retriever = MediaMetadataRetriever()
@@ -40,8 +43,15 @@ internal object CustomMusicProjectHandoff {
             val track = requireNotNull(graph.audioTrack) { "В автосборке отсутствует музыка" }
             require(track.sourceStartUs < durationUs)
             val owned = graph.copy(audioTrack = track.copy(sourceId = music.id))
-            val project = EditableMontageImporter.create(id, owned, MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
-                settings, videos, music, null, selections).shared
+            val link = captureOrigin?.let { CompletedRenderStore.CaptureLink(it.sessionId, it.takeOrdinal, it.recommended) }
+            val imported = EditableMontageImporter.create(id, owned, recipe,
+                settings, videos, music, link, selections).shared
+            val aspect = ProjectAspect.entries.firstOrNull { aspect ->
+                val size = aspect.size(360)
+                size.width.toLong() * settings.height == size.height.toLong() * settings.width
+            } ?: throw IllegalArgumentException("Неподдерживаемый формат проекта")
+            val original = imported.original.copy(visualSettings = ProjectVisualSettings(aspect, false))
+            val project = imported.copy(original = original, current = original)
             checkCancelled()
             store.create(project)
             return id

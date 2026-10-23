@@ -39,31 +39,43 @@ class SourceAudioComposer(private val clock: ProjectClock, clips: List<SourceAud
     fun compose(settings: AudioMixSettings, output: PcmSink, speech: PcmSink? = null,
         music: PcmStreamProvider? = null, checkCancelled: () -> Unit = {}): PcmCompositionStats {
         require(settings.mode != AudioMixMode.MUSIC) { "MUSIC uses legacy export" }
-        require(settings.mode != AudioMixMode.SPEECH_AND_MUSIC || music != null)
+        return composeProject(settings, output, speech, music, checkCancelled)
+    }
+
+    /** Saved projects share this PCM bus; unprepared MUSIC exports keep their legacy path. */
+    internal fun composeProject(settings: AudioMixSettings, output: PcmSink, speech: PcmSink? = null,
+        music: PcmStreamProvider? = null, checkCancelled: () -> Unit = {}, durationUs: Long? = null,
+        musicMultiplier: Float = 1f): PcmCompositionStats {
+        require(settings.mode == AudioMixMode.SOURCE || music != null)
+        require(musicMultiplier.isFinite() && musicMultiplier in 0f..2f)
         checkCancelled()
         val meter = BufferMeter()
         val rendered = OutputBuffer(PcmFormat(48_000, 2), output, meter)
-        val totalFrames = sampleFrame(clips.last().span.endExclusive)
+        val totalFrames = durationUs?.let {
+            require(it > 0 && it <= clock.timeUs(clips.last().span.endExclusive))
+            (it * 48_000 + 500_000) / 1_000_000
+        } ?: sampleFrame(clips.last().span.endExclusive)
         val speechFilter = speech?.let { SpeechFilter(totalFrames / 3, it, meter) }
         val primary = DoubleArray(2)
         val score = DoubleArray(2)
         meter.retain(4, 8)
         // One constant bound for the entire mix avoids sample clipping and limiter pumping.
-        val sum = settings.sourceGain.toDouble() + settings.musicGain
+        val musicGain = settings.musicGain * musicMultiplier
+        val sum = settings.sourceGain.toDouble() + musicGain
         val headroom = if (settings.mode == AudioMixMode.SPEECH_AND_MUSIC && sum > 1.0)
             .89125094 / sum else 1.0
-        val musicCursor = if (settings.mode == AudioMixMode.SPEECH_AND_MUSIC)
+        val musicCursor = if (settings.mode != AudioMixMode.SOURCE)
             music!!.open("app-music", 0)?.let { ChunkCursor(it, meter, checkCancelled) } else null
         musicCursor.use { musicReader ->
             for (clip in clips) {
                 checkCancelled()
-                val cursor = if (clip.hasAudio) sources.open(clip.sourceId, clip.sourceMap.sample(0))
+                val cursor = if (clip.hasAudio && settings.mode != AudioMixMode.MUSIC) sources.open(clip.sourceId, clip.sourceMap.sample(0))
                     ?.let { ChunkCursor(it, meter, checkCancelled) } else null
                 cursor.use { reader ->
                     val mapping = FrameAnchors(clip)
                     val startUs = clock.timeUs(clip.span.start)
                     val endUs = clock.timeUs(clip.span.endExclusive)
-                    for (frame in sampleFrame(clip.span.start) until sampleFrame(clip.span.endExclusive)) {
+                    for (frame in sampleFrame(clip.span.start) until minOf(totalFrames, sampleFrame(clip.span.endExclusive))) {
                         if (frame % 1_024 == 0L) checkCancelled()
                         val outputUs = frame * 1_000_000.0 / 48_000
                         mapping.moveTo(outputUs)
@@ -82,8 +94,9 @@ class SourceAudioComposer(private val clock: ProjectClock, clips: List<SourceAud
                             val whole = floor(outputUs).toLong()
                             musicReader.sample(whole, outputUs - whole, score)
                         }
-                        rendered.push((primary[0] * settings.sourceGain + score[0] * settings.musicGain) * headroom,
-                            (primary[1] * settings.sourceGain + score[1] * settings.musicGain) * headroom)
+                        val sourceGain = if (settings.mode == AudioMixMode.MUSIC) 0f else settings.sourceGain
+                        rendered.push((primary[0] * sourceGain + score[0] * musicGain) * headroom,
+                            (primary[1] * sourceGain + score[1] * musicGain) * headroom)
                     }
                 }
             }

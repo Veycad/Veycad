@@ -71,16 +71,30 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
         [pscustomobject]@{ ExitCode = 0 }
     }
     function Collect-UiPreviewEvidence { param([switch]$Required) }
-    function Get-Content { param($LiteralPath, [switch]$Raw) '{"passed":true,"phases":[{},{}]}' }
+    $projectReport = '{"passed":true,"exactFileChecks":5,"checkpointPid":10,"restartedPid":20}'
+    function Get-Content {
+        param($LiteralPath, [switch]$Raw)
+        if ($LiteralPath.EndsWith('project-recovery.json')) { return $projectReport }
+        '{"passed":true,"phases":[{},{}]}'
+    }
     foreach ($LegacySaveOnly in @($true, $false)) {
         $uiPhases = [Collections.Generic.List[object]]::new()
         $restartCalls = [Collections.Generic.List[object]]::new()
         $uiSucceeded = $false
         . ([scriptblock]::Create($phaseCode))
         $expectedPhases = if ($LegacySaveOnly) { 'legacy-save' } else { 'permissions,screens' }
-        $expectedRestarts = if ($LegacySaveOnly) { 0 } else { 1 }
+        $expectedRestarts = if ($LegacySaveOnly) { 0 } else { 2 }
         if (-not $uiSucceeded -or ($uiPhases.name -join ',') -cne $expectedPhases -or
             $restartCalls.Count -ne $expectedRestarts) { throw 'Merged legacy/restart routing failed.' }
+    }
+    $LegacySaveOnly = $false
+    foreach ($projectReport in @('{"passed":false,"exactFileChecks":5,"checkpointPid":10,"restartedPid":20}',
+        '{"passed":true,"exactFileChecks":0,"checkpointPid":10,"restartedPid":20}',
+        '{"passed":true,"exactFileChecks":5,"checkpointPid":10,"restartedPid":10}')) {
+        $uiPhases = [Collections.Generic.List[object]]::new()
+        $rejected = $false
+        try { . ([scriptblock]::Create($phaseCode)) } catch { $rejected = $_.Exception.Message -ceq 'Project recovery report is incomplete.' }
+        if (-not $rejected -or $uiSucceeded) { throw 'Incomplete or same-PID project recovery was accepted.' }
     }
 }
 Write-Host 'UI runner legacy/restart routing check PASS.'
@@ -127,12 +141,13 @@ if ($null -eq $collector) { throw 'Cannot locate preview collection boundary.' }
             if (-not [IO.Path]::GetFullPath($uiDevice).StartsWith($fixtureRoot + [IO.Path]::DirectorySeparatorChar)) {
                 throw 'Unsafe fixture removal target'
             }
-            Remove-Item -LiteralPath $uiDevice -Recurse -Force
+            if (Test-Path -LiteralPath $uiDevice) { Remove-Item -LiteralPath $uiDevice -Recurse -Force }
             [pscustomobject]@{ ExitCode = 0 }
         }
         function Get-Content {
             param($LiteralPath, [switch]$Raw)
             if ($LiteralPath.EndsWith('atomic-import-restart.json')) { return '{"passed":true,"phases":[{},{}]}' }
+            if ($LiteralPath.EndsWith('project-recovery.json')) { return '{"passed":true,"exactFileChecks":5,"checkpointPid":10,"restartedPid":20}' }
             Microsoft.PowerShell.Management\Get-Content -LiteralPath $LiteralPath -Raw
         }
         $Serial = 'test'; $AvdName = 'test'; $SdkRoot = 'test'

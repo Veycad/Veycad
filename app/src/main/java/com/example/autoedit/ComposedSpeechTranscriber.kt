@@ -8,6 +8,22 @@ import java.io.RandomAccessFile
  * cancellation. Ready-MP4 captions continue to use [SpeechTranscriber.transcribeOutcome].
  * No recognition cache, project mutation, decoder, mixer or model ownership lives here. */
 internal class ComposedSpeechTranscriber(private val transcriber: SpeechTranscriber) {
+    /** Common-editor STT needs PCM only; it must not depend on the device's AAC container support. */
+    fun transcribeOutcome(context: Context, prepared: ComposedProjectAudio, settings: AudioMixSettings,
+        language: String, checkCancelled: () -> Unit, onProgress: (Int) -> Unit): SpeechOutcome = SpeechOutcomes.captureOutcome {
+        checkCancelled()
+        require(settings.mode != AudioMixMode.MUSIC && settings.sourceGain > 0f) { "Для субтитров включите исходную речь" }
+        require(language in setOf("auto", "ru", "en"))
+        prepared.requireOpen()
+        val frames = prepared.sampleFrames / 3
+        require(frames <= Long.MAX_VALUE / 1000000)
+        RandomAccessFile(prepared.speechPcmFile, "r").use { input ->
+            require(input.length() == Math.multiplyExact(frames, 2L)) { "Prepared speech byte count does not match sample frames" }
+        }
+        transcriber.transcribePcmOutcome(context,
+            PcmFile(prepared.speechPcmFile, 16000, 1, frames, prepared.hasSourceAudio), language, checkCancelled, onProgress)
+    }
+
     /** [hasSourceAudio] must come from the same inspected/compiled source snapshot that produced
      * [prepared], never from the mixed AAC file or the amplitude of the speech PCM. A present
      * silent track is still audio; the existing recognizer determines the no-speech reason. */

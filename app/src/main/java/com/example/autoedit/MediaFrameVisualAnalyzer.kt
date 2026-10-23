@@ -102,20 +102,7 @@ internal object MediaFrameVisualAnalyzer {
                         }
                     }
                     if (profile.requestsCorrespondence) motionElapsedNs += System.nanoTime() - motionStartedNs
-                    val subjectOcclusion = maxOf(
-                        estimate.occlusionConfidence,
-                        semantic?.occlusionConfidence ?: 0f,
-                        (semantic?.gestureConfidence?.takeIf { semantic.gestureEvidenceAvailable } ?: 0f) * .82f
-                    ).coerceIn(0f, 1f)
-                    val subjectQuality = if (mask == null) 0f else {
-                        val semanticScore =
-                            mask.confidence * .27f +
-                            (semantic.maskTemporalIou) * .24f +
-                            estimate.visualQuality * .18f +
-                            (semantic.face?.confidence ?: 0f) * .18f +
-                            (semantic.composition?.quality ?: 0f) * .13f
-                        (semanticScore * (1f - subjectOcclusion * .82f)).coerceIn(0f, 1f)
-                    }
+                    val (subjectQuality, subjectOcclusion) = subjectMetrics(estimate, semantic)
                     if (mask != null) maskFrames++
                     if (profile.retainsAttachments && semantic != null &&
                         (mask != null || semantic.depth != null || denseFlow != null)) {
@@ -183,6 +170,21 @@ internal object MediaFrameVisualAnalyzer {
     internal fun motionPlane(bitmap: Bitmap): LumaMotionEstimator.Plane {
         val scaled = Bitmap.createScaledBitmap(bitmap, 48, 72, true)
         return try { scaled.toLumaPlane() } finally { if (scaled !== bitmap) scaled.recycle() }
+    }
+
+    /** Identical current-frame acceptance for editorial attachments and derived SMART tracks. */
+    internal fun subjectMetrics(estimate: LumaMotionEstimator.Estimate,
+        semantic: LocalSemanticFrameAnalyzer.Result?): Pair<Float, Float> {
+        val occlusion = maxOf(estimate.occlusionConfidence, semantic?.occlusionConfidence ?: 0f,
+            (semantic?.gestureConfidence?.takeIf { semantic.gestureEvidenceAvailable } ?: 0f) * .82f).coerceIn(0f, 1f)
+        val mask = semantic?.mask
+        val quality = if (mask == null) 0f else {
+            val score = mask.confidence * .27f + semantic.maskTemporalIou * .24f +
+                estimate.visualQuality * .18f + (semantic.face?.confidence ?: 0f) * .18f +
+                (semantic.composition?.quality ?: 0f) * .13f
+            (score * (1f - occlusion * .82f)).coerceIn(0f, 1f)
+        }
+        return quality to occlusion
     }
 
     /** No previous semantic result is accepted here: a failed frame stays unknown.

@@ -9,11 +9,40 @@ import java.io.DataOutputStream
 import java.util.UUID
 
 /** Sources/revisions are published before the sole mutable CURRENT pointer. */
-class HybridProjectStore(
+class HybridProjectStore private constructor(
     filesDir: File,
-    private val beforePointerReplace: () -> Unit = {}
+    private val beforePointerReplace: () -> Unit,
+    private val beforeAnalysisRead: (String) -> Unit
 ) {
+    constructor(filesDir: File, beforePointerReplace: () -> Unit = {}) : this(filesDir, beforePointerReplace, {})
+    private val files = filesDir.canonicalFile
     private val root = ownedChild(filesDir, "projects")
+
+    internal fun <T> withBackupSnapshot(projectId: String, action: (HybridProject, File) -> T): T = locked {
+        action(readCurrent(projectId).result.project, directory(projectId))
+    }
+
+    /** Used only in private restore staging: old blobs stay exact; the new manifest uses the current codec. */
+    internal fun forkRestoredProject(projectId: String, newId: String, outputNames: Map<String, String>): HybridProject = locked {
+        val previous = readCurrent(projectId)
+        val fresh = previous.result.project.copy(id = newId,
+            exports = previous.result.project.exports.map { it.copy(fileName = outputNames.getValue(it.fileName)) })
+        val target = directory(newId)
+        check(!target.exists()) { "Restore destination already exists" }
+        java.nio.file.Files.move(directory(projectId).toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+        publish(fresh, previous)
+        readCurrent(newId).result.project
+    }
+
+    internal fun installRestoredProject(stagingFiles: File, projectId: String): Unit = locked {
+        val staging = stagingFiles.canonicalFile
+        require(staging.parentFile == files && staging.name.matches(Regex("\\.project-restore-[a-f0-9-]{36}")))
+        val candidate = ownedChild(ownedChild(staging, "projects"), projectId)
+        require(ownedChild(candidate, "CURRENT").isFile)
+        val target = directory(projectId)
+        check(!target.exists()) { "Restore destination already exists" }
+        java.nio.file.Files.move(candidate.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    }
 
     fun directory(projectId: String): File {
         require(projectId.matches(Regex("[A-Za-z0-9][A-Za-z0-9_-]{0,95}"))) { "Invalid project ID" }
@@ -57,6 +86,19 @@ class HybridProjectStore(
             .sortedBy { it.name }.map { readCurrent(it.name).result.project }
     }
 
+    /** Only these scalar values escape. The per-project analysis-free decode cannot be saved. */
+    fun listSummaries(): List<ProjectSummary> = locked {
+        root.listFiles().orEmpty().filter { it.isDirectory && File(it, "CURRENT").isFile }
+            .sortedBy { it.name }.map { entry ->
+                val project = readCurrent(entry.name, readAnalysis = false).result.project
+                ProjectSummary(project.id, project.fps,
+                    project.selectedVideos?.firstOrNull()?.displayName?.substringBeforeLast('.')?.take(48)
+                        ?.takeIf { it.isNotBlank() } ?: "Мой монтаж",
+                    project.assets.firstOrNull { it.id == project.current.music.assetId }?.displayName,
+                    project.current.style.recipeId, project.current.id)
+            }
+    }
+
     fun delete(projectId: String): Unit = locked {
         val dir = directory(projectId)
         // Only this project's physical copies are removed. Never follow a linked subtree.
@@ -81,7 +123,7 @@ class HybridProjectStore(
 
     private data class State(val result: ProjectLoadResult, val revisions: Map<Long, String>)
 
-    private fun readCurrent(projectId: String): State {
+    private fun readCurrent(projectId: String, readAnalysis: Boolean = true): State {
         val dir = directory(projectId)
         val name = ownedChild(dir, "CURRENT").inputStream().use { it.readBytesBounded(128) }.toString(Charsets.US_ASCII)
         require(name.matches(Regex("[a-f0-9-]{36}\\.bin"))) { "Invalid project pointer" }
@@ -103,14 +145,14 @@ class HybridProjectStore(
         }
         val pendingCount = input.readInt()
         require(pendingCount in 0..MAX_REVISIONS && pendingCount.toLong() * 64 <= input.available())
-        val sidecars = AnalysisSidecarStore(ownedChild(dir, "analysis"))
+        val sidecars = analysis(dir, readAnalysis)
         val pending = linkedSetOf<String>()
         repeat(pendingCount) {
             val hash = ByteArray(64).also { input.readFully(it) }.toString(Charsets.US_ASCII)
             if (sidecars.read(hash) == null) pending += hash
         }
         require(input.available() == 0)
-        val result = codec(dir).decodeWithAnalysisStatus(projectBytes)
+        val result = codec(dir, readAnalysis).decodeWithAnalysisStatus(projectBytes)
         require(result.project.id == projectId && revisions.keys.all { it < result.project.nextRevisionId })
         val retained = listOf(result.project.original, result.project.current) + result.project.undo + result.project.redo
         require(retained.all { it.id in revisions } && result.project.exports.all { it.revisionId in revisions })
@@ -176,7 +218,9 @@ class HybridProjectStore(
         atomicWrite(ownedChild(dir, "CURRENT"), name.toByteArray(Charsets.US_ASCII), beforePointerReplace)
     }
 
-    private fun codec(dir: File) = HybridProjectCodec(AnalysisSidecarStore(ownedChild(dir, "analysis")),
+    private fun analysis(dir: File, readAnalysis: Boolean) = AnalysisSidecarStore.forReading(
+        ownedChild(dir, "analysis"), readAnalysis, beforeAnalysisRead)
+    private fun codec(dir: File, readAnalysis: Boolean = true) = HybridProjectCodec(analysis(dir, readAnalysis),
         AuthoredSourceMapStore(ownedChild(dir, "authored-maps")))
 
     private fun <T> locked(block: () -> T): T = synchronized(processLock) {
@@ -187,6 +231,8 @@ class HybridProjectStore(
     }
 
     companion object {
+        internal fun observingAnalysisReads(filesDir: File, beforeRead: (String) -> Unit) =
+            HybridProjectStore(filesDir, {}, beforeRead)
         private val processLock = Any()
         private const val STATE_MAGIC = 0x56485354
         private const val MAX_REVISIONS = 100_000

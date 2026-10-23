@@ -57,6 +57,7 @@ object TextLayerLayout {
         }
     }
     fun draw(canvas:Canvas,project:TextEditProject,timeUs:Long,strict:Boolean=false) {
+        drawLegacy(canvas, project, timeUs)
         val width=canvas.width.toFloat(); val height=canvas.height.toFloat()
         val boxes=measure(canvas.width,canvas.height,project,timeUs)
         if(boxes==null) {
@@ -91,6 +92,34 @@ object TextLayerLayout {
             }
             canvas.translate(bounds.left+box.padding,bounds.top+box.padding)
             box.text.draw(canvas); canvas.restore()
+        }
+    }
+
+    /** x/y are the saved layer center, width and font size are relative to the output canvas.
+     * Keep this separate from rich-layer safe-area stacking: no stored coordinate is quantized. */
+    private fun drawLegacy(canvas: Canvas, project: TextEditProject, timeUs: Long) {
+        for (item in project.activeLegacy(timeUs)) {
+            val width = canvas.width * item.width
+            val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = item.color
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                textSize = canvas.width * item.size
+            }
+            val layout = StaticLayout.Builder.obtain(item.text, 0, item.text.length, paint,
+                width.toInt().coerceAtLeast(1)).setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setIncludePad(false).build()
+            val left = canvas.width * item.x - width / 2f
+            val top = canvas.height * item.y - layout.height / 2f
+            val pad = canvas.width * .012f
+            val alpha = (255 * LegacyTextLayout.opacity(item, timeUs, project.legacyFps)).toInt()
+            canvas.saveLayerAlpha(left - pad, top - pad, left + width + pad, top + layout.height + pad, alpha)
+            if (item.appearance != TextItem.Appearance.PLAIN) {
+                val plate = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = if (item.appearance == TextItem.Appearance.ACCENT) ACCENT_COLOR else 0xc9000000.toInt()
+                }
+                canvas.drawRoundRect(left - pad, top - pad, left + width + pad, top + layout.height + pad, pad, pad, plate)
+            }
+            canvas.translate(left, top); layout.draw(canvas); canvas.restore()
         }
     }
 }

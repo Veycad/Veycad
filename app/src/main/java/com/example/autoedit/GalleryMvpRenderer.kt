@@ -45,9 +45,13 @@ internal object GalleryMvpRenderer {
         check(sampled == targets.size) { "Не удалось открыть кадры готового видео" }
         checkCancelled()
         request.onProgress(VeycadAutomaticEditor.Progress(VeycadAutomaticEditor.Stage.COMPLETE, 1, 1))
+        val projectId = CustomMusicProjectHandoff.publish(request.context, graph, request.sources, request.musicFile,
+            ProjectExportSettings(request.width, request.height, framePlan.fps, request.bitrate, 192_000),
+            checkCancelled, request.recipe, request.captureOrigin)
         return EditSession.RenderSummary(graph.clips.size, 0f, false,
             listOf("Художественное качество ещё требует вашей оценки"),
             productSummary = "Ролик из галереи · ${request.sources.items.size} видео · ${graph.clips.size} фрагментов · " +
-                "музыка · базовая проверка видео пройдена. Оцените монтаж при просмотре.")
+                "музыка · базовая проверка видео пройдена. Оцените монтаж при просмотре.",
+            projectId = projectId, ownsNewProject = true)
     }
 }

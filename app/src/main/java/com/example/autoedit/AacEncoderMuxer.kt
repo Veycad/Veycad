@@ -90,6 +90,43 @@ internal object AacEncoderMuxer {
         }
     }
 
+    /** Encode the exact playback PCM. Its owner retains the pre-music speech file through mux. */
+    fun prepareProjectAudio(composed: ComposedProjectAudio, directory: File,
+        checkCancelled: () -> Unit = {}): SourceAacPreparation {
+        composed.requireOpen()
+        checkCancelled()
+        require(directory.isDirectory || directory.mkdirs())
+        val timing = establishSourceTiming(directory, checkCancelled)
+        val aac = File.createTempFile("project-aac-", ".m4a", directory)
+        try {
+            StreamingEncoder(aac, checkCancelled, timing).use { encoder ->
+                java.io.RandomAccessFile(composed.playbackFile, "r").use { wave ->
+                    require(wave.length() == 44 + composed.sampleFrames * 4)
+                    wave.seek(44)
+                    val bytes = ByteArray(4096)
+                    val packed = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+                    val samples = ShortArray(2048)
+                    var cursor = 0L
+                    while (cursor < composed.sampleFrames) {
+                        checkCancelled()
+                        val count = minOf(1024L, composed.sampleFrames - cursor).toInt()
+                        wave.readFully(bytes, 0, count * 4)
+                        packed.clear(); repeat(count * 2) { samples[it] = packed.short }
+                        encoder.write(PcmFormat(48000, 2), cursor, samples, count)
+                        cursor += count
+                    }
+                    encoder.finish()
+                    checkCancelled()
+                    return SourceAacPreparation(aac, composed.speechPcmFile, composed.sampleFrames,
+                        composed.compositionStats, encoder.peakPacketBytes, ownsSpeechFile = false)
+                }
+            }
+        } catch (failure: Throwable) {
+            runCatching { Files.deleteIfExists(aac.toPath()) }.exceptionOrNull()?.let(failure::addSuppressed)
+            throw failure
+        }
+    }
+
     /** Existing AAC encoder owner, progressively drains each packet straight into a single-track
      * M4A. No PCM timeline or AAC packet list. Scratch is the caller's <=1024-frame buffer. */
     private data class SourceTiming(val codecName: String, val delayFrames: Int)

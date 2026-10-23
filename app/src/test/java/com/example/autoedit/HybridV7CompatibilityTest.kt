@@ -79,7 +79,7 @@ class HybridV7CompatibilityTest {
         store.save(changed, loaded.current.id)
         val reopened = HybridProjectStore(root).load("project")
         assertEquals(changed, reopened)
-        assertEquals(8, ByteBuffer.wrap(codec.encode(reopened)).getInt(4))
+        assertEquals(9, ByteBuffer.wrap(codec.encode(reopened)).getInt(4))
         assertEquals(765_432L, reopened.current.graph.audioTrack!!.sourceStartUs)
         assertEquals(TextPlate.DARK, reopened.current.textState.layers.single().style.plate)
         assertEquals(changed.current, codec.decodeRevision(codec.encodeRevisions(listOf(changed.current)).getValue(changed.current.id)))

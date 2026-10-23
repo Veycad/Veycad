@@ -58,7 +58,8 @@ object MediaCodecSpeedRampRenderer {
         val textProject: TextEditProject? = null,
         val onFrameProgress: ((Int) -> Unit)? = null,
         sourceFiles: List<File>? = null,
-        val textBehavior: TextBehavior = TextBehavior.FINISHED_VIDEO
+        val textBehavior: TextBehavior = TextBehavior.FINISHED_VIDEO,
+        val showAuthoredText: Boolean = true
     ) {
         internal val finishingText: Boolean = textProject != null && textBehavior == TextBehavior.FINISHED_VIDEO
         val sourceFiles: List<File> = java.util.Collections.unmodifiableList(ArrayList(
@@ -116,14 +117,29 @@ object MediaCodecSpeedRampRenderer {
         // Prepared exports own failure cleanup, including synchronous cancellation/native failures.
         // Admission happens outside cleanup: an invalid request must not touch an existing output.
         request.preparedExport!!.validate(request)
-        return try { renderOwned(request) } catch (error: Throwable) {
+        check(Build.VERSION.SDK_INT >= 35 || request.preparedExport!!.prepared.audio.settings.mode == AudioMixMode.MUSIC) {
+            "Экспорт исходной речи требует Android 15+; поддержка старых версий ещё не проверена"
+        }
+        return try {
+            val directory = File(request.outputFile.absoluteFile.parentFile, "project-audio-work")
+            request.preparedExport!!.prepared.audio.compose(directory, request.checkCancelled).use { composed ->
+                if (Build.VERSION.SDK_INT < 35) {
+                    // shortcut: older MUSIC exports retain the existing muxer until native gapless acceptance.
+                    renderOwned(request, composedMusic = composed.playbackFile)
+                } else {
+                    AacEncoderMuxer.prepareProjectAudio(composed, directory, request.checkCancelled).use { audio ->
+                        renderOwned(request, audio)
+                    }
+                }
+            }
+        } catch (error: Throwable) {
             request.outputFile.delete()
             File(request.outputFile.parentFile, request.outputFile.nameWithoutExtension + ".video.mp4").delete()
             throw error
         }
     }
 
-    private fun renderOwned(request: Request): Int {
+    private fun renderOwned(request: Request, projectAudio: SourceAacPreparation? = null, composedMusic: File? = null): Int {
         require(Build.VERSION.SDK_INT >= 26) { "MediaCodec GPU renderer requires Android 8+" }
         val sourceFiles = request.sourceFiles
         require(sourceFiles.all(File::isFile))
@@ -144,12 +160,34 @@ object MediaCodecSpeedRampRenderer {
         var targetOwner: RenderTarget? = null
         var muxerOwner: MediaMuxer? = null
         var decoders: DecoderSession? = null
+        var encoderStarted = false
+        val muxerState = MuxerState()
+        var muxerReleased = false
+        var allocationFailure: PreviewAllocationFailure? = null
+        var renderFailure: Throwable? = null
+        val cleanup = RenderNativeCleanup(
+            stopEncoder = { if (encoderStarted) { encoder.stop(); encoderStarted = false } },
+            releaseDecoders = { decoders?.release(); decoders = null },
+            releaseGl = { allocationFailure?.retryClose(); allocationFailure = null; glOwner?.close(); glOwner = null },
+            releaseTarget = { targetOwner?.close(); targetOwner = null },
+            releaseInputSurface = { inputSurface?.release(); inputSurface = null },
+            releaseEncoder = { encoder.release() },
+            releaseMuxer = {
+                val muxer = muxerOwner
+                if (muxer != null && !muxerReleased) {
+                    var stopFailure: Throwable? = null
+                    if (muxerState.started) try { muxer.stop(); muxerState.started = false } catch (error: Throwable) { stopFailure = error }
+                    try { muxer.release(); muxerReleased = true; muxerOwner = null }
+                    catch (error: Throwable) { stopFailure?.let(error::addSuppressed); throw error }
+                    stopFailure?.let { throw it }
+                }
+            })
         val frameCount = try {
             val encoderSurface = encoder.createInputSurface().also { inputSurface = it }
             val gl = GlesFrameCompositor(EglRenderTarget.forEncoder(encoderSurface, OutputSize(request.width, request.height)).also { targetOwner = it }, request.renderPlan,
                 request.graph.frameAttachments, request.debugTextureProbe, request.debugProbeIncomingOnBothUnits,
                 request.debugHeartbeatImagePivot, request.debugFaceRegionProbe,
-                AuthoredTitleProfile.forGraph(request.graph),
+                if (request.showAuthoredText) AuthoredTitleProfile.forGraph(request.graph) else null,
                 HeartbeatMontageProfile.appliesTo(request.graph),
                 FearStrobeProfile.appliesTo(request.graph),
                 request.graph.metadata.generator == DualityLoopProfile.ID,
@@ -159,10 +197,14 @@ object MediaCodecSpeedRampRenderer {
                         request.checkCancelled),
                 sourceAttachments = request.graph.sourceAttachments,
                 manualFraming = request.preparedExport?.framing,
-                onDraw = inspector::record, textProject = request.textProject, onFrameProgress = request.onFrameProgress, finishingText = request.finishingText).also { glOwner = it }
+                onDraw = inspector::record, textProject = request.textProject, onFrameProgress = request.onFrameProgress,
+                previewMemoryBudget = request.preparedExport?.let {
+                    it.prepared.sharedBudget ?: PreviewMemoryBudget(128L * 1024 * 1024)
+                },
+                finishingText = request.finishingText).also { glOwner = it }
             val muxer = MediaMuxer(videoOnlyFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).also { muxerOwner = it }
-            val muxerState = MuxerState()
             encoder.start()
+            encoderStarted = true
             decoders = DecoderSession(sourceFiles, gl.incomingDecodeSurface, gl.outgoingDecodeSurface,
                 request.checkCancelled, request.finishingText)
             request.context?.let { context ->
@@ -232,24 +274,29 @@ object MediaCodecSpeedRampRenderer {
             drainEncoder(encoder, muxer, true, muxerState)
             request.onPassesExecuted?.invoke(gl.executedPasses())
             plan.frames.size
+        } catch (error: Throwable) {
+            renderFailure = error
+            if (error is PreviewAllocationFailure) allocationFailure = error
+            throw error
         } finally {
-            runCatching { decoders?.release() }
-            runCatching { encoder.stop() }
-            runCatching { encoder.release() }
-            runCatching { glOwner?.close() }
-            runCatching { targetOwner?.close() }
-            runCatching { inputSurface?.release() }
-            runCatching { muxerOwner?.stop() }
-            runCatching { muxerOwner?.release() }
+            try { cleanup.close() } catch (error: Throwable) {
+                val operation = renderFailure ?: error
+                if (operation !== error) operation.addSuppressed(error)
+                throw PreviewAllocationFailure(operation, error, cleanup)
+            }
         }
-        if (request.audioFile != null) {
+        if (projectAudio != null) {
+            AacEncoderMuxer.muxPreparedAudio(projectAudio, videoOnlyFile, request.outputFile,
+                completePlan.durationUs, request.checkCancelled)
+            videoOnlyFile.delete()
+        } else if (composedMusic != null || request.audioFile != null) {
             AacEncoderMuxer.muxMusicFile(
-                request.audioFile,
+                composedMusic ?: requireNotNull(request.audioFile),
                 videoOnlyFile,
                 request.outputFile,
-                request.outputWindow?.durationUs ?: request.audioDurationUs,
+                if (composedMusic != null) completePlan.durationUs else request.outputWindow?.durationUs ?: request.audioDurationUs,
                 request.checkCancelled,
-                startUs = request.audioStartUs
+                startUs = if (composedMusic != null) 0L else request.audioStartUs
             )
             videoOnlyFile.delete()
         } else if (request.audioResourceId != 0 && request.context != null) {

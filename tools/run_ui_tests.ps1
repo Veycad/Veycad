@@ -265,6 +265,7 @@ function Invoke-UiPhase {
 $uiSucceeded = $false
 $uiFailureMessage = $null
 $uiRestart = $null
+$uiProjectRecovery = $null
 Push-Location -LiteralPath $uiProjectRoot
 try {
     & (Join-Path $uiProjectRoot 'tools/test_ui_runner.ps1')
@@ -353,6 +354,16 @@ try {
         if ($uiRestartRun.ExitCode -ne 0) { throw 'Atomic import process restart checks failed.' }
         $uiRestart = Get-Content -LiteralPath (Join-Path $uiProjectRoot 'build/reports/ui-tests/atomic-import-restart.json') -Raw | ConvertFrom-Json
         $uiSucceeded = $uiRestart.passed -eq $true -and @($uiRestart.phases).Count -eq 2
+        if (-not $uiSucceeded) { throw 'Atomic import restart report is incomplete.' }
+        $uiProjectRecoveryRun = Invoke-UiNative -Executable (Get-Process -Id $PID).Path -EchoOutput -Arguments @(
+            '-NoProfile', '-File', (Join-Path $uiProjectRoot 'tools/run_project_recovery_tests.ps1'),
+            '-Serial', $Serial, '-AvdName', $AvdName, '-SdkRoot', $SdkRoot
+        )
+        if ($uiProjectRecoveryRun.ExitCode -ne 0) { throw 'Project process recovery checks failed.' }
+        $uiProjectRecovery = Get-Content -LiteralPath (Join-Path $uiProjectRoot 'build/reports/ui-tests/project-recovery.json') -Raw | ConvertFrom-Json
+        $uiSucceeded = $uiProjectRecovery.passed -eq $true -and $uiProjectRecovery.exactFileChecks -gt 0 -and
+            $uiProjectRecovery.checkpointPid -ne $uiProjectRecovery.restartedPid
+        if (-not $uiSucceeded) { throw 'Project recovery report is incomplete.' }
     }
 } catch {
     $uiSucceeded = $false
@@ -388,6 +399,7 @@ try {
         run = $(if ($null -eq $uiTotalRun) { 0 } else { $uiTotalRun })
         passed = $uiSucceeded; error = $uiFailureMessage; phases = $uiPhases.ToArray()
         atomic_import_restart = $uiRestart
+        project_recovery = $uiProjectRecovery
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $uiSummaryFile -Encoding UTF8
 }
 if (-not $uiSucceeded) { exit 1 }

@@ -18,7 +18,10 @@ val prepareMvpSmokeSources by tasks.registering(Sync::class) {
     from("src/androidTest/java") {
         include("com/example/autoedit/SyntheticVideo.kt",
             "com/example/autoedit/UiXmlRunListener.kt",
-            "com/example/autoedit/TextEditActivityDeviceTest.kt")
+            "com/example/autoedit/TextEditActivityDeviceTest.kt",
+            "com/example/autoedit/SmartFramingDeviceTest.kt",
+            "com/example/autoedit/SmartFaceFixturesDeviceTest.kt",
+            "com/example/autoedit/SourceAudioNativeFixtures.kt")
     }
     from("src/uiTest/java") { include("com/example/autoedit/SyntheticVideo.kt") }
     from("src/mvpSmoke/java") { include("com/example/autoedit/GalleryImportDeviceTest.kt") }

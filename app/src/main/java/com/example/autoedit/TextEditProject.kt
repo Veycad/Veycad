@@ -61,7 +61,10 @@ data class TextEditProject(
     val captionStyle: TextStyle = TextStyle(position = TextPosition.BOTTOM, sizeRatio = 0.045f),
     val captionsEdited: Boolean = false,
     val language: String = "auto",
-    val sourceOriginUs: Long = 0
+    val sourceOriginUs: Long = 0,
+    /** Canonical normalized montage layers retain their geometry instead of snapping to presets. */
+    val legacyItems: List<TextItem> = emptyList(),
+    val legacyFps: Int = 30
 ) {
     init {
         require(sourcePath.isNotBlank() && durationUs > 0 && width > 0 && height > 0)
@@ -70,10 +73,34 @@ data class TextEditProject(
         require(captions.map { it.id }.distinct().size == captions.size)
         require(language in setOf("auto", "ru", "en"))
         require(sourceOriginUs>=0)
+        val clock = ProjectClock(legacyFps)
+        require(legacyItems.map { it.id }.distinct().size == legacyItems.size)
+        require(legacyItems.all { clock.timeUs(it.span.endExclusive) <= durationUs })
     }
     fun hook(text: String) = TextLayer(UUID.randomUUID().toString(), text, 0, minOf(3_000_000, durationUs),kind=TextLayerKind.TITLE)
     fun activeLayers(timeUs: Long): List<TextLayer> =
         layers.filter { timeUs >= it.startUs && timeUs < it.endUs && it.text.isNotBlank() } +
             captions.filter { timeUs >= it.startUs && timeUs < it.endUs && it.text.isNotBlank() }
                 .map { TextLayer(it.id, it.text, it.startUs, it.endUs, captionStyle,TextLayerKind.SUBTITLE) }
+
+    fun activeLegacy(timeUs: Long): List<TextItem> {
+        val clock = ProjectClock(legacyFps)
+        return legacyItems.filter { timeUs >= clock.timeUs(it.span.start) &&
+            timeUs < clock.timeUs(it.span.endExclusive) && it.text.isNotBlank() }
+    }
+}
+
+/** End-exclusive project frame fades; no source timestamp or preview-window rebasing. */
+internal object LegacyTextLayout {
+    fun opacity(item: TextItem, timeUs: Long, fps: Int): Float {
+        val clock = ProjectClock(fps)
+        val start = clock.timeUs(item.span.start)
+        val end = clock.timeUs(item.span.endExclusive)
+        if (timeUs < start || timeUs >= end) return 0f
+        if (item.fadeFrames == 0) return 1f
+        val fadeIn = clock.timeUs(item.span.start + item.fadeFrames) - start
+        val fadeOut = end - clock.timeUs(item.span.endExclusive - item.fadeFrames)
+        return minOf((timeUs - start).toDouble() / fadeIn, (end - timeUs).toDouble() / fadeOut)
+            .toFloat().coerceIn(0f, 1f)
+    }
 }

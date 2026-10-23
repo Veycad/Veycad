@@ -1,6 +1,9 @@
 package com.veycad.app
 
 import android.opengl.EGL14
+import android.opengl.EGLContext
+import android.opengl.EGLDisplay
+import android.opengl.EGLSurface
 import android.opengl.EGLExt
 import android.opengl.GLES20
 import android.view.Surface
@@ -11,10 +14,15 @@ import java.nio.ByteOrder
 class EglRenderTarget private constructor(
     suppliedSurface: Surface,
     initialSize: OutputSize,
-    private val policy: RenderTargetPolicy
+    private val policy: RenderTargetPolicy,
+    private val cleanupDriver: CleanupDriver = NativeCleanup
 ) : RenderTarget, ViewportRenderTarget {
     private val worker = Thread.currentThread()
     private var closed = false
+    private var closing = false
+    private var initialized = false
+    private var unbound = true
+    private var threadReleased = false
     override var size: OutputSize = initialSize
         private set
     private var display = EGL14.EGL_NO_DISPLAY
@@ -31,6 +39,7 @@ class EglRenderTarget private constructor(
             check(display != EGL14.EGL_NO_DISPLAY) { "Unable to get EGL display" }
             val version = IntArray(2)
             check(EGL14.eglInitialize(display, version, 0, version, 1)) { "Unable to initialize EGL" }
+            initialized = true
             val attrs = mutableListOf(EGL14.EGL_RED_SIZE,8,EGL14.EGL_GREEN_SIZE,8,
                 EGL14.EGL_BLUE_SIZE,8,EGL14.EGL_ALPHA_SIZE,8,
                 EGL14.EGL_RENDERABLE_TYPE,EGL14.EGL_OPENGL_ES2_BIT,
@@ -53,15 +62,17 @@ class EglRenderTarget private constructor(
                 backing = createBacking(size)
             }
         } catch(error: Throwable) {
-            runCatching { close() }.exceptionOrNull()?.let(error::addSuppressed)
+            val cleanup = runCatching { close() }.exceptionOrNull()
+            if (cleanup != null) throw PreviewAllocationFailure(error, cleanup, this)
             throw error
         }
     }
 
     override fun makeCurrent() {
         checkWorker()
-        check(!closed) { "EGL target is closed" }
+        check(!closed && !closing) { "EGL target is closed or awaiting cleanup" }
         check(EGL14.eglMakeCurrent(display,window,window,context)) { "Unable to make EGL target current" }
+        unbound = false
     }
 
     override fun resize(size: OutputSize) {
@@ -127,33 +138,60 @@ class EglRenderTarget private constructor(
     override fun close() {
         checkWorker()
         if(closed) return
-        val current = context != EGL14.EGL_NO_CONTEXT && runCatching { makeCurrent() }.isSuccess
-        closed = true
-        try {
-            NativeResources().use { resources ->
-                resources.defer { EGL14.eglReleaseThread() }
-                if(display != EGL14.EGL_NO_DISPLAY) {
-                    resources.defer { EGL14.eglTerminate(display) }
-                    if(context != EGL14.EGL_NO_CONTEXT) resources.defer { EGL14.eglDestroyContext(display,context) }
-                    if(window != EGL14.EGL_NO_SURFACE) resources.defer { EGL14.eglDestroySurface(display,window) }
-                    resources.defer { EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT) }
-                }
-                if(current) {
-                    resources.defer { GLES20.glDeleteProgram(copyProgram) }
-                    backing?.let { owned -> resources.defer { deleteBacking(owned) } }
-                    resources.defer { GLES20.glUseProgram(0) }
+        closing = true
+        var failure: Throwable? = null
+        fun attempt(action: () -> Unit) {
+            try { action() } catch (error: Throwable) {
+                if (failure == null) failure = error else if (failure !== error) failure!!.addSuppressed(error)
+            }
+        }
+        if (context != EGL14.EGL_NO_CONTEXT && window != EGL14.EGL_NO_SURFACE &&
+            (backing != null || copyProgram != 0)) {
+            var current = false
+            attempt {
+                check(EGL14.eglMakeCurrent(display, window, window, context)) { "Unable to bind EGL for cleanup" }
+                unbound = false; current = true
+            }
+            if (current) {
+                attempt { GLES20.glUseProgram(0); checkGlCleanup() }
+                backing?.let { owned -> attempt { deleteBacking(owned); backing = null } }
+                if (copyProgram != 0) attempt {
+                    GLES20.glDeleteProgram(copyProgram); checkGlCleanup(); copyProgram = 0
                 }
             }
-        } finally {
-            backing = null; copyProgram = 0
-            display = EGL14.EGL_NO_DISPLAY; context = EGL14.EGL_NO_CONTEXT; window = EGL14.EGL_NO_SURFACE
         }
+        if (initialized) {
+            if (!unbound) attempt {
+                check(cleanupDriver.unbind(display)) { "Unable to unbind EGL during cleanup" }; unbound = true
+            }
+            if (unbound) {
+                if (window != EGL14.EGL_NO_SURFACE) attempt {
+                    check(cleanupDriver.destroyWindow(display, window)) { "Unable to destroy EGL window" }
+                    window = EGL14.EGL_NO_SURFACE
+                }
+                if (context != EGL14.EGL_NO_CONTEXT) attempt {
+                    check(cleanupDriver.destroyContext(display, context)) { "Unable to destroy EGL context" }
+                    context = EGL14.EGL_NO_CONTEXT
+                    // Context destruction also acknowledges any GL objects whose individual delete failed.
+                    backing = null; copyProgram = 0
+                }
+            }
+            if (window == EGL14.EGL_NO_SURFACE && context == EGL14.EGL_NO_CONTEXT) attempt {
+                check(cleanupDriver.terminate(display)) { "Unable to terminate EGL display" }
+                initialized = false; display = EGL14.EGL_NO_DISPLAY
+            }
+        } else display = EGL14.EGL_NO_DISPLAY // eglGetDisplay alone owns no initialized connection.
+        if (!initialized && window == EGL14.EGL_NO_SURFACE && context == EGL14.EGL_NO_CONTEXT && !threadReleased) attempt {
+            check(cleanupDriver.releaseThread()) { "Unable to release EGL thread" }; threadReleased = true
+        }
+        closed = !initialized && window == EGL14.EGL_NO_SURFACE && context == EGL14.EGL_NO_CONTEXT && threadReleased
+        failure?.let { throw it }
     }
 
     private fun checkWorker() {
         check(Thread.currentThread() === worker) { "EGL target must be used on its owning GL worker" }
     }
-    private data class Backing(val framebuffer: Int,val texture: Int)
+    private data class Backing(var framebuffer: Int,var texture: Int)
     private fun createBacking(size: OutputSize): Backing = NativeResources().use { resources ->
         val textures = IntArray(1); val framebuffers = IntArray(1)
         GLES20.glGenTextures(1,textures,0)
@@ -178,13 +216,38 @@ class EglRenderTarget private constructor(
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0)
         Backing(framebuffers[0],textures[0]).also { resources.transfer() }
     }
-    private fun deleteBacking(backing: Backing) = NativeResources().use { resources ->
-        resources.defer { GLES20.glDeleteTextures(1,intArrayOf(backing.texture),0) }
-        resources.defer { GLES20.glDeleteFramebuffers(1,intArrayOf(backing.framebuffer),0) }
+    private fun deleteBacking(backing: Backing) {
+        var failure: Throwable? = null
+        if (backing.framebuffer != 0) try {
+            GLES20.glDeleteFramebuffers(1,intArrayOf(backing.framebuffer),0)
+            checkGlCleanup(); backing.framebuffer = 0
+        } catch (error: Throwable) { failure = error }
+        if (backing.texture != 0) try {
+            GLES20.glDeleteTextures(1,intArrayOf(backing.texture),0)
+            checkGlCleanup(); backing.texture = 0
+        } catch (error: Throwable) { if (failure == null) failure = error else failure.addSuppressed(error) }
+        failure?.let { throw it }
+    }
+    private fun checkGlCleanup() { check(GLES20.glGetError() == GLES20.GL_NO_ERROR) { "GL target cleanup failed" } }
+    internal interface CleanupDriver {
+        fun unbind(display: EGLDisplay): Boolean
+        fun destroyWindow(display: EGLDisplay, window: EGLSurface): Boolean
+        fun destroyContext(display: EGLDisplay, context: EGLContext): Boolean
+        fun terminate(display: EGLDisplay): Boolean
+        fun releaseThread(): Boolean
+    }
+    internal object NativeCleanup : CleanupDriver {
+        override fun unbind(display: EGLDisplay) = EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+        override fun destroyWindow(display: EGLDisplay, window: EGLSurface) = EGL14.eglDestroySurface(display, window)
+        override fun destroyContext(display: EGLDisplay, context: EGLContext) = EGL14.eglDestroyContext(display, context)
+        override fun terminate(display: EGLDisplay) = EGL14.eglTerminate(display)
+        override fun releaseThread() = EGL14.eglReleaseThread()
     }
     companion object {
         private const val EGL_RECORDABLE_ANDROID = 0x3142
         fun forDisplay(surface: Surface,size: OutputSize): RenderTarget = EglRenderTarget(surface,size,RenderTargetPolicy.DISPLAY)
+        internal fun forDisplay(surface: Surface,size: OutputSize,cleanupDriver: CleanupDriver): RenderTarget =
+            EglRenderTarget(surface,size,RenderTargetPolicy.DISPLAY,cleanupDriver)
         fun forEncoder(surface: Surface,size: OutputSize): RenderTarget = EglRenderTarget(surface,size,RenderTargetPolicy.ENCODER)
         private fun buffer(values: FloatArray) = ByteBuffer.allocateDirect(values.size*4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(values); position(0) }

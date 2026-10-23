@@ -44,6 +44,24 @@ class TemporaryFileCleanupTest {
         assertTrue(source.exists()); assertTrue(text.exists()); assertFalse(pending.exists())
     }
 
+    @Test fun retiredProjectScratchIsBoundedAndDeniedWhileAConsumerOwnsWork() = fixture { files, cache ->
+        val removed = listOf(put(cache, "preview-floats-123.tmp"), put(cache, "manual-renders/preview-audio/project-audio-1.wav"),
+            put(cache, "project-speech-work/project-speech-1.pcm"), put(cache, "project-audio-work/project-audio-2.wav"),
+            put(files, ".project-restore-12345678-1234-1234-1234-123456789abc/backup.zip"))
+        val preserved = listOf(put(files, "projects/durable/CURRENT"), put(files, "completed-renders/output.mp4"),
+            put(cache, "preview-floats-report.txt"), put(files, ".project-restore-user-notes/keep"), put(cache, "smart-framing/track"))
+        val coordinator = MediaWorkCoordinator()
+        val consumer = requireNotNull(coordinator.tryBeginWork())
+        assertNull("Live native/job owner prevents any cleanup", coordinator.tryBeginCleanup())
+        removed.forEach { assertTrue(it.exists()) }
+        consumer.close()
+        requireNotNull(coordinator.tryBeginCleanup()).use {
+            assertTrue(TemporaryFileCleanup.clear(files, cache, TemporaryFileCleanup.Scope.TRANSIENT_RENDER, it).failures.isEmpty())
+        }
+        removed.forEach { assertFalse(it.path, it.exists()) }
+        preserved.forEach { assertArrayEquals(it.path, byteArrayOf(3, 9, 27), it.readBytes()) }
+    }
+
     @Test fun rejectsClosedOrWorkLease() = fixture { files, cache ->
         val source = put(files, "source-draft/source.mp4")
         val owner = MediaWorkCoordinator()

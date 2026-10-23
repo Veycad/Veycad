@@ -16,6 +16,25 @@ import java.util.zip.GZIPOutputStream
 internal object MediaFrameAnalysisCache {
     class Key internal constructor(val fileName: String, val profile: SourceAnalysisProfile)
 
+    /** SMART opens only its compact, verified header; it never loads the full plane cache. */
+    fun loadSmart(context: Context, key: SmartFramingKey): SmartFramingTrack? {
+        val file = File(directory(context), key.fileName)
+        if (!file.isFile) return null
+        return runCatching {
+            require(file.length() in 1..SmartFramingPayload.MAX_BYTES.toLong())
+            file.inputStream().use { SmartFramingPayload.decode(key, it.readBytesBounded(SmartFramingPayload.MAX_BYTES)) }
+        }.onFailure { file.delete() }.getOrNull()
+    }
+
+    /** Publish before READY. Failure preserves the old compact cache and is reported to the caller. */
+    fun storeSmart(context: Context, key: SmartFramingKey, track: SmartFramingTrack) {
+        val bytes = SmartFramingPayload.encode(key, track)
+        val directory = directory(context)
+        atomicWrite(File(directory, key.fileName), bytes)
+        directory.listFiles { file -> file.name.startsWith("smart-") && file.extension == "bin" }
+            ?.sortedByDescending(File::lastModified)?.drop(64)?.forEach(File::delete)
+    }
+
     fun key(source: File, intervalUs: Long, profile: SourceAnalysisProfile): Key {
         require(source.isFile && intervalUs > 0L)
         val digest = MessageDigest.getInstance("SHA-256")

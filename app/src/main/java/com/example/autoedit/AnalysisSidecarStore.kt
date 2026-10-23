@@ -8,7 +8,9 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 /** Replaceable analysis only. Source media never enters this directory. */
-class AnalysisSidecarStore(private val directory: File) {
+class AnalysisSidecarStore private constructor(private val directory: File, private val readsEnabled: Boolean,
+    private val beforeRead: (String) -> Unit) {
+    constructor(directory: File) : this(directory, true, {})
     /** Compatibility for standalone codec callers; authored files are outside the cache tree. */
     internal fun authoredMaps() = AuthoredSourceMapStore(ownedChild(directory.absoluteFile.parentFile,
         "${directory.name}-authored-maps"))
@@ -25,6 +27,9 @@ class AnalysisSidecarStore(private val directory: File) {
 
     fun read(hash: String): ByteArray? {
         require(hash.matches(Regex("[a-f0-9]{64}")))
+        // Listing discards the transient decoded project; never open or allocate its analysis.
+        if (!readsEnabled) return null
+        beforeRead(hash)
         val file = ownedChild(directory, hash)
         return try {
             if (!file.isFile || file.length() > MAX_BYTES) null
@@ -35,7 +40,11 @@ class AnalysisSidecarStore(private val directory: File) {
         } catch (_: IOException) { null }
     }
 
-    companion object { internal const val MAX_BYTES = 16 * 1024 * 1024 }
+    companion object {
+        internal const val MAX_BYTES = 16 * 1024 * 1024
+        internal fun forReading(directory: File, enabled: Boolean, beforeRead: (String) -> Unit) =
+            AnalysisSidecarStore(directory, enabled, beforeRead)
+    }
 }
 
 internal fun contentHash(bytes: ByteArray): String =

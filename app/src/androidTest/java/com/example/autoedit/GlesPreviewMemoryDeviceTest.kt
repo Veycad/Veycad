@@ -122,6 +122,42 @@ class GlesPreviewMemoryDeviceTest {
         assertTrue(foreignDisposed)
     }
 
+    @Test fun released_pressure_allows_native_retry_on_the_same_budget_without_clearing_foreign_owners() {
+        val limit = 4L * 1024 * 1024
+        val budget = PreviewMemoryBudget(limit)
+        val pressure = limit - 32_768
+        var pressureReleased = false
+        assertTrue(budget.reserve("foreign-pressure", pressure) { pressureReleased = true })
+        budget.pin("foreign-pressure")
+        try {
+            Fixture().use { failed ->
+                val textures = liveTextures()
+                val failure = assertThrows(IllegalStateException::class.java) { failed.compositor(budget) }
+                assertFalse(failure is PreviewAllocationFailure)
+                failed.egl.makeCurrent()
+                assertEquals(textures, liveTextures())
+                assertEquals(pressure, budget.usedBytes)
+                assertFalse("Denial must preserve the unrelated live owner", pressureReleased)
+            }
+            budget.release("foreign-pressure")
+            assertTrue(pressureReleased)
+            assertEquals(0L, budget.usedBytes)
+            Fixture().use { retry ->
+                val compositor = retry.compositor(budget, allPostPasses(), title())
+                try {
+                    GlesFrameCompositorDeviceTest.produceMarkers(compositor.decoderSurface(0), OutputSize(64, 64), 0)
+                    compositor.awaitTexture(0) {}
+                    compositor.drawScheduled(HighQualityFramePlan.build(GlesFrameCompositorDeviceTest.graph()).frames.first(), 0)
+                    assertTrue("A recovered admission must render the actual marker pattern",
+                        (retry.pixels.indices step 4).map { retry.pixels[it].toInt() and 255 }.distinct().size > 1)
+                    assertTrue(budget.usedBytes in 1..limit)
+                    assertEquals(GLES20.GL_NO_ERROR, GLES20.glGetError())
+                } finally { compositor.close() }
+                assertEquals(0L, budget.usedBytes)
+            }
+        } finally { budget.release("foreign-pressure") }
+    }
+
     @Test fun failed_context_cleanup_remains_charged_until_explicit_retry() {
         val budget = PreviewMemoryBudget()
         Fixture().use { fixture ->
@@ -305,6 +341,39 @@ class GlesPreviewMemoryDeviceTest {
         assertEquals(0L, budget.usedBytes)
     }
 
+    @Test fun rich_caption_and_legacy_pixels_share_export_layout_and_reuse_charged_rgba_uploads() {
+        val text = TextEditProject("owned-source.mp4", 1_000_000, 64, 64,
+            layers = listOf(TextLayer("rich", "TITLE", 0, 500_000,
+                TextStyle(sizeRatio = .10f, color = android.graphics.Color.GREEN))),
+            captions = listOf(CaptionCue("cue", "Речь", 0, 500_000)),
+            legacyItems = listOf(TextItem("legacy", "A", FrameSpan(0, 15), .25f, .55f, .4f, .2f,
+                android.graphics.Color.RED, TextItem.Appearance.ACCENT, 0)))
+        fun render(manager: PreviewMemoryBudget?): Pair<ByteArray, ByteArray> = Fixture().use { fixture ->
+            val compositor = fixture.compositor(manager, text = text)
+            try {
+                GlesFrameCompositorDeviceTest.produceMarkers(compositor.decoderSurface(0), OutputSize(64, 64), 0)
+                compositor.awaitTexture(0) {}
+                val frame = HighQualityFramePlan.build(GlesFrameCompositorDeviceTest.graph()).frames.first()
+                compositor.drawScheduled(frame, 0)
+                val active = fixture.pixels.copyOf()
+                val charged = manager?.usedBytes
+                compositor.drawScheduled(frame.copy(outputTimeUs = 500_000, globalOutputTimeUs = 500_000), 0)
+                val ended = fixture.pixels.copyOf()
+                assertFalse("End-exclusive text must actually disappear from output pixels", active.contentEquals(ended))
+                repeat(12) { compositor.drawScheduled(frame, 0) }
+                assertArrayEquals(active, fixture.pixels)
+                if (manager != null) assertEquals(charged, manager.usedBytes)
+                active to ended
+            } finally { compositor.close() }
+        }
+        val legacy = render(null)
+        val budget = PreviewMemoryBudget()
+        val preview = render(budget)
+        assertArrayEquals(legacy.first, preview.first)
+        assertArrayEquals(legacy.second, preview.second)
+        assertEquals(0L, budget.usedBytes)
+    }
+
     private class Fixture : AutoCloseable {
         private val texture = SurfaceTexture(false).apply { setDefaultBufferSize(64, 64) }
         private val surface = Surface(texture)
@@ -328,13 +397,14 @@ class GlesPreviewMemoryDeviceTest {
         fun compositor(budget: PreviewMemoryBudget?, plan: RenderPassPlanner.Plan? = null,
             title: AuthoredTitleProfile.Spec? = null,
             driver: GlProgramOwnership.Driver = GlesProgram,
-            framebufferAllocator: GlesFrameCompositor.FramebufferAllocator = GlesFrameCompositor.GlesFramebufferAllocator
+            framebufferAllocator: GlesFrameCompositor.FramebufferAllocator = GlesFrameCompositor.GlesFramebufferAllocator,
+            text: TextEditProject? = null
         ): GlesFrameCompositor {
             val graph = GlesFrameCompositorDeviceTest.graph()
             return GlesFrameCompositor(target, plan ?: RenderPassPlanner.plan(graph,
                 RenderPassPlanner.DeviceCapabilities.conservative()), graph.frameAttachments,
                 authoredTitle = title, programDriver = driver, framebufferAllocator = framebufferAllocator,
-                previewMemoryBudget = budget)
+                previewMemoryBudget = budget, textProject = text)
         }
         override fun close() { egl.close(); surface.release(); texture.release() }
     }

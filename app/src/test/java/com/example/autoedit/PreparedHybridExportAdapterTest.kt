@@ -77,7 +77,7 @@ class PreparedHybridExportAdapterTest {
         reject(visual(prepared), project.copy(original = stale, current = stale, nextRevisionId = 3))
         reject(visual(prepared), project.copy(id = "other"))
         reject(ProjectVisualSettings(ProjectAspect.LANDSCAPE_16_9, true))
-        for (mode in listOf(FramingMode.SMART_PERSON, FramingMode.BLURRED_FIT)) {
+        for (mode in listOf(FramingMode.SMART_PERSON)) {
             reject(visual(prepared).withFraming(FramingKey(SourceId("unused"), ProjectAspect.PORTRAIT_9_16),
                 SourceFramingSettings(mode = mode)))
         }
@@ -85,7 +85,7 @@ class PreparedHybridExportAdapterTest {
         assertThrows(IllegalArgumentException::class.java) { request(fourK) }
     }
 
-    @Test fun textAndUnsupportedMusicRejectInsteadOfExportingMissingContent() {
+    @Test fun changedTextAndMusicCannotReuseAnOlderPreparedRevisionPayload() {
         val prepared = fixture()
         val project = projects.getValue(prepared)
         val revision = project.current
@@ -104,6 +104,27 @@ class PreparedHybridExportAdapterTest {
                     File(temporary.root, "unsupported.mp4"))
             }
         }
+    }
+
+    @Test fun freshPreparedTextAndEditedMusicAreBoundWithoutLosingTheirFields() {
+        val legacy = TextItem("legacy", "Legacy", FrameSpan(1, 20), .23f, .68f, .41f, .08f,
+            0xffcc99aa.toInt(), TextItem.Appearance.ACCENT, 2)
+        val prepared = fixture(revisionChange = { revision -> revision.copy(texts = listOf(legacy),
+            textState = HybridTextState(layers = listOf(TextLayer("title", "Заголовок", 0, 100_000)),
+                captions = listOf(CaptionCue("cue", "Речь", 100_000, 200_000))),
+            music = revision.music.copy(startUs = 100_000, gain = .5f, fadeInUs = 20_000, fadeOutUs = 50_000, repeat = false)) })
+        val request = request(prepared)
+        assertSame(prepared.renderText, request.textProject)
+        assertEquals(listOf(legacy), request.textProject!!.legacyItems)
+        assertEquals("Заголовок", request.textProject!!.layers.single().text)
+        assertEquals("Речь", request.textProject!!.captions.single().text)
+        assertEquals(MediaCodecSpeedRampRenderer.TextBehavior.MONTAGE_OVERLAY, request.textBehavior)
+        assertEquals(100_000L, prepared.audio.music.startUs)
+        assertEquals(.5f, prepared.audio.music.gain, 0f)
+        assertFalse(prepared.audio.music.repeat)
+        val visual = visual(prepared).withFraming(FramingKey(SourceId("unused"), ProjectAspect.PORTRAIT_9_16),
+            SourceFramingSettings(mode = FramingMode.BLURRED_FIT))
+        assertNotNull(request(prepared, visual).preparedExport!!.framing.sample(2, 0).backgroundSource)
     }
 
     // An internal binding cannot be reused with a different graph/FPS/dimensions/source ordering.
@@ -174,7 +195,8 @@ class PreparedHybridExportAdapterTest {
     }
 
     private fun fixture(fps: Int = 30, aspect: ProjectAspect = ProjectAspect.PORTRAIT_9_16,
-        shortEdge: Int = 720, temporal: Boolean = false): PreparedHybridPreview {
+        shortEdge: Int = 720, temporal: Boolean = false,
+        revisionChange: (HybridRevision) -> HybridRevision = { it }): PreparedHybridPreview {
         val base = ManualMontageFixtures.linearProject(fps)
         val store = ProjectAssetStore(temporary.newFolder())
         fun imported(geometry: SourceGeometry, bytes: String): ProjectAsset {
@@ -184,6 +206,8 @@ class PreparedHybridExportAdapterTest {
         }
         val first = imported(SourceGeometry(400, 200, 90, 2f), "first fixture")
         val unused = imported(SourceGeometry(200, 200, 0, 1f), "unused fixture")
+        val musicFile = temporary.newFile().apply { writeText("owned music fixture") }
+        val music = store.import(musicFile, ProjectAsset.Kind.AUDIO, base.music.durationUs).copy(id = base.music.id)
         val selections = listOf(SelectedVideo(SourceId("first"), first.id, SourceOwnership.IMPORTED, displayName = "First"),
             SelectedVideo(SourceId("repeat"), first.id, SourceOwnership.IMPORTED, displayName = "Repeat"),
             SelectedVideo(SourceId("unused"), unused.id, SourceOwnership.IMPORTED, displayName = "Unused"))
@@ -192,8 +216,8 @@ class PreparedHybridExportAdapterTest {
                 if (!temporal) graph else graph.copy(overlays = graph.overlays + MontageGraph.Overlay(
                     "temporal", 0, 1000, "temporal", overlayKind = MontageGraph.OverlayKind.DOUBLE_EXPOSURE,
                     secondaryTimelineStartMs = 2000))
-            })
-        val project = base.shared.copy(assets = listOf(first, unused, base.music), original = revision,
+            }).let(revisionChange)
+        val project = base.shared.copy(assets = listOf(first, unused, music), original = revision,
             current = revision, selectedVideos = selections)
         val size = aspect.size(shortEdge)
         return HybridPreviewPreparation.prepare(project, base.export.copy(width = size.width, height = size.height), store)

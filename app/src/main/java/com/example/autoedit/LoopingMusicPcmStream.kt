@@ -13,9 +13,13 @@ internal class LoopingMusicPcmStream(private val provider: PcmStreamProvider, pr
     private var cycleFrames = 0L
     private var outputFrames = 0L
     private var closed = false
+    private var ended = false
 
-    override fun read(): PcmChunk {
+    override fun read(): PcmChunk = checkNotNull(readNext(true))
+
+    internal fun readNext(repeat: Boolean): PcmChunk? {
         check(!closed)
+        if (ended) return null
         while (pending == null) {
             if (stream == null) {
                 stream = requireNotNull(provider.open("app-music", startUs)) { "Music track disappeared" }
@@ -24,7 +28,8 @@ internal class LoopingMusicPcmStream(private val provider: PcmStreamProvider, pr
             val chunk = stream!!.read()
             if (chunk == null) {
                 check(cycleFrames > 0) { "Selected music tail is empty" }
-                val ended = stream; stream = null; ended!!.close()
+                val exhausted = stream; stream = null; exhausted!!.close()
+                if (!repeat) { ended = true; return null }
                 cycleFrames = 0
                 continue
             }

@@ -27,6 +27,9 @@ internal class VideoDecoderCursor(
     private val extractor = MediaExtractor()
     private lateinit var decoder: MediaCodec
     private var released = false
+    private var decoderStarted = false
+    private var decoderReleased = false
+    private var extractorReleased = false
     val rotationDegrees: Int
     private var inputEnded = false
     private var outputEnded = false
@@ -68,6 +71,7 @@ internal class VideoDecoderCursor(
             decoder.configure(format, outputSurface, null, 0)
             checkCancelled()
             decoder.start()
+            decoderStarted = true
             checkCancelled()
         } catch (error: Throwable) {
             NativeResources().use { resources ->
@@ -104,7 +108,7 @@ internal class VideoDecoderCursor(
         if (outputEnded) return hasDecodedTexture
         if (hasDecodedTexture && targetUs <= requireNotNull(currentTexturePtsUs)) return true
         if (!seeked) {
-            extractor.seekTo(targetUs + timelineOriginUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+            extractor.seekTo(targetUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
             checkCancelled()
             seeked = true
         }
@@ -167,14 +171,19 @@ internal class VideoDecoderCursor(
 
     fun release() {
         if (released) return
-        released = true
-        NativeResources().use { resources ->
-            resources.defer { extractor.release() }
-            if (::decoder.isInitialized) {
-                resources.defer { decoder.release() }
-                resources.defer { decoder.stop() }
+        var failure: Throwable? = null
+        fun attempt(action: () -> Unit) {
+            try { action() } catch (error: Throwable) {
+                if (failure == null) failure = error else if (failure !== error) failure!!.addSuppressed(error)
             }
         }
+        if (::decoder.isInitialized && !decoderReleased) {
+            if (decoderStarted) attempt { decoder.stop(); decoderStarted = false }
+            attempt { decoder.release(); decoderReleased = true; decoderStarted = false }
+        }
+        if (!extractorReleased) attempt { extractor.release(); extractorReleased = true }
+        released = (!::decoder.isInitialized || decoderReleased) && extractorReleased
+        failure?.let { throw it }
     }
 
     private companion object {
