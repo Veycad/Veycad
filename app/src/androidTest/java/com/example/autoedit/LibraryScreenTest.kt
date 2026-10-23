@@ -14,6 +14,7 @@ import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.not
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -26,6 +27,29 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class LibraryScreenTest {
     @get:Rule val ui = UiTestFixtureRule()
+
+    @Test fun older_unsaved_result_remains_accessible_and_can_be_saved_without_losing_the_newer_one() {
+        val older = ui.seedCompleted("older-unsaved.mp4")
+        val newer = ui.seedCompleted("newer-unsaved.mp4")
+        older.file.setLastModified(1_000)
+        newer.file.setLastModified(2_000)
+        ui.launch()
+        ui.awaitDisplayed(R.id.resultContent)
+        pressBack()
+        ui.click(R.id.myEditsButton)
+        ui.awaitDisplayed(R.id.myEditsContent)
+        assertEquals(2, libraryRows().size)
+        onView(allOf(withText(older.summary), isDisplayed())).perform(scrollTo(), click())
+        ui.awaitDisplayed(R.id.resultContent)
+        ui.click(R.id.saveButton)
+        ui.awaitText(R.id.saveButton, "Сохранено")
+        ui.awaitIdle()
+        val entries = CompletedRenderStore.list(ui.context.filesDir)
+        assertTrue(entries.single { it.file == older.file }.saved)
+        assertTrue(!entries.single { it.file == newer.file }.saved)
+        ui.assertGalleryCopy(older.file.name)
+        assertTrue(older.file.isFile && newer.file.isFile)
+    }
 
     @Test fun empty_collection_shows_help_and_both_back_routes_return_to_director() {
         ui.launch()

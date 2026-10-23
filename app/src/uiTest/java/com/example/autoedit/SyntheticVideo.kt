@@ -10,8 +10,9 @@ import java.io.File
 
 /** A real, decodable AVC clip generated on-device, independent of user footage. */
 internal object SyntheticVideo {
-    fun create(target: File, durationMs: Long = 3_000): File {
+    fun create(target: File, durationMs: Long = 3_000, lumaPhase: Int = 0): File {
         require(durationMs in 1_000..180_000)
+        require(lumaPhase in 0..99)
         if (target.isFile && target.length() > 0) {
             val valid = runCatching {
                 MediaMetadataRetriever().use { metadata ->
@@ -46,7 +47,7 @@ internal object SyntheticVideo {
             var outputEnded = false
             var track = -1
             val info = MediaCodec.BufferInfo()
-            val deadline = SystemClock.elapsedRealtime() + 20_000
+            val deadline = SystemClock.elapsedRealtime() + maxOf(20_000L, durationMs * 2)
             while (!outputEnded) {
                 check(SystemClock.elapsedRealtime() < deadline) { "Synthetic AVC encoding timed out" }
                 if (!inputEnded) {
@@ -58,7 +59,7 @@ internal object SyntheticVideo {
                             inputEnded = true
                         } else {
                             val pixels = ByteArray(width * height * 3 / 2) { offset ->
-                                if (offset < width * height) (40 + frame % 100).toByte() else 128.toByte()
+                                if (offset < width * height) (40 + (frame + lumaPhase) % 100).toByte() else 128.toByte()
                             }
                             codec.getInputBuffer(index)!!.apply { clear(); put(pixels) }
                             codec.queueInputBuffer(index, 0, pixels.size, frame * 1_000_000L / 30, 0)

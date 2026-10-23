@@ -5,6 +5,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CompletedRenderStoreTest {
+    @Test fun saved_results_use_the_canonical_file_and_keep_legacy_library_entries() {
+        val root = createTempDirectory("canonical-library").toFile()
+        try {
+            val canonical = CompletedRenderStore.publish(root,
+                root.resolve("published.mp4").apply { writeBytes(byteArrayOf(1, 2, 3)) }, "Saved")
+            CompletedRenderStore.markSaved(canonical)
+            val unsaved = CompletedRenderStore.publish(root,
+                root.resolve("unsaved.mp4").apply { writeBytes(byteArrayOf(4)) }, "Unsaved")
+            val legacy = root.resolve("my-edits/legacy.mp4").apply {
+                parentFile!!.mkdirs(); writeBytes(byteArrayOf(5, 6))
+            }
+            assertEquals(setOf(canonical.file, legacy), CompletedRenderStore.savedFiles(root).toSet())
+            assertFalse(root.resolve("my-edits/published.mp4").exists())
+            assertFalse(CompletedRenderStore.savedFiles(root).contains(unsaved.file))
+            assertEquals(listOf(unsaved.file), CompletedRenderStore.list(root).filter { !it.saved }.map { it.file })
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun text_draft_link_is_durable_with_result_and_saved_flag() {
         val root=createTempDirectory("text-result-link").toFile()
         try {

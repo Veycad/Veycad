@@ -94,7 +94,7 @@ internal class SourceDraftStore(filesDir: File, private val io: Io = DiskIo) {
             SourceDraftRecovery.collect(this, current, previouslyOwned)
         } catch (failure: Exception) { listOf(failure.message ?: "Не удалось проверить исходники для уборки") }
     }
-    fun <T> replace(inputs: List<Input>, expectedCount: Int, beforeCommit: () -> T): ReplaceResult<T> {
+    fun <T> replace(inputs: List<Input>, expectedCount: Int, beforeCommit: (List<File>) -> T): ReplaceResult<T> {
         val id = UUID.randomUUID()
         val created = mutableListOf<File>()
         var commitAttempted = false
@@ -123,7 +123,7 @@ internal class SourceDraftStore(filesDir: File, private val io: Io = DiskIo) {
             }
             candidate = Snapshot(id, SourceDraftManifest.Origin.IMPORT, entries)
             val bytes = SourceDraftManifest.encode(candidate)
-            prepared = listOf(beforeCommit())
+            prepared = listOf(beforeCommit(entries.map { child(it.fileName) }))
             io.checkpoint(Phase.FILES_PREPARED)
             commitAttempted = true
             io.replaceManifest(pointer, bytes)

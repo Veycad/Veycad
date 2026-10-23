@@ -11,7 +11,6 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -97,10 +96,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    private val videoGallery = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) result.data?.data?.let { uri ->
-            session.importVideos(listOf(uri), montageStyle)
-        }
+    private val videoGallery = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) session.importVideos(listOf(uri), montageStyle)
     }
     private val dualVideoGallery = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -112,14 +109,6 @@ class MainActivity : AppCompatActivity() {
             return@registerForActivityResult
         }
         session.importVideos(unique, montageStyle)
-    }
-    private val videoAccessRequest = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        LocalDiagnostics.record(this, "video_access_result", mapOf("full_access" to granted.toString()))
-        if (granted) {
-            openVideoGallery()
-        } else {
-            toast("Разрешите полный доступ к видео, чтобы открыть галерею")
-        }
     }
     private val legacySave = registerForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
         val entry = legacySaveEntry
@@ -172,7 +161,7 @@ class MainActivity : AppCompatActivity() {
             .getOrDefault(CaptureMode.MUSIC)
         setCaptureMode(savedInstanceState?.getBoolean("auto_capture") == true)
         savedInstanceState?.getString("legacy_save_file")?.let { path ->
-            session.state.value?.entry?.takeIf { it.file.path == path }?.let { legacySaveEntry = it }
+            legacySaveEntry = CompletedRenderStore.list(filesDir).firstOrNull { it.file.path == path }
         }
         observedDraftGeneration = session.state.value?.draftGeneration ?: 0L
         restoreSourceDraft()
@@ -266,7 +255,7 @@ class MainActivity : AppCompatActivity() {
                 showCompletedResult(state.entry)
                 notifyRenderReady(state.entry)
                 if (settingsPreferences().getBoolean(PREF_AUTO_SAVE, false) && !state.entry.saved) {
-                    session.save(state.entry)
+                    saveResult()
                 }
             } else if (!resultOpenedFromLibrary && renderedFile == state.entry?.file) {
                 renderedSaved = state.entry?.saved == true
@@ -293,8 +282,10 @@ class MainActivity : AppCompatActivity() {
             state.cleanupReport?.let { report ->
                 if (observedCleanup !== report) {
                     observedCleanup = report
-                    if (report.failures.isEmpty() && state.error == null &&
-                        state.cleanupScope == TemporaryFileCleanup.Scope.ALL_TEMPORARY) toast("Временные файлы очищены")
+                    if (report.failures.isEmpty() && state.error == null) {
+                        if (state.cleanupScope == TemporaryFileCleanup.Scope.ALL_TEMPORARY) toast("Временные файлы очищены")
+                        if (state.cleanupScope == TemporaryFileCleanup.Scope.SOURCE_DRAFT) showNewEditScreen()
+                    }
                 }
             }
         }
@@ -385,10 +376,8 @@ class MainActivity : AppCompatActivity() {
             LocalDiagnostics.record(this, "tap_select_video")
             if (montageStyle.sourceCount == 2) {
                 dualVideoGallery.launch(arrayOf("video/*"))
-            } else if (hasFullVideoAccess()) {
-                openVideoGallery()
             } else {
-                videoAccessRequest.launch(videoPermission())
+                videoGallery.launch(arrayOf("video/*"))
             }
         }
         renderButton.setOnClickListener {
@@ -410,7 +399,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.backFromEditsButton).setOnClickListener { showDirectorScreen() }
         findViewById<Button>(R.id.newEditButton).setOnClickListener {
             LocalDiagnostics.record(this, "tap_new_edit")
-            showNewEditScreen()
+            if (legacySaveEntry == null) session.clearDraft()
         }
         findViewById<Button>(R.id.cancelRenderButton).setOnClickListener {
             if (session.cancelRender()) progressDetail.text = "Отменяю монтаж. Освобождаю ресурсы…"
@@ -467,24 +456,6 @@ class MainActivity : AppCompatActivity() {
                 LocalDiagnostics.record(this, "director_ready")
             }.start()
         }, SPLASH_DURATION_MS)
-    }
-
-    private fun hasFullVideoAccess(): Boolean =
-        checkSelfPermission(videoPermission()) == PackageManager.PERMISSION_GRANTED
-
-    private fun videoPermission(): String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_VIDEO
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
-
-    private fun openVideoGallery() {
-        LocalDiagnostics.record(this, "open_video_gallery")
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Video.Media.EXTERNAL_CONTENT_URI).apply {
-            type = "video/*"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        videoGallery.launch(intent)
     }
 
     private fun updateReadyState() {
@@ -869,7 +840,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun showNewEditScreen() {
         if (session.state.value?.busy == true || legacySaveEntry != null) return
-        if (!session.clearDraft()) return
         stopPreviewPlayback()
         musicRequests.invalidate()
         resultContent.visibility = View.GONE
@@ -920,10 +890,7 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { openCapture(capture) }
             })
         }
-        val edits = myEditsDirectory().listFiles()
-            ?.filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
-            ?.sortedByDescending { it.lastModified() }
-            .orEmpty()
+        val edits = CompletedRenderStore.savedFiles(filesDir)
         val unsaved = CompletedRenderStore.list(filesDir).filter { !it.saved }
         unsaved.forEach { entry ->
             myEditsList.addView(Button(this).apply {
@@ -999,10 +966,8 @@ class MainActivity : AppCompatActivity() {
         ))
     }
 
-    private fun myEditsDirectory(): File = File(filesDir, "my-edits").apply { mkdirs() }
-
     private fun updateMyEditsButton() {
-        val count = myEditsDirectory().listFiles()?.count { it.isFile && it.extension.equals("mp4", true) } ?: 0
+        val count = CompletedRenderStore.savedFiles(filesDir).size
         findViewById<Button>(R.id.myEditsButton).text = if (count == 0) "▣\nЭдиты" else "▣  $count\nЭдиты"
     }
 

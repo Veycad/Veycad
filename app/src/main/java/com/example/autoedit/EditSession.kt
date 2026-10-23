@@ -91,7 +91,7 @@ internal class EditSession internal constructor(
                 confirmedDraft = makeDraft(restored.snapshot, style)
                 sourceSelectionConfirmed = confirmedDraft != null
                 sourceGcPending = confirmedDraft != null
-                publish(before.copy(draft = confirmedDraft, error = restored.warning))
+                publish(before.copy(draft = confirmedDraft, error = restored.warning ?: before.error))
             } catch (failure: Exception) {
                 sourceSelectionConfirmed = false
                 confirmedDraft = null
@@ -206,7 +206,15 @@ internal class EditSession internal constructor(
                             app.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Не удалось прочитать выбранный файл")
                         }
                     }
-                    sourceStore.replace(inputs, style.sourceCount) { selectMusic(style) }
+                    sourceStore.replace(inputs, style.sourceCount) { files ->
+                        files.forEach { file ->
+                            val metadata = SequentialBitmapDecoder.metadata(file)
+                            require(metadata.durationUs > 0 && metadata.displayWidth > 0 && metadata.displayHeight > 0) {
+                                "Выбранный файл не содержит доступного видео"
+                            }
+                        }
+                        selectMusic(style)
+                    }
                 } catch (failure: Exception) { SourceDraftStore.ReplaceResult.Rejected(failure) }
                 if (result is SourceDraftStore.ReplaceResult.Published) {
                     synchronized(sourceGcLock) { previouslyOwnedSources += previousSnapshot?.entries.orEmpty().map { it.fileName } }
@@ -406,19 +414,13 @@ internal class EditSession internal constructor(
             publish(State(busy = true, saving = true, entry = entry))
             mediaWork.execute {
                 val result = runCatching {
-                    val local = File(File(app.filesDir, "my-edits").apply { mkdirs() }, entry.file.name)
-                    val temporary = File(local.path + ".partial")
-                    try {
-                        entry.file.copyTo(temporary, overwrite = true)
-                        if (destination == null) saveToGallery(entry.file) else {
-                            app.contentResolver.openOutputStream(destination)?.use { output ->
-                                entry.file.inputStream().use { it.copyTo(output) }
-                            } ?: error("Не удалось открыть место сохранения")
-                        }
-                        check(temporary.renameTo(local)) { "Не удалось сохранить монтаж в библиотеку" }
-                        CompletedRenderStore.markSaved(entry)
-                        entry.copy(saved = true)
-                    } finally { temporary.delete() }
+                    if (destination == null) saveToGallery(entry.file) else {
+                        app.contentResolver.openOutputStream(destination)?.use { output ->
+                            entry.file.inputStream().use { it.copyTo(output) }
+                        } ?: error("Не удалось открыть место сохранения")
+                    }
+                    CompletedRenderStore.markSaved(entry)
+                    entry.copy(saved = true)
                 }
                 preferences.edit().putBoolean("running", false).commit()
                 mediaWork.post { publish(State(entry = result.getOrNull() ?: entry,

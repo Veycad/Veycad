@@ -215,7 +215,8 @@ object MediaCodecSpeedRampRenderer {
                 request.audioResourceId,
                 videoOnlyFile,
                 request.outputFile,
-                request.outputWindow?.durationUs ?: request.audioDurationUs
+                request.outputWindow?.durationUs ?: request.audioDurationUs,
+                request.checkCancelled
             )
             videoOnlyFile.delete()
         } else check(videoOnlyFile.renameTo(request.outputFile)) { "Unable to move video output" }
@@ -244,13 +245,11 @@ object MediaCodecSpeedRampRenderer {
             setInteger(MediaFormat.KEY_FRAME_RATE, request.fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
-        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        try {
+        return NativeResources().use { resources ->
+            val encoder = resources.own(MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC), MediaCodec::release)
             encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            return encoder
-        } catch (error: Throwable) {
-            runCatching { encoder.release() }
-            throw error
+            resources.transfer()
+            encoder
         }
     }
 
@@ -403,8 +402,10 @@ object MediaCodecSpeedRampRenderer {
         var outgoing = try {
             DecoderCursor(files[0], outgoingSurface, normalizeTimestamps)
         } catch (error: Throwable) {
-            incoming.release()
-            throw error
+            NativeResources().use { resources ->
+                resources.defer { incoming.release() }
+                throw error
+            }
         }
             private set
 
@@ -428,9 +429,9 @@ object MediaCodecSpeedRampRenderer {
             return outgoing
         }
 
-        fun release() {
-            runCatching { outgoing.release() }
-            runCatching { incoming.release() }
+        fun release() = NativeResources().use { resources ->
+            resources.defer { incoming.release() }
+            resources.defer { outgoing.release() }
         }
     }
 
@@ -463,8 +464,10 @@ object MediaCodecSpeedRampRenderer {
                 decoder.configure(format, outputSurface, null, 0)
                 decoder.start()
             } catch (error: Throwable) {
-                release()
-                throw error
+                NativeResources().use { resources ->
+                    resources.defer(::release)
+                    throw error
+                }
             }
         }
 
@@ -528,11 +531,13 @@ object MediaCodecSpeedRampRenderer {
         fun release() {
             if (released) return
             released = true
-            if (::decoder.isInitialized) {
-                runCatching { decoder.stop() }
-                runCatching { decoder.release() }
+            NativeResources().use { resources ->
+                resources.defer { extractor.release() }
+                if (::decoder.isInitialized) {
+                    resources.defer { decoder.release() }
+                    resources.defer { decoder.stop() }
+                }
             }
-            runCatching { extractor.release() }
         }
     }
 
@@ -666,8 +671,10 @@ object MediaCodecSpeedRampRenderer {
                 glowTargetA = glowScale?.let { createOffscreenTarget(scaled(width, it), scaled(height, it)) }
                 glowTargetB = glowScale?.let { createOffscreenTarget(scaled(width, it), scaled(height, it)) }
             } catch (error: Throwable) {
-                release()
-                throw error
+                NativeResources().use { resources ->
+                    resources.defer(::release)
+                    throw error
+                }
             }
         }
 
@@ -974,95 +981,103 @@ object MediaCodecSpeedRampRenderer {
             if (released) return
             released = true
             val current = context != EGL14.EGL_NO_CONTEXT && runCatching { makeCurrent() }.isSuccess
-            if (::incomingInput.isInitialized) runCatching { incomingInput.release(current) }
-            if (::outgoingInput.isInitialized) runCatching { outgoingInput.release(current) }
-            if (current) runCatching {
-                GLES20.glUseProgram(0)
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
-                GLES20.glDeleteTextures(
-                    5,
-                    intArrayOf(maskTexture, depthTexture, flowTexture, openingTitleTexture, userTextTexture),
-                    0
-                )
-                GLES20.glDeleteProgram(program)
-                GLES20.glDeleteProgram(postProgram)
-                listOfNotNull(sceneTarget, motionTarget, depthTarget, glowTargetA, glowTargetB).forEach(::releaseTarget)
+            NativeResources().use { resources ->
+                resources.defer { userTextBitmap?.recycle() }
+                resources.defer { EGL14.eglReleaseThread() }
+                if (display != EGL14.EGL_NO_DISPLAY) {
+                    resources.defer { EGL14.eglTerminate(display) }
+                    if (context != EGL14.EGL_NO_CONTEXT) resources.defer { EGL14.eglDestroyContext(display, context) }
+                    if (surface != EGL14.EGL_NO_SURFACE) resources.defer { EGL14.eglDestroySurface(display, surface) }
+                    resources.defer { EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT) }
+                }
+                if (current) {
+                    listOfNotNull(sceneTarget, motionTarget, depthTarget, glowTargetA, glowTargetB)
+                        .forEach { target -> resources.defer { releaseTarget(target) } }
+                    resources.defer { GLES20.glDeleteProgram(postProgram) }
+                    resources.defer { GLES20.glDeleteProgram(program) }
+                    resources.defer { GLES20.glDeleteTextures(5,
+                        intArrayOf(maskTexture, depthTexture, flowTexture, openingTitleTexture, userTextTexture), 0) }
+                    resources.defer { GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0) }
+                    resources.defer { GLES20.glUseProgram(0) }
+                }
+                if (::outgoingInput.isInitialized) resources.defer { outgoingInput.release(current) }
+                if (::incomingInput.isInitialized) resources.defer { incomingInput.release(current) }
             }
-            if (display != EGL14.EGL_NO_DISPLAY) {
-                EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
-                if (surface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, surface)
-                if (context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display, context)
-                EGL14.eglTerminate(display)
-            }
-            EGL14.eglReleaseThread()
-            userTextBitmap?.recycle()
         }
 
         private fun makeCurrent() { check(EGL14.eglMakeCurrent(display, surface, surface, context)) }
         private fun recordPass(kind: RenderPassPlanner.PassKind) {
             passExecutions[kind] = (passExecutions[kind] ?: 0) + 1
         }
-        private fun createExternalTexture(): Int = IntArray(1).also {
-            GLES20.glGenTextures(1, it, 0); GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, it[0])
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-        }[0]
-        private fun create2dTexture(): Int = IntArray(1).also {
-            GLES20.glGenTextures(1, it, 0)
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, it[0])
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-        }[0]
+        private fun createExternalTexture(): Int = createTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES)
+        private fun create2dTexture(): Int = createTexture(GLES20.GL_TEXTURE_2D)
+        private fun createTexture(target: Int): Int = NativeResources().use { resources ->
+            val textures = IntArray(1)
+            GLES20.glGenTextures(1, textures, 0)
+            resources.defer { GLES20.glDeleteTextures(1, textures, 0) }
+            check(textures[0] != 0) { "Unable to allocate GL texture" }
+            GLES20.glBindTexture(target, textures[0])
+            GLES20.glTexParameteri(target, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(target, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(target, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(target, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            resources.transfer()
+            textures[0]
+        }
 
         private fun createOpeningTitleTexture(spec: AuthoredTitleProfile.Spec?): Int {
-            val texture = create2dTexture()
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
-            if (spec == null) {
-                GLES20.glTexImage2D(
-                    GLES20.GL_TEXTURE_2D, 0, GLES20.GL_ALPHA, 1, 1, 0,
-                    GLES20.GL_ALPHA, GLES20.GL_UNSIGNED_BYTE, ByteBuffer.allocateDirect(1)
+            return NativeResources().use { resources ->
+                val texture = resources.own(create2dTexture()) {
+                    GLES20.glDeleteTextures(1, intArrayOf(it), 0)
+                }
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+                if (spec == null) {
+                    GLES20.glTexImage2D(
+                        GLES20.GL_TEXTURE_2D, 0, GLES20.GL_ALPHA, 1, 1, 0,
+                        GLES20.GL_ALPHA, GLES20.GL_UNSIGNED_BYTE, ByteBuffer.allocateDirect(1)
+                    )
+                    resources.transfer()
+                    return@use texture
+                }
+                val rowHeight = maxOf(64, kotlin.math.ceil(spec.textSizePx * 1.4f).toInt())
+                val atlas = Bitmap.createBitmap(
+                    OPENING_TITLE_ATLAS_WIDTH,
+                    rowHeight * spec.texts.size,
+                    Bitmap.Config.ALPHA_8
                 )
-                return texture
+                NativeResources().use { bitmaps ->
+                    bitmaps.own(atlas, Bitmap::recycle)
+                    val canvas = Canvas(atlas)
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+                        color = Color.WHITE
+                        textAlign = Paint.Align.CENTER
+                        textSize = spec.textSizePx
+                        typeface = Typeface.create(
+                            if (spec.condensedBold) "sans-serif-condensed" else "sans-serif",
+                            if (spec.condensedBold) Typeface.BOLD else Typeface.NORMAL
+                        )
+                        letterSpacing = spec.letterSpacing
+                    }
+                    val metrics = paint.fontMetrics
+                    spec.texts.forEachIndexed { row, text ->
+                        val rowCenter = (row + .5f) * rowHeight
+                        val baseline = rowCenter - (metrics.ascent + metrics.descent) * .5f
+                        canvas.drawText(text, OPENING_TITLE_ATLAS_WIDTH * .5f, baseline, paint)
+                    }
+                    val bytes = ByteBuffer.allocateDirect(atlas.byteCount)
+                    atlas.copyPixelsToBuffer(bytes)
+                    bytes.position(0)
+                    GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)
+                    GLES20.glTexImage2D(
+                        GLES20.GL_TEXTURE_2D, 0, GLES20.GL_ALPHA,
+                        atlas.width, atlas.height, 0,
+                        GLES20.GL_ALPHA, GLES20.GL_UNSIGNED_BYTE, bytes
+                    )
+                    GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 4)
+                }
+                resources.transfer()
+                texture
             }
-            val rowHeight = maxOf(64, kotlin.math.ceil(spec.textSizePx * 1.4f).toInt())
-            val atlas = Bitmap.createBitmap(
-                OPENING_TITLE_ATLAS_WIDTH,
-                rowHeight * spec.texts.size,
-                Bitmap.Config.ALPHA_8
-            )
-            val canvas = Canvas(atlas)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
-                color = Color.WHITE
-                textAlign = Paint.Align.CENTER
-                textSize = spec.textSizePx
-                typeface = Typeface.create(
-                    if (spec.condensedBold) "sans-serif-condensed" else "sans-serif",
-                    if (spec.condensedBold) Typeface.BOLD else Typeface.NORMAL
-                )
-                letterSpacing = spec.letterSpacing
-            }
-            val metrics = paint.fontMetrics
-            spec.texts.forEachIndexed { row, text ->
-                val rowCenter = (row + .5f) * rowHeight
-                val baseline = rowCenter - (metrics.ascent + metrics.descent) * .5f
-                canvas.drawText(text, OPENING_TITLE_ATLAS_WIDTH * .5f, baseline, paint)
-            }
-            val bytes = ByteBuffer.allocateDirect(atlas.byteCount)
-            atlas.copyPixelsToBuffer(bytes)
-            bytes.position(0)
-            GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1)
-            GLES20.glTexImage2D(
-                GLES20.GL_TEXTURE_2D, 0, GLES20.GL_ALPHA,
-                atlas.width, atlas.height, 0,
-                GLES20.GL_ALPHA, GLES20.GL_UNSIGNED_BYTE, bytes
-            )
-            GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 4)
-            atlas.recycle()
-            return texture
         }
 
         private fun bindPlaneTexture(
@@ -1122,44 +1137,44 @@ object MediaCodecSpeedRampRenderer {
         )
 
         private fun createOffscreenTarget(targetWidth: Int, targetHeight: Int): OffscreenTarget {
-            val textures = IntArray(1)
-            GLES20.glGenTextures(1, textures, 0)
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[0])
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-            GLES20.glTexImage2D(
-                GLES20.GL_TEXTURE_2D,
-                0,
-                GLES20.GL_RGBA,
-                targetWidth,
-                targetHeight,
-                0,
-                GLES20.GL_RGBA,
-                GLES20.GL_UNSIGNED_BYTE,
-                null
-            )
-            val framebuffers = IntArray(1)
-            GLES20.glGenFramebuffers(1, framebuffers, 0)
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffers[0])
-            GLES20.glFramebufferTexture2D(
-                GLES20.GL_FRAMEBUFFER,
-                GLES20.GL_COLOR_ATTACHMENT0,
-                GLES20.GL_TEXTURE_2D,
-                textures[0],
-                0
-            )
-            check(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE) {
-                "Unable to allocate ${targetWidth}x$targetHeight render pass"
+            return NativeResources().use { resources ->
+                val texture = resources.own(create2dTexture()) {
+                    GLES20.glDeleteTextures(1, intArrayOf(it), 0)
+                }
+                GLES20.glTexImage2D(
+                    GLES20.GL_TEXTURE_2D,
+                    0,
+                    GLES20.GL_RGBA,
+                    targetWidth,
+                    targetHeight,
+                    0,
+                    GLES20.GL_RGBA,
+                    GLES20.GL_UNSIGNED_BYTE,
+                    null
+                )
+                val framebuffers = IntArray(1)
+                GLES20.glGenFramebuffers(1, framebuffers, 0)
+                resources.defer { GLES20.glDeleteFramebuffers(1, framebuffers, 0) }
+                check(framebuffers[0] != 0) { "Unable to allocate GL framebuffer" }
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffers[0])
+                GLES20.glFramebufferTexture2D(
+                    GLES20.GL_FRAMEBUFFER,
+                    GLES20.GL_COLOR_ATTACHMENT0,
+                    GLES20.GL_TEXTURE_2D,
+                    texture,
+                    0
+                )
+                check(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE) {
+                    "Unable to allocate ${targetWidth}x$targetHeight render pass"
+                }
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+                OffscreenTarget(framebuffers[0], texture, targetWidth, targetHeight).also { resources.transfer() }
             }
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
-            return OffscreenTarget(framebuffers[0], textures[0], targetWidth, targetHeight)
         }
 
-        private fun releaseTarget(target: OffscreenTarget) {
-            GLES20.glDeleteFramebuffers(1, intArrayOf(target.framebuffer), 0)
-            GLES20.glDeleteTextures(1, intArrayOf(target.texture), 0)
+        private fun releaseTarget(target: OffscreenTarget) = NativeResources().use { resources ->
+            resources.defer { GLES20.glDeleteTextures(1, intArrayOf(target.texture), 0) }
+            resources.defer { GLES20.glDeleteFramebuffers(1, intArrayOf(target.framebuffer), 0) }
         }
 
         private fun renderPostPipeline(
@@ -1297,9 +1312,11 @@ object MediaCodecSpeedRampRenderer {
                     }
                     surface = Surface(surfaceTexture)
                 } catch (error: Throwable) {
-                    if (::surfaceTexture.isInitialized) runCatching { surfaceTexture.release() }
-                    GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
-                    throw error
+                    NativeResources().use { resources ->
+                        resources.defer { GLES20.glDeleteTextures(1, intArrayOf(texture), 0) }
+                        if (::surfaceTexture.isInitialized) resources.defer { surfaceTexture.release() }
+                        throw error
+                    }
                 }
             }
 
@@ -1320,10 +1337,10 @@ object MediaCodecSpeedRampRenderer {
             }
             fun timestampUs(): Long = surfaceTexture.timestamp / 1_000L
             fun transformMatrix(): FloatArray = FloatArray(16).also(surfaceTexture::getTransformMatrix)
-            fun release(current: Boolean) {
-                runCatching { surface.release() }
-                runCatching { surfaceTexture.release() }
-                if (current) GLES20.glDeleteTextures(1, intArrayOf(texture), 0)
+            fun release(current: Boolean) = NativeResources().use { resources ->
+                if (current) resources.defer { GLES20.glDeleteTextures(1, intArrayOf(texture), 0) }
+                resources.defer { surfaceTexture.release() }
+                resources.defer { surface.release() }
             }
         }
         private fun floatBuffer(values: FloatArray): FloatBuffer = ByteBuffer.allocateDirect(values.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(values); position(0) }

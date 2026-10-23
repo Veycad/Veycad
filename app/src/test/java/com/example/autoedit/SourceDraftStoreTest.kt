@@ -29,6 +29,23 @@ class SourceDraftStoreTest {
         assertEquals(old, SourceDraftStore(base).read())
         old.entries.forEachIndexed { i, e -> assertArrayEquals(oldBytes[i], File(base, "source-draft/${e.fileName}").readBytes()) }
     }
+    @Test fun preparedCandidatesAreValidatedBeforePublicationAndRemovedOnRejection() {
+        val base = temporary.newFolder(); val old = seed(base)
+        var checked = false
+        var candidates = emptyList<File>()
+        val result = SourceDraftStore(base).replace(inputs(), 2) { files ->
+            checked = true; candidates = files
+            assertEquals(old, SourceDraftStore(base).read())
+            assertEquals(2, files.size)
+            files.forEachIndexed { index, file -> assertArrayEquals(newBytes[index], file.readBytes()) }
+            throw IOException("invalid video")
+        }
+        assertTrue(checked)
+        assertTrue(result is SourceDraftStore.ReplaceResult.Rejected)
+        assertTrue(candidates.none(File::exists))
+        assertOld(base, old)
+    }
+
     @Test fun oldSelectionSurvivesEveryPreCommitFailure() {
         for (fault in listOf("input0", "input1", "write", "sync", "music", "replace", "atomic")) {
             val base = temporary.newFolder()

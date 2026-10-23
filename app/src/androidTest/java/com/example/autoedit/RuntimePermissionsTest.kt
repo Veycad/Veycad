@@ -35,35 +35,21 @@ import java.io.File
 class RuntimePermissionsTest {
     @get:Rule val ui = UiTestFixtureRule(grantPermissions = false)
 
-    @Test fun denied_video_permission_keeps_render_disabled_and_retry_imports_after_full_access() {
+    @Test fun single_video_import_works_with_full_library_permission_denied() {
         assertEquals("Permission dialog selectors are verified on API 36", 36, Build.VERSION.SDK_INT)
         assertPermission(Manifest.permission.READ_MEDIA_VIDEO, PackageManager.PERMISSION_DENIED)
         ui.launch()
-        val uri = ui.videoUri("permission-retry-source.mp4")
-        // Only the external gallery response is controlled. Both permission requests
-        // and the URI copy/import are handled by the actual Activity and platform.
-        ui.returnVideos(listOf(uri))
-        clickPermissionButton("permission_deny_button")
-        ui.awaitIdle()
-
-        assertPermission(Manifest.permission.READ_MEDIA_VIDEO, PackageManager.PERMISSION_DENIED)
-        onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
-        onView(withId(R.id.selectVideoButton)).check(matches(isEnabled()))
-        assertTrue(ui.selectedSources().isEmpty())
-        assertTrue("Denied access must not open the gallery",
-            Intents.getIntents().none { it.action == Intent.ACTION_PICK })
-
-        ui.click(R.id.selectVideoButton)
-        clickPermissionButton("permission_allow_all_button")
-        ui.awaitIdle()
+        ui.importVideos("permission-denied-source.mp4")
         ui.awaitEnabled(R.id.renderButton)
-        ui.awaitText(R.id.videoSelection, "permission-retry-source.mp4")
-        assertPermission(Manifest.permission.READ_MEDIA_VIDEO, PackageManager.PERMISSION_GRANTED)
+        ui.awaitText(R.id.videoSelection, "permission-denied-source.mp4")
+        assertPermission(Manifest.permission.READ_MEDIA_VIDEO, PackageManager.PERMISSION_DENIED)
         val imported = ui.selectedSources()
         assertEquals(1, imported.size)
-        assertArrayEquals(File(ui.context.getDir("ui-imports", 0), "permission-retry-source.mp4").readBytes(),
+        assertArrayEquals(File(ui.context.getDir("ui-imports", 0), "permission-denied-source.mp4").readBytes(),
             imported.single().readBytes())
-        assertTrue(Intents.getIntents().any { it.action == Intent.ACTION_PICK })
+        assertTrue(Intents.getIntents().any { it.action == Intent.ACTION_OPEN_DOCUMENT &&
+            it.getStringArrayExtra(Intent.EXTRA_MIME_TYPES)?.toList() == listOf("video/*") })
+        assertTrue(Intents.getIntents().none { it.action == Intent.ACTION_PICK })
     }
 
     @Test fun denied_notifications_reset_switch_and_preference_then_retry_persists_allowed_choice() {

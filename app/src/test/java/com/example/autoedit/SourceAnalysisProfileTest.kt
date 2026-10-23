@@ -18,10 +18,50 @@ class SourceAnalysisProfileTest {
         observations: List<VisualEventMap.Observation> = unknown) = MediaFrameVisualAnalyzer.Result(
         profile, assessments, 2_000_000L, observations, FrameAttachmentTimeline(), 0, 0, 0)
 
+    @Test fun duality_does_not_request_retained_render_planes_for_two_full_sources() {
+        val required = SourceAnalysisProfile.requiredFor(MontageStyleCatalog.Recipe.DUALITY_LOOP)
+        assertFalse("DUALITY only consumes observations; retaining both mask/depth timelines can exhaust a 192 MiB heap",
+            required.supplies(editorial))
+        assertTrue(editorial.supplies(required))
+        assertTrue(full.supplies(required))
+    }
+
+    @Test fun observation_only_cache_keeps_scalar_evidence_and_has_a_distinct_identity() {
+        val profile = SourceAnalysisProfile.requiredFor(MontageStyleCatalog.Recipe.DUALITY_LOOP)
+        val observations = sourceObservations(false).map {
+            it.copy(motionMeasurement = null, cameraMeasurement = null)
+        }
+        val value = MediaFrameVisualAnalyzer.Result(profile, 0, 30_000_000L, observations,
+            FrameAttachmentTimeline(), observations.size, observations.size, observations.size * 3)
+        withCache(value) { file ->
+            assertEquals(value, MediaFrameAnalysisCache.read(file, profile))
+            assertThrows(IllegalArgumentException::class.java) { MediaFrameAnalysisCache.read(file, editorial) }
+            val observationKey = MediaFrameAnalysisCache.key(file, 250_000L, profile)
+            assertNotEquals(observationKey.fileName, MediaFrameAnalysisCache.key(file, 250_000L, editorial).fileName)
+        }
+    }
+
+    @Test fun observation_only_result_cannot_smuggle_retained_planes() {
+        val profile = SourceAnalysisProfile.requiredFor(MontageStyleCatalog.Recipe.DUALITY_LOOP)
+        val attachment = FrameAttachments(125_000L,
+            mask = FrameAttachments.Plane(1, 1, floatArrayOf(.5f), .8f))
+        assertThrows(IllegalArgumentException::class.java) {
+            MediaFrameVisualAnalyzer.Result(profile, 0, 2_000_000L, unknown,
+                FrameAttachmentTimeline(listOf(attachment)), 3, 3, 9)
+        }
+        withCache(result(profile, 0)) { file ->
+            val payload = GZIPInputStream(file.inputStream()).use { it.readBytes() }
+            // The final two ints are the empty plane/refinement counts; reject before allocating planes.
+            ByteBuffer.wrap(payload).putInt(payload.size - 8, 240)
+            GZIPOutputStream(file.outputStream()).use { it.write(payload) }
+            val error = assertThrows(IllegalArgumentException::class.java) { MediaFrameAnalysisCache.read(file, profile) }
+            assertTrue(error.message!!.contains("Observation-only cache"))
+        }
+    }
+
     @Test fun independent_product_requirements_request_only_the_capabilities_they_consume() {
         assertEquals(full, SourceAnalysisProfile.requiredFor(MontageStyleCatalog.Recipe.FEAR_STROBE))
-        for (recipe in listOf(MontageStyleCatalog.Recipe.SIGMA, MontageStyleCatalog.Recipe.HEARTBEAT,
-            MontageStyleCatalog.Recipe.DUALITY_LOOP)) {
+        for (recipe in listOf(MontageStyleCatalog.Recipe.SIGMA, MontageStyleCatalog.Recipe.HEARTBEAT)) {
             assertEquals(editorial, SourceAnalysisProfile.requiredFor(recipe))
         }
         assertTrue(full.supplies(editorial))

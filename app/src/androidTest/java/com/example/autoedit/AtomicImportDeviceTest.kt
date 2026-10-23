@@ -28,6 +28,35 @@ class AtomicImportDeviceTest {
     private fun assertIdle() = assertEquals(MediaWorkCoordinator.Snapshot(0, false), MediaWorkCoordinator.process.snapshot())
     private fun corruptSecondUri() = ui.videoUri("bad-second.mp4").buildUpon().appendQueryParameter("failAfter", "64").build()
 
+    @Test fun successfulRestoreKeepsInterruptedWorkWarning() {
+        ui.launch(); ui.importVideos("preserved.mp4")
+        val old = snapshot(); val sources = ui.selectedSources().associateWith(File::readBytes)
+        main {
+            app.resetSession()
+            check(ui.context.getSharedPreferences("edit_session", 0).edit().putBoolean("running", true).commit())
+        }
+        ui.recreate()
+        val message = "Работа была прервана системой. Исходники и предыдущий монтаж сохранены; можно повторить."
+        ui.awaitText(R.id.renderHint, message)
+        assertEquals(message, app.editSession.state.value!!.error)
+        assertEquals(old, snapshot())
+        sources.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
+        onView(withId(R.id.renderButton)).check(matches(isEnabled())); assertIdle()
+    }
+
+    @Test fun malformedSecondVideoCannotReplaceConfirmedPair() {
+        ui.launch(); ui.selectStyle("DUALITY"); ui.importVideos("old0.mp4", "old1.mp4")
+        val old = snapshot(); val sources = ui.selectedSources().associateWith(File::readBytes)
+        File(ui.context.getDir("ui-imports", 0), "not-video.mp4").writeText("not a video")
+        ui.returnVideos(listOf(ui.videoUri("valid.mp4"), ui.videoUri("not-video.mp4"))); ui.awaitIdle()
+        assertEquals(old, snapshot())
+        assertNotNull(app.editSession.state.value!!.error)
+        assertTrue(app.editSession.state.value!!.sourceSelectionConfirmed)
+        sources.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
+        assertEquals(listOf("old0.mp4", "old1.mp4"), app.editSession.state.value!!.draft!!.names)
+        onView(withId(R.id.renderButton)).check(matches(isEnabled())); assertIdle()
+    }
+
     @Test fun rejectedImportRetainsOwnerDraft() {
         ui.launch(); ui.importVideos("old.mp4")
         val old = app.editSession.state.value!!.draft!!

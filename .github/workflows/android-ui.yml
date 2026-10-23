@@ -54,3 +54,44 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
             build/reports/ui-tests/
+
+  legacy-save:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          chmod +x gradlew
+      - name: Verify automatic save on Android 9
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 28
+          target: default
+          arch: x86_64
+          avd-name: AutoEditAuditLegacy_API28
+          emulator-port: 5558
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: pwsh -NoProfile -File tools/run_ui_tests.ps1 -Serial emulator-5558 -AvdName AutoEditAuditLegacy_API28 -LegacySaveOnly
+      - name: Save legacy export reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-legacy-save-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            build/reports/ui-tests/

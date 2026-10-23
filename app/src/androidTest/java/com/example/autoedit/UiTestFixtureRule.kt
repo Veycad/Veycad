@@ -55,7 +55,6 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         fixture = SyntheticVideo.create(File(context.getDir("ui-fixtures", 0), "synthetic.mp4"))
         renderer.outputFixture = fixture
         if (grantPermissions) {
-            grant(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE)
             if (Build.VERSION.SDK_INT >= 33) grant(Manifest.permission.POST_NOTIFICATIONS)
         }
         Intents.init()
@@ -188,7 +187,7 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
         // New responses replace earlier responses instead of a first-match stale stub.
         Intents.release()
         Intents.init()
-        intending(anyOf(hasAction(Intent.ACTION_PICK), hasAction(Intent.ACTION_OPEN_DOCUMENT)))
+        intending(hasAction(Intent.ACTION_OPEN_DOCUMENT))
             .respondWith(android.app.Instrumentation.ActivityResult(code, data))
     }
     fun startRender() {
@@ -216,7 +215,7 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
             assertEquals(0, cursor.getInt(1))
             val uri = android.content.ContentUris.withAppendedId(collection, cursor.getLong(0))
             val bytes = resolver.openInputStream(uri)!!.use { it.readBytes() }
-            assertArrayEquals(File(context.filesDir, "my-edits/$filename").readBytes(), bytes)
+            assertArrayEquals(CompletedRenderStore.savedFiles(context.filesDir).single { it.name == filename }.readBytes(), bytes)
         }
     }
     private fun cleanGallery() {
