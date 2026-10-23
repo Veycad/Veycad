@@ -142,7 +142,8 @@ function Invoke-UiPhase {
                 } finally { $uiMedia.Dispose() }
             } finally { $uiProcess.Dispose() }
             # exec-out can merge remote stderr into stdout and report zero even for missing files.
-            $uiPython = if ($uiWindows) { 'python' } else { 'python3' }
+            $uiPython = if (-not [string]::IsNullOrWhiteSpace($env:PYTHON)) { $env:PYTHON }
+                elseif ($uiWindows) { 'python' } else { 'python3' }
             $uiValidation = Invoke-UiNative -Executable $uiPython -Arguments @(
                 (Join-Path $uiProjectRoot 'tools/verify_source_aac.py'), '--validate-archive', $uiMediaPartial)
             if ($uiValidation.ExitCode -ne 0) { throw "Invalid source AAC transfer: $($uiValidation.Output)" }
