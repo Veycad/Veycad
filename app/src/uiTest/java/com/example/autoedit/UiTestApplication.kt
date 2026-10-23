@@ -47,7 +47,8 @@ internal class CapturingRenderEngine : EditSession.RenderEngine {
         }
     }
 
-    fun fail(message: String) { commands.put { error(message) } }
+    fun fail(message: String) = fail(IllegalStateException(message))
+    fun fail(error: Throwable) { commands.put { throw error } }
     fun progress(stage: VeycadAutomaticEditor.Stage, completed: Int, total: Int) {
         commands.put {
             requireNotNull(currentRequest).onProgress(VeycadAutomaticEditor.Progress(stage, completed, total))
