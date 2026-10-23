@@ -203,8 +203,9 @@ object VisualEventMapAnalyzer {
         config: Config = Config()
     ): VisualEventMap {
         require(durationUs > 0L && observations.isNotEmpty())
-        val ordered = observations.sortedBy { it.sourceTimeUs }
-        require(ordered.last().sourceTimeUs < durationUs)
+        // Indexed VFR tail PTS may exceed metadata duration; keep them in raw analysis only.
+        val ordered = observations.filter { it.sourceTimeUs < durationUs }.sortedBy { it.sourceTimeUs }
+        require(ordered.isNotEmpty()) { "No observations inside the source duration" }
         val candidates = ArrayList<VisualEventMap.Event>()
         val directionalCameraSamples = ordered.count {
             it.cameraMotion.magnitude >= config.motionThreshold &&
