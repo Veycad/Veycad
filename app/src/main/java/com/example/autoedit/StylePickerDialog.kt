@@ -8,6 +8,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -18,6 +20,7 @@ internal object StylePickerDialog {
     fun show(activity: AppCompatActivity, styles: List<MontageStyleCatalog.Style>, selectedId: String,
         onApply: (MontageStyleCatalog.Style) -> Unit): Dialog {
         val selection = StylePickerSelection(styles, selectedId)
+        val displayStyles = styles.sortedBy { !it.available }
         fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
         fun colour(id: Int) = activity.getColor(id)
         fun surface(selected: Boolean = false) = GradientDrawable().apply {
@@ -39,7 +42,7 @@ internal object StylePickerDialog {
             androidx.core.view.ViewCompat.setAccessibilityHeading(this,true)
         }
         root.addView(title)
-        root.addView(label("Выбери характер монтажа",14f,R.color.text_secondary),
+        root.addView(label("Смотри примеры и выбирай настроение\nБез звука · каждый пример 3 секунды",14f,R.color.text_secondary),
             LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8); bottomMargin=dp(20) })
         val scroll = ScrollView(activity).apply {
             isFillViewport = false
@@ -49,38 +52,76 @@ internal object StylePickerDialog {
         val list = LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
         scroll.addView(list,ViewGroup.LayoutParams(-1,-2))
         root.addView(scroll,LinearLayout.LayoutParams(-1,-2))
-        val rows = mutableListOf<Pair<View,TextView>>()
-        fun refresh() = rows.forEachIndexed { index,(row,radio) ->
-            val chosen = styles[index].id == selection.selected.id
+        val rows = mutableListOf<Triple<MontageStyleCatalog.Style,View,TextView>>()
+        val previews = mutableListOf<StylePreviewPlayback.Card>()
+        var playback: StylePreviewPlayback? = null
+        fun refresh() = rows.forEach { (style,row,radio) ->
+            val chosen = style.id == selection.selected.id
             row.background = surface(chosen)
             row.isSelected = chosen
-            radio.text = if (!styles[index].available && styles[index].recipe == MontageStyleCatalog.Recipe.SIGMA)
+            radio.text = if (!style.available && style.recipe == MontageStyleCatalog.Recipe.SIGMA)
                 "🔒" else if(chosen) "●" else "○"
             radio.setTextColor(colour(if(chosen) R.color.neon else R.color.text_muted))
         }
-        styles.forEach { style ->
+        displayStyles.forEach { style ->
+            val presentation = MontageStylePresentation.forStyle(style)
             val row = LinearLayout(activity).apply {
                 orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL
-                setPadding(dp(14),dp(16),dp(14),dp(16))
+                setPadding(dp(12),dp(12),dp(12),dp(12))
                 minimumHeight=dp(96)
                 isFocusable=style.available; isClickable=style.available
-                contentDescription="${style.title}. ${style.description}" + if(style.available) "" else ". ${style.unavailableLabel}"
+                contentDescription="${presentation.title}. ${presentation.subtitle}" +
+                    if(style.available) ". ${presentation.sourceHint}" else ". ${style.unavailableLabel}"
+            }
+            StylePreviewAssets.forStyle(style)?.let { asset ->
+                val preview = FrameLayout(activity).apply {
+                    tag = "style_preview:${style.id}"
+                    contentDescription = "Смотреть пример: ${presentation.title}. 3 секунды, без звука"
+                    isClickable = true; isFocusable = true
+                    background = GradientDrawable().apply {
+                        setColor(Color.BLACK); cornerRadius = dp(12).toFloat()
+                    }
+                    clipToOutline = true
+                    setOnClickListener { playback?.request(style.id) }
+                }
+                val poster = ImageView(activity).apply {
+                    setImageResource(asset.poster)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }
+                preview.addView(poster, FrameLayout.LayoutParams(-1,-1))
+                val status = TextView(activity).apply {
+                    text = "▶ Пример · 3 с"; textSize = 11f; setTextColor(Color.WHITE)
+                    setPadding(dp(6),dp(7),dp(6),dp(7))
+                    setBackgroundColor(0xCC000000.toInt())
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }
+                preview.addView(status, FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM))
+                previews += StylePreviewPlayback.Card(style.id,asset,preview,poster,status)
+                row.addView(preview,LinearLayout.LayoutParams(dp(96),dp(152)).apply { marginEnd=dp(10) })
             }
             val radio=label("○",26f,R.color.text_muted).apply {
                 importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
-            row.addView(radio,LinearLayout.LayoutParams(dp(36),-2))
             val copy=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
-            copy.addView(label(style.title,18f,if(style.available) R.color.text_primary else R.color.text_muted))
-            copy.addView(label(style.description.removePrefix("В разработке · "),14f,R.color.text_secondary),
+            copy.addView(label(presentation.title,18f,if(style.available) R.color.text_primary else R.color.text_muted).apply {
+                setTypeface(typeface,android.graphics.Typeface.BOLD)
+            })
+            if (style.available) copy.addView(label(presentation.profileName,12f,R.color.text_muted),
+                LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(4) })
+            copy.addView(label(presentation.subtitle.removePrefix("В разработке · "),14f,R.color.text_secondary),
                 LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(6) })
+            if(style.available) copy.addView(label(presentation.sourceHint,12f,R.color.text_muted),
+                LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
             if(!style.available) copy.addView(label(style.unavailableLabel,12f,R.color.text_muted),
                 LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
             row.addView(copy,LinearLayout.LayoutParams(0,-2,1f))
-            rows += row to radio
+            row.addView(radio,LinearLayout.LayoutParams(dp(24),-2).apply { marginStart=dp(6) })
+            rows += Triple(style,row,radio)
             row.setOnClickListener {
                 if(selection.select(style.id)) {
                     refresh()
+                    playback?.update()
                     LocalDiagnostics.record(activity,"style_picker_pending",mapOf("style" to style.id))
                 }
             }
@@ -106,6 +147,8 @@ internal object StylePickerDialog {
         } },LinearLayout.LayoutParams(0,-2,1f).apply { marginStart=dp(8) })
         root.addView(actions,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
         dialog.setContentView(root)
+        playback = StylePreviewPlayback(activity,scroll,previews) { selection.selected.id }
+        dialog.setOnDismissListener { playback?.close() }
         dialog.setCanceledOnTouchOutside(true)
         dialog.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
@@ -122,6 +165,12 @@ internal object StylePickerDialog {
             val available=(metrics.heightPixels*.8f).toInt()-chrome
             scroll.layoutParams=scroll.layoutParams.apply { height=minOf(scroll.measuredHeight,available.coerceAtLeast(dp(48))) }
             dialog.window?.setLayout(width,ViewGroup.LayoutParams.WRAP_CONTENT)
+            scroll.post {
+                if (dialog.isShowing) {
+                    scroll.scrollTo(0,rows.firstOrNull { it.first.id == selection.selected.id }?.second?.top ?: 0)
+                    playback?.update()
+                }
+            }
         }
         dialog.show()
         return dialog
