@@ -9,6 +9,10 @@ plugins {
 
 // MVP instrumentation compiles only the reused real helpers/editor cases, never the
 // uiTest fake application. The default complete uiTest source set remains unchanged.
+val previewSourceSha = providers.environmentVariable("GIT_SHA").orNull?.also {
+    require(it.matches(Regex("[0-9a-f]{40}"))) { "GIT_SHA must be a complete source commit" }
+} ?: providers.gradleProperty("sourceSha").orElse("local-unverified").get()
+
 val mvpDeviceTests = providers.gradleProperty("deviceTestBuildType").orNull == "mvp"
 val mvpSmokeSources = layout.buildDirectory.dir("generated/mvpSmokeSources")
 val prepareMvpSmokeSources by tasks.registering(Sync::class) {
@@ -76,7 +80,8 @@ android {
         versionCode = 17
         versionName = "0.1.16"
         buildConfigField("boolean", "GALLERY_MVP", "false")
-        buildConfigField("String", "SOURCE_SHA", "\"${providers.gradleProperty("sourceSha").orElse("local").get()}\"")
+        buildConfigField("String", "SOURCE_SHA", "\"$previewSourceSha\"")
+        buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "false")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild.cmake {
             arguments += listOf("-DFETCHCONTENT_BASE_DIR=" + File(System.getProperty("user.home"), ".cache/veycad-speech/cmake").path.replace('\\','/'))
@@ -87,8 +92,9 @@ android {
     buildTypes {
         create("manualMvp") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".manualmvp"
-            versionNameSuffix = "-manual-mvp"
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
             matchingFallbacks += "debug"
         }
         create("integrated") {
@@ -121,6 +127,7 @@ android {
         }
         create("uiTest") {
             initWith(getByName("debug"))
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
             applicationIdSuffix = if (providers.gradleProperty("textDeviceTest").orNull == "true") ".texttest" else ".uitest"
             matchingFallbacks += "debug"
         }

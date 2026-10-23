@@ -2,12 +2,16 @@ package com.veycad.app
 
 import android.os.Bundle
 import android.media.MediaMetadataRetriever
-import android.media.MediaPlayer
-import android.content.res.ColorStateList
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.SurfaceTexture
+import android.graphics.Typeface
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.view.Gravity
+import android.view.Surface
+import android.view.TextureView
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
@@ -15,45 +19,91 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.content.FileProvider
-import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.shape.RelativeCornerSize
 import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import java.util.UUID
 import java.io.File
 import java.io.FileOutputStream
 
-/** Small saved-project editor. The store and common commands own every revision and history entry. */
+/** Published manual editor; the common store owns revisions and the prepared plan owns output time. */
 class ManualMvpActivity : AppCompatActivity() {
-    companion object { const val EXTRA_PROJECT_ID = "editable_project_id" }
-    private val jobs = Executors.newSingleThreadExecutor()
+    private val jobs = Executors.newSingleThreadExecutor { Thread(it, "Veycad-manual-jobs") }
+    private var admission: ManualEditorAdmission.Request? = null
+    private var operationLease: ManualEditorAdmission.Lease? = null
+    private var retiringLease: ManualEditorAdmission.Lease? = null
+    private var retirementScheduled = false
+    private var leaving = false
     private lateinit var store: HybridProjectStore
     private lateinit var content: LinearLayout
+    private lateinit var scroll: ScrollView
+    private var previewStage: FrameLayout? = null
     private lateinit var status: TextView
     private var projectId: String? = null
     private var clipId: String? = null
     private var busy = false
-    private var generation = 0
-    private var video: VideoView? = null
-    private var previewFile: File? = null
-    private var previewProjectId: String? = null
-    private var previewRevisionId: Long? = null
-    private var playbackGeneration = 0
+    @Volatile private var generation = 0
     private var newProjectFps = 30
-    private var renderJob: Future<*>? = null
-    private var refreshAfterStop = false
-    private var musicPlayer: MediaPlayer? = null
-    private val musicPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) importMusic(uri)
+    @Volatile private var exportThread: Thread? = null
+    private var started = false
+    private var destroyed = false
+    private var lastShownUs = 0L
+    private var controller: DraftPreviewController? = null
+    private var stopping = false
+    private var afterStop: (() -> Unit)? = null
+    private var keepPreparedAfterStop = false
+    private var binding: Binding? = null
+    private var texture: TextureView? = null
+    private var playbackState = DraftPreviewController.State()
+    private var play: Button? = null
+    private var seek: SeekBar? = null
+    private var clock: TextView? = null
+    private var previewStatus: TextView? = null
+    private var retry: Button? = null
+    private var export: Button? = null
+    private var dragging = false
+    private var exporting = false
+    private var pendingImports: List<Uri>? = null
+    private val surfaces = mutableListOf<BorrowedSurface>()
+    private data class BorrowedSurface(val texture: SurfaceTexture, val surface: Surface, var destroyed: Boolean = false)
+    private data class Binding(val project: HybridProject, val prepared: PreparedHybridPreview,
+        val request: MediaCodecSpeedRampRenderer.Request)
+    /** Tick positions come from the same canonical frames that drive seek and export. */
+    private class OutputTimeline(context: android.content.Context) : androidx.appcompat.widget.AppCompatSeekBar(context) {
+        var cutFrames: List<Int> = emptyList()
+            set(value) { field = value; invalidate() }
+        private val ticks = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = context.getColor(R.color.text_primary)
+            strokeWidth = 2 * resources.displayMetrics.density
+        }
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            if (max <= 0) return
+            ticks.color = context.getColor(if (isEnabled) R.color.text_primary else R.color.text_muted)
+            val radius = 5 * resources.displayMetrics.density
+            cutFrames.forEach { frame ->
+                val x = paddingLeft + (width - paddingLeft - paddingRight) * frame.toFloat() / max
+                canvas.drawLine(x, height / 2f - radius, x, height / 2f + radius, ticks)
+            }
+        }
     }
     private val videoPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) importVideos(uris)
+        if (uris.isNotEmpty()) {
+            pendingImports = uris
+            if (started && !busy && operationLease != null && !leaving) drainImports()
+        }
+    }
+    private fun drainImports() {
+        val uris = pendingImports ?: return
+        pendingImports = null
+        importVideos(uris)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,228 +111,274 @@ class ManualMvpActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         store = HybridProjectStore(filesDir)
         val prefs = getSharedPreferences("manual_mvp", MODE_PRIVATE)
-        projectId = savedInstanceState?.getString("project") ?: intent.getStringExtra(EXTRA_PROJECT_ID)
-            ?: prefs.getString("project", null)
+        projectId = savedInstanceState?.getString("project") ?: prefs.getString("project", null)
         clipId = savedInstanceState?.getString("clip") ?: prefs.getString("clip", null)
         newProjectFps = savedInstanceState?.getInt("newProjectFps") ?: prefs.getInt("newProjectFps", 30)
-
-        val scroll = ScrollView(this).apply {
-            setFillViewport(true)
-            setBackgroundColor(ContextCompat.getColor(this@ManualMvpActivity, R.color.background))
-        }
+        lastShownUs = savedInstanceState?.getLong("position") ?: prefs.getLong("position", 0L)
+        scroll = ScrollView(this).apply { isFillViewport = true; setBackgroundColor(getColor(R.color.background)) }
+        scroll.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> resizePreviewStage() }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(32))
+            setPadding(dp(22), dp(12), dp(22), dp(36))
         }
         scroll.addView(content)
-        // ScrollView's rectangle-on-screen calculation uses its full measured
-        // height, so system-bar padding must shrink it from an outer container.
-        val viewport = FrameLayout(this).apply { addView(scroll) }
+        // Match the text editor: ScrollView reveals rectangles using its full height,
+        // so system insets must shrink its viewport rather than clip it with padding.
+        val viewport = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.background)) }
+        viewport.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(viewport)
         ViewCompat.setOnApplyWindowInsetsListener(viewport) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or
-                WindowInsetsCompat.Type.displayCutout())
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
         ViewCompat.requestApplyInsets(viewport)
-        title = "Довести монтаж"
-        status = label("Открываю проекты…", 14)
-        refresh()
+        title = getString(R.string.manual_title)
+        content.addView(label(getString(R.string.manual_title), 28))
+        status = label(getString(R.string.manual_opening), 14).apply { tag = "preview-state" }.also(content::addView)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = leaveAfterCleanup()
+        })
     }
 
+    override fun onStart() { super.onStart(); started = true; busy = false; requestAdmission() }
+    private fun requestAdmission() {
+        if (!started || destroyed || leaving || stopping || retirementScheduled || admission != null || operationLease != null) return
+        admission = ManualEditorAdmission.acquire { lease ->
+            admission = null
+            if (!started || destroyed) { lease.release(); return@acquire }
+            operationLease = lease
+            refresh()
+        }
+    }
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString("project", projectId)
-        outState.putString("clip", clipId)
-        outState.putInt("newProjectFps", newProjectFps)
+        outState.putString("project", projectId); outState.putString("clip", clipId)
+        outState.putInt("newProjectFps", newProjectFps); outState.putLong("position", lastShownUs)
         super.onSaveInstanceState(outState)
     }
-
-    override fun onDestroy() {
-        generation++
-        renderJob?.cancel(true)
-        jobs.shutdownNow()
-        stopPlayback()
-        previewFile?.delete()
-        super.onDestroy()
-    }
-
     override fun onStop() {
-        stopMusic()
-        if (renderJob != null) {
-            renderJob?.cancel(true)
-            renderJob = null
-            generation++
-            setBusy(false, "Рендер отменён. Черновик сохранён.")
-            refreshAfterStop = true
-        }
-        video?.pause()
+        started = false
+        generation++
+        rememberSelection()
+        stopForLifecycle()
         super.onStop()
     }
-
-    override fun onStart() {
-        super.onStart()
-        if (refreshAfterStop) {
-            refreshAfterStop = false
-            refresh("Рендер остановлен. Черновик сохранён.")
+    override fun onDestroy() {
+        destroyed = true
+        generation++
+        stopForLifecycle()
+        super.onDestroy()
+    }
+    private fun stopForLifecycle() {
+        admission?.cancel(); admission = null
+        operationLease?.let { retiringLease = it; operationLease = null }
+        // A queued export is never Future.cancel'ed: its body must run its finally cleanup.
+        // A running export is interrupted, but admission remains held until the worker drains.
+        exportThread?.interrupt()
+        stopPreview { finishRetirement() }
+    }
+    private fun leaveAfterCleanup() {
+        if (leaving) return
+        leaving = true
+        generation++
+        rememberSelection()
+        setBusy(true, getString(R.string.manual_stopping))
+        stopForLifecycle()
+    }
+    private fun finishRetirement() {
+        if (retirementScheduled || jobs.isShutdown) return
+        retirementScheduled = true
+        val lease = retiringLease
+        retiringLease = null
+        jobs.execute {
+            runOnUiThread {
+                // Earlier worker results can post stale-prepared disposal back to jobs.
+                // This second fence includes those disposals, not just export completion.
+                jobs.execute {
+                    runOnUiThread {
+                        lease?.release()
+                        retirementScheduled = false
+                        if (destroyed) jobs.shutdown()
+                        else if (leaving) finish()
+                        else if (started) requestAdmission()
+                    }
+                }
+            }
         }
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density + .5f).toInt()
-
     private fun label(text: String, size: Int): TextView = TextView(this).apply {
-        this.text = text
-        textSize = size.toFloat()
-        if (size >= 20) typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-        setTextColor(ContextCompat.getColor(this@ManualMvpActivity,
-            if (size >= 16) R.color.text_primary else R.color.text_secondary))
+        this.text = text; textSize = size.toFloat()
+        setTextColor(getColor(if (size >= 16) R.color.text_primary else R.color.text_secondary))
+        if (size >= 26) typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
+        else if (size >= 16) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         setPadding(0, dp(8), 0, dp(8))
     }
-
-    private fun button(text: String, action: () -> Unit): Button = Button(this).apply {
-        this.text = text
-        isAllCaps = false
-        minHeight = dp(48)
-        backgroundTintList = null
-        setBackgroundResource(R.drawable.soft_surface)
-        setTextColor(ContextCompat.getColor(this@ManualMvpActivity, R.color.text_primary))
-        setOnClickListener { if (!busy) action() }
+    private fun enabledColors(enabled: Int, disabled: Int) = ColorStateList(
+        arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
+        intArrayOf(getColor(disabled), getColor(enabled))
+    )
+    private fun button(text: String, action: () -> Unit): MaterialButton = MaterialButton(this).apply {
+        this.text = text; isAllCaps = false; minHeight = dp(48); minWidth = 0; minimumWidth = 0
+        setPaddingRelative(dp(8), paddingTop, dp(8), paddingBottom)
+        shapeAppearanceModel = shapeAppearanceModel.toBuilder().setAllCornerSizes(RelativeCornerSize(.5f)).build()
+        stateListAnimator = null; elevation = 0f; translationZ = 0f
+        setTextColor(enabledColors(R.color.text_primary, R.color.text_muted))
+        backgroundTintList = enabledColors(R.color.surface_high, R.color.stroke)
+        // Keep Material's native pressed/focused ripple on the existing dark text token.
+        rippleColor = ColorStateList.valueOf(androidx.core.graphics.ColorUtils.setAlphaComponent(getColor(R.color.text_primary), 31))
+        setOnClickListener { if (!busy && started && !destroyed && !leaving && operationLease != null) action() }
     }
-
     private fun row(vararg buttons: Button): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
+        // At large font sizes stack long edit actions. Aspect controls explicitly use a 2x2 grid.
+        orientation = if (resources.configuration.fontScale >= 1.5f) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        buttons.forEach { button ->
-            addView(button, LinearLayout.LayoutParams(0, dp(52), 1f))
-        }
+        buttons.forEach { button -> addView(button, if (orientation == LinearLayout.HORIZONTAL)
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(4) }
+            else LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
     }
-
     private fun rememberSelection() {
-        getSharedPreferences("manual_mvp", MODE_PRIVATE).edit()
-            .putString("project", projectId).putString("clip", clipId).apply()
+        getSharedPreferences("manual_mvp", MODE_PRIVATE).edit().putString("project", projectId)
+            .putString("clip", clipId).putLong("position", lastShownUs).apply()
     }
-
     private fun setBusy(value: Boolean, message: String? = null) {
         busy = value
-        content.descendantFocusability = if (value) ViewGroup.FOCUS_BLOCK_DESCENDANTS else ViewGroup.FOCUS_AFTER_DESCENDANTS
-        content.isEnabled = !value
+        fun update(view: View) {
+            if ((view is Button || view is SeekBar) && view.tag != "manual-back") {
+                if (value) { view.setTag(R.id.manualPreviouslyEnabled, view.isEnabled); view.isEnabled = false }
+                else { (view.getTag(R.id.manualPreviouslyEnabled) as? Boolean)?.let { view.isEnabled = it }
+                    view.setTag(R.id.manualPreviouslyEnabled, null) }
+            }
+            if (view is ViewGroup) for (index in 0 until view.childCount) update(view.getChildAt(index))
+        }
+        update(content)
         if (message != null) status.text = message
+    }
+    private fun checkCurrent(sequence: Int) {
+        if (Thread.currentThread().isInterrupted || sequence != generation) throw InterruptedException("Операция отменена")
+    }
+
+    /** Latest UI job replaces older work; every borrowed Surface survives until the actual stop ack. */
+    private fun stopPreview(keepPrepared: Boolean = false, action: () -> Unit) {
+        afterStop = action
+        keepPreparedAfterStop = keepPrepared
+        if (stopping) return
+        val player = controller
+        stopping = true
+        fun released() {
+            if (controller === player) controller = null
+            player?.close()
+            surfaces.forEach { held -> held.surface.release(); if (held.destroyed) held.texture.release() }
+            surfaces.clear()
+            if (!keepPreparedAfterStop) {
+                val previous = binding; binding = null
+                if (previous != null) jobs.execute { previous.prepared.close() }
+            }
+            stopping = false
+            val next = afterStop; afterStop = null
+            next?.invoke()
+        }
+        if (player == null) released() else player.stopAndRelease { released() }
     }
 
     private fun refresh(message: String? = null) {
-        if (busy) return
-        setBusy(true, "Открываю сохранённый монтаж…")
-        val requested = projectId
+        if (!started || destroyed || operationLease == null) return
+        exporting = false
         val sequence = ++generation
-        jobs.execute {
-            val result = runCatching {
-                val projects = store.list()
-                val selected = requested?.let { id -> projects.firstOrNull { it.id == id } }
-                projects to selected
-            }
-            runOnUiThread {
-                if (isDestroyed || sequence != generation) return@runOnUiThread
-                setBusy(false)
-                result.fold(
-                    onSuccess = { (projects, selected) -> showProjects(projects, selected, message) },
-                    onFailure = { error -> showError("Не удалось открыть проекты: ${error.message.orEmpty()}") }
-                )
+        setBusy(true, getString(R.string.manual_opening))
+        stopPreview {
+            if (!started || destroyed || sequence != generation) return@stopPreview
+            val requested = projectId
+            jobs.execute {
+                val result = runCatching {
+                    checkCurrent(sequence)
+                    val projects = store.list()
+                    val selected = projects.firstOrNull { it.id == requested }
+                    val editable = selected?.let { runCatching { EditableMontageProject(it, exportSettings(it)) }.getOrNull() }
+                    checkCurrent(sequence)
+                    Triple(projects, selected, editable)
+                }
+                runOnUiThread {
+                    if (destroyed || !started || sequence != generation) return@runOnUiThread
+                    setBusy(false)
+                    result.fold(onSuccess = { (projects, selected, editable) ->
+                        showProjects(projects, selected, editable, message)
+                        drainImports()
+                    }, onFailure = { showError(getString(R.string.manual_open_failed)) })
+                }
             }
         }
     }
-
     private fun showError(message: String) {
-        stopPlayback()
+        previewStage = null
         content.removeAllViews()
-        content.addView(label("Довести монтаж", 26))
+        content.addView(label(getString(R.string.manual_title), 28))
         status = label(message, 14).also(content::addView)
-        content.addView(button("Повторить") { refresh() })
+        status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        content.addView(button(getString(R.string.manual_retry)) { refresh() })
     }
-
-    private fun showProjects(projects: List<HybridProject>, selected: HybridProject?, message: String?) {
-        stopPlayback()
+    private fun showProjects(projects: List<HybridProject>, selected: HybridProject?, editable: EditableMontageProject?, message: String?) {
+        previewStage = null
         content.removeAllViews()
-        content.addView(label("Довести монтаж", 26))
-        val custom = selected?.let(::isCustomMusic) == true
-        status = label(message ?: if (custom) "Правки сохраняются автоматически" else
-            "Выберите сохранённый проект или создайте базовый тестовый монтаж.", 14)
-        content.addView(status)
-        if (custom) content.addView(button("← К монтажу") { finish() })
-        if (!custom) {
-        content.addView(label("Базовый тестовый монтаж · 1–2 ваших видео · без анализа ИИ", 16))
-        content.addView(row(
-            button("30 кадр/с") { chooseFps(30) }.apply { isEnabled = newProjectFps != 30 },
-            button("60 кадр/с") { chooseFps(60) }.apply { isEnabled = newProjectFps != 60 }
-        ))
-        content.addView(button("Выбрать видео для базового монтажа") {
-            videoPicker.launch(arrayOf("video/*"))
+        texture = null; play = null; seek = null; previewStatus = null; export = null; retry = null
+        content.addView(button(getString(R.string.manual_back)) { leaveAfterCleanup() }.apply {
+            tag = "manual-back"
+            setOnClickListener { leaveAfterCleanup() }
         })
+        content.addView(label(getString(R.string.manual_title), 28))
+        status = label(message ?: getString(R.string.manual_intro), 14).also(content::addView)
+        status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        if (selected != null) showEditor(selected, editable) else {
+            projectId = null; clipId = null; lastShownUs = 0; rememberSelection()
         }
-        if (selected != null) showEditor(selected) else {
-            projectId = null
-            clipId = null
-            rememberSelection()
-        }
-        content.addView(label("Сохранённые проекты", 20))
-        if (projects.isEmpty()) content.addView(label("Пока нет проектов ручной доводки.", 14))
-        projects.forEach { project ->
-            val title = if (isCustomMusic(project)) "♫ ${project.assets.single { it.id == project.current.music.assetId }.displayName}"
-                else "Открыть ${project.id} · ${project.fps} кадр/с"
-            content.addView(button(title) {
-                projectId = project.id
-                clipId = null
-                rememberSelection()
-                refresh()
+        content.addView(label(getString(R.string.manual_new), 20))
+        content.addView(label(getString(R.string.manual_supported), 14))
+        content.addView(row(
+            button("30 кадр/с") { chooseFps(30) }.apply { isSelected = newProjectFps == 30 },
+            button("60 кадр/с") { chooseFps(60) }.apply { isSelected = newProjectFps == 60 }
+        ))
+        content.addView(button(getString(R.string.manual_import)) { videoPicker.launch(arrayOf("video/*")) }.apply { tag = "import" })
+        content.addView(label(getString(R.string.manual_saved), 20))
+        if (projects.isEmpty()) content.addView(label(getString(R.string.manual_empty), 14))
+        projects.forEachIndexed { index, project ->
+            content.addView(button(getString(R.string.manual_project, index + 1, project.fps)) {
+                projectId = project.id; clipId = null; lastShownUs = 0; rememberSelection(); refresh()
             })
         }
     }
 
-    private fun showEditor(project: HybridProject) {
-        val export = previewSettings(project.fps)
-        val editable = runCatching { EditableMontageProject(project, export) }.getOrElse { error ->
-            content.addView(label("Этот проект нельзя довести: ${error.message.orEmpty()}", 14))
-            return
+    private fun showEditor(project: HybridProject, editable: EditableMontageProject?) {
+        if (editable == null) {
+            content.addView(label(getString(R.string.manual_unsupported), 14)); return
         }
         val clips = editable.current.clips
-        showMusic(project)
         val selected = clips.firstOrNull { it.id == clipId } ?: clips.first()
-        if (clipId != selected.id) {
-            clipId = selected.id
-            rememberSelection()
-        }
-        val custom = isCustomMusic(project)
-        content.addView(label(if (custom) "${clips.size} фрагментов · версия ${project.current.id}" else
-            "Проект ${project.id} · версия ${project.current.id} · ${project.fps} кадр/с", 16))
-        val currentPreview = previewFile?.takeIf { previewProjectId == project.id &&
-            previewRevisionId == project.current.id && it.isFile && it.length() > 0L }
-        val exported = project.exports.lastOrNull { it.revisionId == project.current.id }?.let {
-            File(File(filesDir, "completed-renders"), it.fileName).takeIf { file -> file.isFile && file.length() > 0L }
-        }
-        val playable = currentPreview ?: exported
-        if (playable != null) {
-            content.addView(label(if (currentPreview != null) "Предпросмотр этой версии · полный рендер 720p" else
-                "Сохранённая версия · воспроизведение и перемотка", 14))
-            showVideo(playable)
-        } else content.addView(label("Для просмотра нужен полный рендер текущей версии.", 14))
-        if (exported != null) content.addView(button("Поделиться сохранённой версией") { share(exported) })
-        if (unsupportedReason(project, export) == null) {
-            content.addView(button("Просмотреть · полный рендер 720p") { renderVersion(false) })
-            content.addView(button("Сохранить новую версию · 1080p") { renderVersion(true) })
-        }
-        unsupportedReason(project, export)?.let { reason ->
-            content.addView(label("Просмотр и экспорт недоступны: $reason", 14))
-        }
+        clipId = selected.id; rememberSelection()
+        content.addView(label(getString(R.string.manual_revision, project.current.id, project.fps), 16))
+        showPlayer(project)
+        showAspects(project)
+        export = button(getString(R.string.manual_export, aspectLabel(project.current.visualSettings.aspect))) { renderVersion() }.apply {
+            tag = "export"; minHeight = dp(58); isEnabled = false
+            backgroundTintList = enabledColors(R.color.neon, R.color.stroke)
+        }.also(content::addView)
+        content.addView(row(
+            button(getString(R.string.manual_previous_cut)) { seekCut(false) },
+            button(getString(R.string.manual_next_cut)) { seekCut(true) }
+        ))
+        val exportRef = project.exports.lastOrNull { it.revisionId == project.current.id }
+        if (exportRef != null) content.addView(button(getString(R.string.manual_share)) {
+            share(File(filesDir, "completed-renders/${exportRef.fileName}"))
+        }.apply { tag = "share" })
         clips.forEachIndexed { index, clip ->
             val marker = if (clip.id == selected.id) "● " else "○ "
-            content.addView(button(if (custom) "$marker${index + 1}. Фрагмент · ${musicTime(frameTimeUs(clip.visible.count, project.fps))}"
-                else "$marker${index + 1}. ${clip.origin.id} · ${clip.visible.count} кадров") {
+            content.addView(button("$marker${index + 1}. ${clip.origin.id} · ${clip.visible.count} кадров") {
                 clipId = clip.id
                 rememberSelection()
                 refresh()
             })
         }
-        content.addView(label(if (custom) "Выбран фрагмент ${clips.indexOf(selected) + 1}. Подрезка по одному кадру." else
-            "Выбран: ${selected.id}. Подрезка по одному выходному кадру.", 14))
+        content.addView(label("Выбран: ${selected.id}. Подрезка по одному выходному кадру.", 14).apply { tag = "selected-clip" })
         content.addView(row(
             button("Начало −1") { edit(TimelineCommand.Trim(selected.id, ClipEdge.START, selected.visible.start - 1)) },
             button("Начало +1") { edit(TimelineCommand.Trim(selected.id, ClipEdge.START, selected.visible.start + 1)) }
@@ -327,7 +423,7 @@ class ManualMvpActivity : AppCompatActivity() {
     }
 
     private fun edit(command: TimelineCommand) = change { project ->
-        val editable = EditableMontageProject(project, previewSettings(project.fps))
+        val editable = EditableMontageProject(project, exportSettings(project))
         when (val prepared = MontageTimelineEditor.prepare(editable, command)) {
             is TimelinePreparation.Prepared -> HybridEditCommands.apply(project,
                 ProjectCommand.CommitRevision(prepared.candidate))
@@ -339,198 +435,284 @@ class ManualMvpActivity : AppCompatActivity() {
 
     private fun common(command: ProjectCommand) = change { HybridEditCommands.apply(it, command) }
 
-    private fun isCustomMusic(project: HybridProject) = project.current.style.recipeId == MontageStyleCatalog.customMusic.id
-
-    private fun musicTime(us: Long): String = "%d:%02d.%d".format(us / 60_000_000L,
-        (us / 1_000_000L) % 60L, (us / 100_000L) % 10L)
-
-    private fun showMusic(project: HybridProject) {
-        if (!isCustomMusic(project)) return
-        val music = project.current.music
-        val asset = project.assets.single { it.id == music.assetId }
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(16))
-            setBackgroundResource(R.drawable.panel_surface)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(16) }
-        }
-        panel.addView(label("Под свою музыку", 20))
-        panel.addView(label(asset.displayName, 14))
-        val start = label("Начало трека: ${musicTime(music.startUs)}", 14)
-        panel.addView(start)
-        panel.addView(SeekBar(this).apply {
-            contentDescription = "Начало музыкального фрагмента"
-            progressTintList = ColorStateList.valueOf(ContextCompat.getColor(this@ManualMvpActivity, R.color.neon))
-            thumbTintList = progressTintList
-            max = ((asset.durationUs - 1_000_000L).coerceAtLeast(0L) / 100_000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            progress = (music.startUs / 100_000L).toInt()
-            minimumHeight = dp(48)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onStartTrackingTouch(bar: SeekBar) { stopMusic() }
-                override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
-                    if (fromUser) start.text = "Начало трека: ${musicTime(value * 100_000L)}"
+    private fun aspectLabel(aspect: ProjectAspect) = when (aspect) {
+        ProjectAspect.PORTRAIT_9_16 -> "9:16"
+        ProjectAspect.LANDSCAPE_16_9 -> "16:9"
+        ProjectAspect.SQUARE_1_1 -> "1:1"
+        ProjectAspect.FEED_4_5 -> "4:5"
+    }
+    private fun showAspects(project: HybridProject) {
+        content.addView(label(getString(R.string.manual_format), 16))
+        val compact = resources.configuration.fontScale >= 1.3f || resources.configuration.screenWidthDp < 360
+        ProjectAspect.entries.chunked(if (compact) 2 else 4).forEach { aspects ->
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            aspects.forEach { aspect ->
+                val chosen = project.current.visualSettings.aspect == aspect
+                val chip = button(aspectLabel(aspect)) {
+                    change { installed ->
+                        val visual = installed.current.visualSettings.withAspect(aspect)
+                        HybridEditCommands.apply(installed, ProjectCommand.CommitRevision(installed.current.copy(visualSettings = visual)))
+                    }
+                }.apply {
+                    tag = "aspect-${aspect.name}"; isSelected = chosen
+                    backgroundTintList = enabledColors(if (chosen) R.color.accent_soft else R.color.surface_high, R.color.stroke)
+                    ViewCompat.setStateDescription(this, getString(if (chosen) R.string.manual_selected else R.string.manual_not_selected))
+                    // Checked semantic and a visible checkmark make selection independent of color.
+                    // Four chips fit at 360dp, including the check, without Material's wide default padding.
+                    setPaddingRelative(dp(4), paddingTop, dp(4), paddingBottom)
+                    iconSize = dp(16); iconPadding = dp(2); iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+                    iconTint = enabledColors(R.color.text_primary, R.color.text_muted)
+                    if (chosen) setIconResource(R.drawable.manual_check)
+                    contentDescription = getString(R.string.manual_aspect_description, aspectLabel(aspect))
                 }
-                override fun onStopTrackingTouch(bar: SeekBar) {
-                    val value = bar.progress * 100_000L
-                    if (!busy && value != music.startUs) common(ProjectCommand.ReplaceMusic(music.copy(startUs = value)))
+                ViewCompat.setAccessibilityDelegate(chip, object : androidx.core.view.AccessibilityDelegateCompat() {
+                    override fun onInitializeAccessibilityNodeInfo(host: View, info: androidx.core.view.accessibility.AccessibilityNodeInfoCompat) {
+                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        info.isCheckable = true; info.isChecked = chosen
+                    }
+                })
+                line.addView(chip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
+            }
+            content.addView(line)
+        }
+        content.addView(label(getString(R.string.manual_format_hint), 14))
+    }
+
+    private fun resizePreviewStage() {
+        val stage = previewStage ?: return
+        val panel = stage.parent as? View ?: return
+        // The parent already applies system insets; use the measured ScrollView only once.
+        if (scroll.height <= 0) return
+        val usableHeight = scroll.height - scroll.paddingTop - scroll.paddingBottom
+        val height = minOf(dp(280), (usableHeight - panel.paddingTop - panel.paddingBottom).coerceAtLeast(1))
+        if (stage.layoutParams.height != height) {
+            stage.layoutParams = stage.layoutParams.apply { this.height = height }
+        }
+    }
+    private fun showPlayer(project: HybridProject) {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16))
+            setBackgroundResource(R.drawable.panel_surface)
+        }
+        content.addView(panel)
+        val stage = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.black)) }
+        panel.addView(stage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)))
+        previewStage = stage
+        resizePreviewStage()
+        val movie = TextureView(this).apply {
+            tag = "preview-surface"; contentDescription = getString(R.string.manual_frame)
+        }
+        texture = movie
+        stage.addView(movie, FrameLayout.LayoutParams(1, 1, Gravity.CENTER))
+        val aspect = project.current.visualSettings.aspect.size(360)
+        stage.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (stage.width > 0 && stage.height > 0) {
+                val scale = minOf(stage.width.toFloat() / aspect.width, stage.height.toFloat() / aspect.height)
+                val width = (aspect.width * scale).toInt().coerceAtLeast(1)
+                val height = (aspect.height * scale).toInt().coerceAtLeast(1)
+                if (movie.layoutParams.width != width || movie.layoutParams.height != height)
+                    movie.layoutParams = FrameLayout.LayoutParams(width, height, Gravity.CENTER)
+            }
+        }
+        movie.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+                if (started && !stopping) attachSurface(surface, width, height)
+            }
+            override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+                val held = surfaces.firstOrNull { it.texture === surface }
+                if (held != null && started && !stopping) controller?.attach(held.surface, OutputSize(width, height))
+            }
+            override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                val held = surfaces.firstOrNull { it.texture === surface } ?: return true
+                held.destroyed = true
+                if (!stopping) {
+                    generation++
+                    stopPreview { if (started && !destroyed) refresh() }
+                }
+                return false // The stop acknowledgement owns release of this retained texture.
+            }
+            override fun onSurfaceTextureUpdated(surface: SurfaceTexture) = Unit
+        }
+        previewStatus = label(getString(R.string.manual_preparing), 14).apply {
+            tag = "preview-state"; accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }.also(panel::addView)
+        clock = label(getString(R.string.manual_clock, "0:00.000", "0:00.000"), 14).also(panel::addView)
+        seek = OutputTimeline(this).apply {
+            tag = "preview-seek"; minimumHeight = dp(48); isEnabled = false
+            thumbTintList = enabledColors(R.color.neon, R.color.text_muted)
+            progressTintList = enabledColors(R.color.neon, R.color.text_muted)
+            progressBackgroundTintList = ColorStateList.valueOf(getColor(R.color.stroke))
+            secondaryProgressTintList = ColorStateList.valueOf(getColor(R.color.stroke))
+            contentDescription = getString(R.string.manual_seek)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onStartTrackingTouch(bar: SeekBar?) {
+                    if (!busy && !stopping) { dragging = true; controller?.beginScrub() }
+                }
+                override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (fromUser && !busy && !stopping) binding?.prepared?.framePlan?.frames?.getOrNull(progress)?.let {
+                        controller?.seekTo(it.outputTimeUs)
+                    }
+                }
+                override fun onStopTrackingTouch(bar: SeekBar?) {
+                    dragging = false
+                    if (!busy && !stopping) controller?.endScrub()
                 }
             })
-        })
-        panel.addView(button("Прослушать фрагмент") {
-            if (musicPlayer != null) stopMusic() else {
-                video?.pause()
-                val file = ProjectAssetStore(store.directory(project.id)).resolve(asset)
-                val player = MediaPlayer()
-                musicPlayer = player
-                try {
-                    player.setDataSource(file.path)
-                    player.setOnPreparedListener {
-                        if (musicPlayer === player) player.seekTo(music.startUs / 1_000L, MediaPlayer.SEEK_CLOSEST)
-                    }
-                    player.setOnSeekCompleteListener { if (musicPlayer === player) player.start() }
-                    player.setOnCompletionListener { stopMusic() }
-                    player.setOnErrorListener { _, _, _ -> stopMusic(); status.text = "Не удалось прослушать трек"; true }
-                    player.prepareAsync()
-                } catch (error: Exception) { stopMusic(); status.text = "Не удалось прослушать трек" }
+        }.also(panel::addView)
+        play = button(getString(R.string.manual_play)) {
+            if (!stopping) { if (playbackState.playing) controller?.pause() else controller?.play() }
+        }.apply { tag = "play"; isEnabled = false }.also(panel::addView)
+        retry = button(getString(R.string.manual_retry)) {
+            if (stopping) controller?.stopAndRelease {} else refresh()
+        }.apply {
+            tag = "retry"; visibility = View.GONE
+            // Cleanup failure must remain retryable even while the pending edit/export is busy.
+            setOnClickListener {
+                if (started && !destroyed) {
+                    if (stopping) controller?.stopAndRelease {} else refresh()
+                }
             }
-        })
-        panel.addView(button("Заменить трек") { stopMusic(); musicPicker.launch(arrayOf("audio/*", "application/ogg")) })
-        panel.addView(label("Клипам сохранятся твои правки. Для новых склеек по ритму создай автосборку с другим треком.", 12))
-        content.addView(panel)
+        }.also(panel::addView)
+        preparePreview(project)
     }
-
-    private fun stopMusic() {
-        musicPlayer?.release()
-        musicPlayer = null
+    private fun attachSurface(surface: SurfaceTexture, width: Int, height: Int) {
+        val player = controller ?: return
+        val held = surfaces.firstOrNull { it.texture === surface } ?: BorrowedSurface(surface, Surface(surface)).also { surfaces += it }
+        player.attach(held.surface, OutputSize(width.coerceAtLeast(1), height.coerceAtLeast(1)))
     }
-
-    private fun importMusic(uri: Uri) {
-        if (busy) return
-        val id = projectId ?: return
-        invalidatePreview()
-        setBusy(true, "Анализирую новый трек…")
-        val sequence = ++generation
-        jobs.execute {
-            var imported: CustomMusicStore.Selection? = null
-            val result = runCatching {
-                val checkCancelled = { if (Thread.currentThread().isInterrupted) throw InterruptedException() }
-                val musicStore = CustomMusicStore(applicationContext)
-                val selected = musicStore.importFile(uri, checkCancelled).also { imported = it }
-                musicStore.analyze(selected, checkCancelled)
-                val previous = store.load(id)
-                val asset = ProjectAssetStore(store.directory(id)).import(selected.file,
-                    ProjectAsset.Kind.AUDIO, selected.durationUs).copy(displayName = selected.title)
-                checkCancelled()
-                val updated = HybridEditCommands.replaceMusic(previous,
-                    ProjectMusic(asset.id, 0L, 1f, 0L, 0L, true),
-                    // An identical file keeps its canonical saved metadata.
-                    previous.assets.firstOrNull { it.id == asset.id } ?: asset)
-                store.save(updated, previous.current.id)
-            }
-            imported?.file?.delete()
-            runOnUiThread {
-                if (isDestroyed || sequence != generation) return@runOnUiThread
-                setBusy(false)
-                refresh(result.fold(onSuccess = { "Трек заменён. Правки клипов сохранены." },
-                    onFailure = { "Трек не заменён: ${it.message.orEmpty()}" }))
-            }
+    private fun time(us: Long): String = "%d:%02d.%03d".format(us / 60_000_000, us / 1_000_000 % 60, us / 1_000 % 1_000)
+    private fun showState(state: DraftPreviewController.State) {
+        playbackState = state
+        if (state.shownOutputTimeUs != null && state.exactFrameReady) lastShownUs = state.shownOutputTimeUs
+        if (destroyed || !started) return
+        play?.text = getString(if (state.playing) R.string.manual_pause else R.string.manual_play)
+        play?.contentDescription = play?.text
+        val plan = binding?.prepared?.framePlan
+        if (plan != null) {
+            clock?.text = getString(R.string.manual_clock, time(lastShownUs), time(plan.durationUs))
+            if (!dragging) seek?.progress = plan.frames.binarySearchBy(lastShownUs) { it.outputTimeUs }.coerceAtLeast(0)
         }
+        val failed = state.error != null
+        previewStatus?.text = getString(when {
+            failed -> R.string.manual_preview_failed
+            exporting -> R.string.manual_exporting
+            state.buffering -> R.string.manual_preparing
+            state.playing -> R.string.manual_playing
+            state.exactFrameReady -> R.string.manual_paused
+            else -> R.string.manual_preparing
+        })
+        retry?.visibility = if (failed) View.VISIBLE else View.GONE
+        retry?.isEnabled = failed
+        play?.isEnabled = !busy && !stopping && !failed && (state.exactFrameReady || state.playing)
+        seek?.isEnabled = !busy && !stopping && !failed && plan != null
+        export?.isEnabled = !busy && !stopping && !failed && state.exactFrameReady
     }
-
-    private fun renderVersion(publish: Boolean) {
-        if (busy) return
-        val id = projectId ?: return
-        invalidatePreview()
-        setBusy(true, if (publish) "Рендерю и сохраняю новую версию…" else
-            "Обновляю предпросмотр… Полный рендер может занять время.")
-        val sequence = ++generation
-        renderJob = jobs.submit {
-            var output: File? = null
-            var linked = false
-            var published: CompletedRenderStore.Entry? = null
+    private fun seekCut(next: Boolean) {
+        if (stopping) return
+        val active = binding ?: return
+        val frames = active.prepared.framePlan.frames
+        val cuts = frames.filterIndexed { index, frame -> index == 0 || frame.clipIndex != frames[index - 1].clipIndex }
+            .map { it.outputTimeUs }
+        val target = if (next) cuts.firstOrNull { it > lastShownUs } ?: active.prepared.framePlan.frames.last().outputTimeUs
+            else cuts.lastOrNull { it < lastShownUs } ?: 0L
+        controller?.seekTo(target)
+    }
+    private fun preparePreview(project: HybridProject) {
+        val sequence = generation
+        jobs.execute {
+            var prepared: PreparedHybridPreview? = null
             val result = runCatching {
-                val installed = store.load(id)
-                val settings = if (publish) exportSettings(installed.fps) else previewSettings(installed.fps)
-                unsupportedReason(installed, settings)?.let { throw IllegalArgumentException(it) }
-                val assets = ProjectAssetStore(store.directory(id))
-                val musicAsset = installed.assets.single { it.id == installed.current.music.assetId }
-                val musicFile = assets.resolve(musicAsset)
-                require(musicFile.isFile) { "Сохранённый музыкальный файл отсутствует" }
-                val checkCancelled = {
-                    if (Thread.currentThread().isInterrupted) throw InterruptedException("Рендер отменён")
-                }
-                checkCancelled()
-                val directory = File(cacheDir, "manual-renders").apply { mkdirs() }
-                val target = File(directory, "manual-${UUID.randomUUID()}.mp4")
-                output = target
-                val request = if (isCustomMusic(installed)) {
-                    // Use the same full renderer as the automatic winner, retaining analyzed attachments.
-                    val graph = EditableMontageCompiler.compile(EditableMontageProject(installed, settings))
-                    val videos = requireNotNull(installed.selectedVideos).map { selection ->
-                        assets.resolve(installed.assets.single { it.id == selection.assetId })
-                    }
-                    MediaCodecSpeedRampRenderer.Request(graph = graph, sourceFiles = videos,
-                        outputFile = target, width = settings.width, height = settings.height,
-                        fps = settings.fps, bitrate = settings.bitrate, audioFile = musicFile,
-                        audioDurationUs = graph.editableTiming?.let { frameTimeUs(it.frameCount, settings.fps) }
-                            ?: (graph.outputDurationMs * 1_000L),
-                        context = applicationContext, checkCancelled = checkCancelled)
-                } else {
-                    val prepared = HybridPreviewPreparation.prepare(installed, settings, assets)
-                    PreparedHybridExportAdapter.request(prepared, installed, target,
-                        audioFile = musicFile, context = applicationContext, checkCancelled = checkCancelled)
-                }
-                val frames = MediaCodecSpeedRampRenderer.render(request)
-                checkCancelled()
-                require(frames > 0 && target.isFile && target.length() > 0L) {
-                    "Рендер не сохранил все кадры текущей версии"
-                }
-                requireVideoShape(target, settings)
-                if (publish) {
-                    val latest = store.load(id)
-                    require(latest.current.id == installed.current.id) { "Проект изменился во время экспорта" }
-                    checkCancelled()
-                    val entry = CompletedRenderStore.publish(filesDir, target,
-                        "Ручная версия ${installed.current.id} · ${if (isCustomMusic(installed)) "Под свою музыку" else "базовый монтаж"}",
-                        projectId = installed.id)
-                    published = entry
-                    checkCancelled()
-                    store.save(latest.copy(exports = latest.exports +
-                        ProjectExportRef(installed.current.id, entry.file.name, settings)),
-                        expectedRevisionId = latest.current.id)
-                    linked = true
-                    target.delete()
-                    null to installed.current.id
-                } else target to installed.current.id
+                checkCurrent(sequence)
+                val assets = ProjectAssetStore(store.directory(project.id))
+                unsupportedReason(project)?.let { throw IllegalArgumentException(it) }
+                val value = HybridPreviewPreparation.prepare(project, exportSettings(project), assets)
+                prepared = value
+                val audio = if (value.graph.audioTrack == null) null else assets.resolve(project.assets.single { it.id == project.current.music.assetId })
+                checkCurrent(sequence)
+                // A unique reserved destination is inert until the explicit export action.
+                val target = File(cacheDir, "manual-renders/manual-${UUID.randomUUID()}.mp4")
+                val request = PreparedHybridExportAdapter.request(value, project, target, audioFile = audio,
+                    context = applicationContext, checkCancelled = {
+                        if (Thread.currentThread().isInterrupted) throw InterruptedException("Экспорт отменён")
+                    })
+                Binding(project, value, request)
             }
-            if (result.isFailure || publish) output?.delete()
-            if (!linked) published?.let { entry ->
-                entry.file.delete()
-                File(entry.file.parentFile, "${entry.file.name}.properties").delete()
-            }
+            if (result.isFailure) prepared?.close()
             runOnUiThread {
-                if (isDestroyed || sequence != generation) {
-                    if (!publish) result.getOrNull()?.first?.delete()
+                if (destroyed || !started || sequence != generation) {
+                    result.getOrNull()?.let { stale -> jobs.execute { stale.prepared.close() } }
                     return@runOnUiThread
                 }
-                renderJob = null
-                setBusy(false)
-                result.fold(onSuccess = { (file, revisionId) ->
-                    if (file != null) {
-                        previewFile = file
-                        previewProjectId = id
-                        previewRevisionId = revisionId
+                result.fold(onSuccess = { value ->
+                    binding = value
+                    val plan = value.prepared.framePlan
+                    lastShownUs = lastShownUs.coerceIn(0, plan.frames.last().outputTimeUs)
+                    seek?.max = plan.frames.lastIndex
+                    (seek as? OutputTimeline)?.cutFrames = plan.frames.indices.filter { index ->
+                        index > 0 && plan.frames[index].clipIndex != plan.frames[index - 1].clipIndex
                     }
-                    refresh(if (publish) "Новая версия сохранена. Её можно воспроизвести и отправить." else
-                        "Предпросмотр готов для текущей версии.")
+                    val player = DraftPreviewController { state ->
+                        if (sequence == generation || stopping) showState(state)
+                    }
+                    controller = player
+                    player.open(value.request)
+                    texture?.takeIf { it.isAvailable }?.let { movie -> attachSurface(requireNotNull(movie.surfaceTexture), movie.width, movie.height) }
+                    player.seekTo(lastShownUs)
                 }, onFailure = { error ->
-                    refresh("Рендер не завершился: ${error.message ?: "повторите попытку"}")
+                    previewStatus?.text = getString(if (error is IllegalArgumentException) R.string.manual_preview_unavailable else R.string.manual_preview_failed)
+                    retry?.visibility = View.VISIBLE
                 })
             }
         }
     }
 
+    private fun renderVersion() {
+        if (busy || stopping) return
+        val frozen = binding ?: return
+        exporting = true
+        setBusy(true, getString(R.string.manual_exporting))
+        val sequence = ++generation
+        stopPreview(keepPrepared = true) {
+            if (destroyed || !started || sequence != generation) return@stopPreview
+            binding = null // The export job exclusively owns this prepared lifetime until finally.
+            jobs.execute {
+                exportThread = Thread.currentThread()
+                val target = frozen.request.outputFile
+                var published: CompletedRenderStore.Entry? = null
+                var linked = false
+                val result = try { runCatching {
+                    checkCurrent(sequence)
+                    target.parentFile!!.mkdirs()
+                    val frames = MediaCodecSpeedRampRenderer.render(frozen.request)
+                    checkCurrent(sequence)
+                    require(frames == frozen.prepared.framePlan.frames.size && target.isFile && target.length() > 0)
+                    requireVideoShape(target, frozen.prepared.exportSettings)
+                    val latest = store.load(frozen.project.id)
+                    require(latest.current.id == frozen.project.current.id)
+                    checkCurrent(sequence)
+                    val entry = CompletedRenderStore.publish(filesDir, target, getString(R.string.manual_export_summary, latest.current.id))
+                    published = entry
+                    checkCurrent(sequence)
+                    store.save(latest.copy(exports = latest.exports + ProjectExportRef(latest.current.id,
+                        entry.file.name, frozen.prepared.exportSettings)), expectedRevisionId = latest.current.id)
+                    linked = true
+                } } finally {
+                    try {
+                        target.delete()
+                        if (!linked) published?.let { entry -> entry.file.delete(); File(entry.file.parentFile, "${entry.file.name}.properties").delete() }
+                    } finally {
+                        frozen.prepared.close()
+                        exportThread = null
+                    }
+                }
+                runOnUiThread {
+                    if (destroyed || !started || sequence != generation) return@runOnUiThread
+                    setBusy(false)
+                    refresh(getString(if (result.isSuccess) R.string.manual_exported else R.string.manual_export_failed))
+                }
+            }
+        }
+    }
     private fun requireVideoShape(file: File, settings: ProjectExportSettings) {
         val metadata = MediaMetadataRetriever()
         try {
@@ -541,39 +723,6 @@ class ManualMvpActivity : AppCompatActivity() {
                 "Размер готового видео не совпадает с выбранным пресетом"
             }
         } finally { metadata.release() }
-    }
-
-    private fun showVideo(file: File) {
-        val movie = VideoView(this)
-        video = movie
-        content.addView(movie, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)))
-        val seek = SeekBar(this).apply { max = 1_000 }
-        content.addView(seek)
-        val playback = button("Воспроизвести") {
-            if (movie.isPlaying) movie.pause() else movie.start()
-        }
-        content.addView(playback)
-        val playbackToken = ++playbackGeneration
-        movie.setOnPreparedListener { player ->
-            if (playbackToken != playbackGeneration) return@setOnPreparedListener
-            player.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT)
-            seek.progress = 0
-            movie.seekTo(1)
-            movie.start()
-        }
-        movie.setOnErrorListener { _, _, _ ->
-            if (playbackToken == playbackGeneration) status.text = "Видео не открылось. Повторите экспорт."
-            true
-        }
-        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) = Unit
-            override fun onStartTrackingTouch(bar: SeekBar?) = Unit
-            override fun onStopTrackingTouch(bar: SeekBar?) {
-                val duration = movie.duration
-                if (duration > 0) movie.seekTo((duration.toLong() * seek.progress / seek.max).toInt())
-            }
-        })
-        movie.setVideoPath(file.absolutePath)
     }
 
     private fun chooseFps(fps: Int) {
@@ -591,46 +740,49 @@ class ManualMvpActivity : AppCompatActivity() {
         setBusy(true, "Копирую и проверяю выбранные видео…")
         val sequence = ++generation
         val fps = newProjectFps
-        jobs.execute {
-            val copies = ArrayList<File>()
-            val result = runCatching {
-                val inspector = MediaInputInspector {
-                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                }
-                val inputs = uris.mapIndexed { index, uri ->
-                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                    val name = videoName(uri, index)
-                    val copy = File.createTempFile("manual-input-", ".tmp", cacheDir)
-                    copies += copy
-                    requireNotNull(contentResolver.openInputStream(uri)) { "Не удалось открыть $name" }.use { input ->
-                        FileOutputStream(copy).use { output ->
-                            val buffer = ByteArray(64 * 1024)
-                            while (true) {
-                                if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                                val count = input.read(buffer)
-                                if (count < 0) break
-                                output.write(buffer, 0, count)
-                            }
-                            output.fd.sync()
-                        }
+        stopPreview {
+            if (destroyed || !started || sequence != generation) return@stopPreview
+            jobs.execute {
+                val copies = ArrayList<File>()
+                val result = runCatching {
+                    val inspector = MediaInputInspector {
+                        checkCurrent(sequence)
                     }
-                    val (source, metadata) = inspector.inspectForProject("manual-selected-$index", copy, name)
-                    source to metadata.geometry.pixelAspectRatio
+                    val inputs = uris.mapIndexed { index, uri ->
+                        checkCurrent(sequence)
+                        val name = videoName(uri, index)
+                        val copy = File.createTempFile("manual-input-", ".tmp", cacheDir)
+                        copies += copy
+                        requireNotNull(contentResolver.openInputStream(uri)) { "Не удалось открыть $name" }.use { input ->
+                            FileOutputStream(copy).use { output ->
+                                val buffer = ByteArray(64 * 1024)
+                                while (true) {
+                                    checkCurrent(sequence)
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    output.write(buffer, 0, count)
+                                }
+                                output.fd.sync()
+                            }
+                        }
+                        val (source, metadata) = inspector.inspectForProject("manual-selected-$index", copy, name)
+                        source to metadata.geometry.pixelAspectRatio
+                    }
+                    createBasicProject(inputs, fps) { checkCurrent(sequence) }
                 }
-                createBasicProject(inputs, fps)
-            }
-            copies.forEach { it.delete() }
-            runOnUiThread {
-                if (isDestroyed || sequence != generation) return@runOnUiThread
-                setBusy(false)
-                result.fold(onSuccess = { id ->
-                    projectId = id
-                    clipId = null
-                    rememberSelection()
-                    refresh("Базовый монтаж создан. Можно довести его и сохранить новую версию.")
-                }, onFailure = { error ->
-                    status.text = "Не удалось создать базовый монтаж: ${error.message.orEmpty()}"
-                })
+                copies.forEach { it.delete() }
+                runOnUiThread {
+                    if (isDestroyed || sequence != generation) return@runOnUiThread
+                    setBusy(false)
+                    result.fold(onSuccess = { id ->
+                        projectId = id
+                        clipId = null; lastShownUs = 0
+                        rememberSelection()
+                        refresh("Базовый монтаж создан. Можно довести его и сохранить новую версию.")
+                    }, onFailure = { error ->
+                        status.text = "Не удалось создать базовый монтаж: ${error.message.orEmpty()}"
+                    })
+                }
             }
         }
     }
@@ -640,17 +792,6 @@ class ManualMvpActivity : AppCompatActivity() {
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: "Видео ${index + 1}"
-
-    private fun stopPlayback() {
-        stopMusic()
-        playbackGeneration++
-        video?.apply {
-            setOnPreparedListener(null)
-            setOnErrorListener(null)
-            stopPlayback()
-        }
-        video = null
-    }
 
     private fun share(file: File) {
         val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
@@ -662,22 +803,14 @@ class ManualMvpActivity : AppCompatActivity() {
         startActivity(Intent.createChooser(intent, "Поделиться монтажом"))
     }
 
-    private fun invalidatePreview() {
-        stopPlayback()
-        previewFile?.delete()
-        previewFile = null
-        previewProjectId = null
-        previewRevisionId = null
-    }
-
     /** The inspector supplies physical facts; this only publishes through existing asset/import APIs. */
-    private fun createBasicProject(inspected: List<Pair<MediaSource, Float>>, fps: Int): String {
+    private fun createBasicProject(inspected: List<Pair<MediaSource, Float>>, fps: Int, checkCancelled: () -> Unit): String {
         require(inspected.size in 1..2)
         ManualMvpBasicGraph.validateSources(inspected.map { it.first })
         val id = "basic-${UUID.randomUUID()}"
         val assets = ProjectAssetStore(store.directory(id))
         val sources = inspected.map { (source, aspect) ->
-            if (Thread.currentThread().isInterrupted) throw InterruptedException()
+            checkCancelled()
             assets.importVideo(source, aspect)
         }
         val selections = inspected.mapIndexed { index, (source, _) ->
@@ -694,8 +827,8 @@ class ManualMvpActivity : AppCompatActivity() {
         val music = assets.import(musicFile, ProjectAsset.Kind.AUDIO, musicDurationUs)
         val graph = ManualMvpBasicGraph.create(inspected.map { it.first }, music.id)
         val project = EditableMontageImporter.create(id, graph, requireNotNull(style.recipe),
-            previewSettings(fps), sources, music, null, selections).shared
-        if (Thread.currentThread().isInterrupted) throw InterruptedException()
+            ProjectExportSettings(1080, 1920, fps, 8_000_000, 192_000), sources, music, null, selections).shared
+        checkCancelled()
         store.create(project)
         return id
     }
@@ -703,55 +836,44 @@ class ManualMvpActivity : AppCompatActivity() {
     private fun change(apply: (HybridProject) -> HybridProject) {
         if (busy) return
         val id = projectId ?: return
-        invalidatePreview()
-        setBusy(true, "Сохраняю правку…")
         val sequence = ++generation
-        jobs.execute {
-            val result = runCatching {
-                val previous = store.load(id)
-                val updated = apply(previous)
-                if (updated === previous || updated == previous) "Без изменений" else {
-                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                    store.save(updated, expectedRevisionId = previous.current.id)
-                    "Правка сохранена · версия ${updated.current.id}"
+        setBusy(true, getString(R.string.manual_saving))
+        stopPreview {
+            if (destroyed || !started || sequence != generation) return@stopPreview
+            jobs.execute {
+                val result = runCatching {
+                    checkCurrent(sequence)
+                    val previous = store.load(id)
+                    val updated = apply(previous)
+                    if (updated !== previous && updated != previous) {
+                        checkCurrent(sequence)
+                        store.save(updated, expectedRevisionId = previous.current.id)
+                    }
                 }
-            }
-            runOnUiThread {
-                if (isDestroyed || sequence != generation) return@runOnUiThread
-                setBusy(false)
-                result.fold(onSuccess = { refresh(it) }, onFailure = { error ->
-                    status.text = if (error is HybridEditRejected || error is IllegalArgumentException)
-                        "Правка отклонена: ${error.message.orEmpty()}" else
-                        "Не удалось сохранить правку: ${error.message.orEmpty()}"
-                })
+                runOnUiThread {
+                    if (destroyed || !started || sequence != generation) return@runOnUiThread
+                    setBusy(false)
+                    refresh(getString(if (result.isSuccess) R.string.manual_saved_change else R.string.manual_change_failed))
+                }
             }
         }
     }
-
-    private fun previewSettings(fps: Int) = ProjectExportSettings(720, 1280, fps, 5_000_000, 192_000)
-
-    private fun unsupportedReason(project: HybridProject, settings: ProjectExportSettings): String? {
+    private fun exportSettings(project: HybridProject): ProjectExportSettings {
+        val size = project.current.visualSettings.aspect.size(1080)
+        return ProjectExportSettings(size.width, size.height, project.fps, 8_000_000, 192_000)
+    }
+    private fun unsupportedReason(project: HybridProject): String? {
         val revision = project.current
         val graph = revision.graph
-        if (project.selectedVideos == null) return "у проекта нет проверенного порядка видео"
-        if (!isCustomMusic(project) && (graph.frameAttachments.frames.isNotEmpty() || graph.frameAttachments.maskRefinements.isNotEmpty() ||
-            graph.sourceAttachments.any { it.timeline.frames.isNotEmpty() || it.timeline.maskRefinements.isNotEmpty() }))
-            return "этому автопроекту нужен анализ кадров, который пока не передаётся в рендер"
+        if (project.selectedVideos == null) return getString(R.string.manual_unsupported)
+        if (graph.frameAttachments.frames.isNotEmpty() || graph.frameAttachments.maskRefinements.isNotEmpty() ||
+            graph.sourceAttachments.any { it.timeline.frames.isNotEmpty() || it.timeline.maskRefinements.isNotEmpty() })
+            return getString(R.string.manual_unsupported)
         if (revision.texts.isNotEmpty() || revision.textState.layers.isNotEmpty() ||
             revision.textState.captions.isNotEmpty() || revision.style.showAuthoredText)
-            return "сохранённый текст пока не поддерживается"
-        val visual = revision.visualSettings
-        if (visual.aspect != ProjectAspect.PORTRAIT_9_16 || visual.explicitlySelected || visual.framings.isNotEmpty() ||
-            (settings.width to settings.height) !in setOf(720 to 1280, 1080 to 1920))
-            return "нестандартное кадрирование пока не поддерживается"
-        val music = revision.music
-        if ((!isCustomMusic(project) && (music != project.original.music || music.startUs != 0L)) || music.gain != 1f ||
-            music.fadeInUs != 0L || music.fadeOutUs != 0L || !music.repeat ||
-            graph.audioTrack?.sourceId != music.assetId || graph.audioTrack?.gain != music.gain ||
-            graph.audioTrack?.sourceStartUs != music.startUs)
-            return "этот вариант настройки музыки пока не поддерживается"
+            return getString(R.string.manual_unsupported)
+        if (revision.visualSettings.framings.any { it.key.aspect == revision.visualSettings.aspect && it.value.mode != FramingMode.MANUAL })
+            return getString(R.string.manual_unsupported)
         return null
     }
-
-    private fun exportSettings(fps: Int) = ProjectExportSettings(1080, 1920, fps, 8_000_000, 192_000)
 }

@@ -38,11 +38,11 @@ internal class PreviewUploadBuffer private constructor(
         blend: FrameAttachments.Plane?, progress: Float, fresh: Boolean) {
         val buffer = data(pixelCapacity(width, height, 1))
         if (plane == null) buffer.put(0) else if (blend != null && blend.width == width && blend.height == height) {
-            plane.values.indices.forEach { index ->
-                val value = plane.values[index] + (blend.values[index] - plane.values[index]) * progress
+            (0 until plane.size).forEach { index ->
+                val value = plane[index] + (blend[index] - plane[index]) * progress
                 buffer.put((value.coerceIn(0f, 1f) * 255f).toInt().toByte())
             }
-        } else plane.values.forEach { buffer.put((it.coerceIn(0f, 1f) * 255f).toInt().toByte()) }
+        } else for (index in 0 until plane.size) buffer.put((plane[index].coerceIn(0f, 1f) * 255f).toInt().toByte())
         upload(buffer, width, height, GLES20.GL_LUMINANCE, fresh)
     }
 

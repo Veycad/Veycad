@@ -38,11 +38,12 @@
             android:exported="false"
             android:process=":matte_engine" />
 
+        <activity android:name=".ManualMvpActivity" android:exported="false" />
         <activity android:name=".TextEditActivity" android:exported="false" />
         <activity android:name=".CaptureActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="false" />
-        <activity android:name=".ManualMvpActivity" android:exported="false" />
+        <activity android:name=".MusicEditorActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"

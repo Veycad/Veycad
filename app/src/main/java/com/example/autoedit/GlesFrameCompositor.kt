@@ -77,6 +77,7 @@ internal class GlesFrameCompositor(
     private var openingTitleTexture = 0
     private var userTextTexture = 0
     private var userTextBitmap: Bitmap? = null
+    private var userTextCanvas: Canvas? = null
     private var positionBuffer: FloatBuffer? = null
     private var texBuffer: FloatBuffer? = null
     private var sceneTarget: OffscreenTarget? = null
@@ -109,10 +110,16 @@ internal class GlesFrameCompositor(
             depthTexture = create2dTexture()
             flowTexture = create2dTexture()
             openingTitleTexture = createOpeningTitleTexture(authoredTitle)
-            userTextTexture = create2dTexture()
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, userTextTexture)
-            GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 1, 1, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, ByteBuffer.allocateDirect(4))
-            if (textProject != null) userTextBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            if (textProject != null) {
+                // The legacy text export shares this compositor. Account retained storage if
+                // a caller supplies a budget; the restricted MANUAL controller supplies no text.
+                previewOwner?.reserve(PreviewAllocationOwner.imageBytes(width, height)) {
+                    recycleUserText()
+                }
+                userTextBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                userTextCanvas = Canvas(checkNotNull(userTextBitmap))
+                userTextTexture = create2dTexture(width, height)
+            }
             val positions = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
             if (previewOwner == null) positionBuffer = floatBuffer(positions)
             else previewPositions = PreviewUploadBuffer.create(previewOwner, 32).also { it.setVertices(positions) }
@@ -151,8 +158,8 @@ internal class GlesFrameCompositor(
     val incomingDecodeSurface: Surface get() { makeCurrent(); return incomingInput.surface }
     val outgoingDecodeSurface: Surface get() { makeCurrent(); return outgoingInput.surface }
     fun awaitDecoderFrame() = awaitIncomingDecoderFrame()
-    fun awaitIncomingDecoderFrame() { makeCurrent(); incomingInput.awaitFrame() }
-    fun awaitOutgoingDecoderFrame() { makeCurrent(); outgoingInput.awaitFrame() }
+    fun awaitIncomingDecoderFrame(checkCancelled: () -> Unit = {}) { makeCurrent(); incomingInput.awaitFrame(checkCancelled) }
+    fun awaitOutgoingDecoderFrame(checkCancelled: () -> Unit = {}) { makeCurrent(); outgoingInput.awaitFrame(checkCancelled) }
     fun updateTexture() = updateIncomingTexture()
     fun updateIncomingTexture() = incomingInput.update()
     fun updateOutgoingTexture() = outgoingInput.update()
@@ -372,10 +379,12 @@ internal class GlesFrameCompositor(
         GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uOpeningTitleTexture"), 5)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE6)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, userTextTexture)
+        // A valid 2D fallback keeps the sampler complete without allocating an unused bitmap.
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, if (textProject != null) userTextTexture else openingTitleTexture)
         userTextBitmap?.let { bitmap ->
             bitmap.eraseColor(Color.TRANSPARENT)
-            TextLayerLayout.draw(Canvas(bitmap), requireNotNull(textProject), incomingFrame.globalOutputTimeUs,strict=true)
+            TextLayerLayout.draw(checkNotNull(userTextCanvas), requireNotNull(textProject),
+                incomingFrame.globalOutputTimeUs, strict = true)
             android.opengl.GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
             onFrameProgress?.invoke((incomingFrame.outputTimeUs * 100 / textProject.durationUs).toInt())
         }
@@ -563,8 +572,14 @@ internal class GlesFrameCompositor(
             GLES20.glDeleteProgram(postProgram)
             listOfNotNull(sceneTarget, motionTarget, depthTarget, glowTargetA, glowTargetB).forEach(::releaseTarget)
         }
-        target.close()
+        try { target.close() } finally { recycleUserText() }
+    }
+
+    private fun recycleUserText() {
+        userTextCanvas?.setBitmap(null)
+        userTextCanvas = null
         userTextBitmap?.recycle()
+        userTextBitmap = null
     }
 
     private fun checkWorker() {
@@ -847,13 +862,13 @@ internal class GlesFrameCompositor(
         if (plane == null) {
             bytes.put(0)
         } else if (blendTarget != null && blendTarget.width == width && blendTarget.height == height) {
-            plane.values.indices.forEach { index ->
-                val value = plane.values[index] +
-                    (blendTarget.values[index] - plane.values[index]) * blendProgress
+            (0 until plane.size).forEach { index ->
+                val value = plane[index] +
+                    (blendTarget[index] - plane[index]) * blendProgress
                 bytes.put((value.coerceIn(0f, 1f) * 255f).toInt().toByte())
             }
         } else {
-            plane.values.forEach { bytes.put((it.coerceIn(0f, 1f) * 255f).toInt().toByte()) }
+            for (index in 0 until plane.size) bytes.put((plane[index].coerceIn(0f, 1f) * 255f).toInt().toByte())
         }
         bytes.position(0)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + unit)

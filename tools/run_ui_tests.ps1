@@ -278,6 +278,13 @@ try {
     $uiFailureMessage = $_.Exception.Message
     Write-Host "UI verification failed: $uiFailureMessage"
 } finally {
+    # Pull while emulator-runner still owns a live device, even when instrumentation failed.
+    # Only the isolated synthetic fixture screenshots are collected.
+    try {
+        $uiPreviewEvidence = Join-Path $uiProjectRoot 'build/reports/ui-tests/preview-evidence'
+        New-Item -ItemType Directory -Path $uiPreviewEvidence -Force | Out-Null
+        Invoke-UiAdb @('pull', '/sdcard/Android/data/com.veycad.app.uitest/files/preview-evidence/.', $uiPreviewEvidence) | Out-Null
+    } catch { Write-Host "Preview evidence unavailable: $($_.Exception.Message)" }
     foreach ($uiOriginalSetting in $uiOriginalSettings) {
         try {
             if ($uiOriginalSetting.Value -eq 'null' -or [string]::IsNullOrWhiteSpace($uiOriginalSetting.Value)) {

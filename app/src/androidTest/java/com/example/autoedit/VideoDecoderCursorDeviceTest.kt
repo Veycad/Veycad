@@ -20,6 +20,31 @@ class VideoDecoderCursorDeviceTest {
 
     @Test fun previous_sync_forward_exact_seek_and_backward_range_at_60_fps() = exactSeek(60)
 
+    @Test fun text_relative_times_use_nonzero_source_origin_while_default_keeps_physical_pts() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val file = File(instrumentation.targetContext.cacheDir, "cursor-offset-source.mp4")
+        instrumentation.context.assets.open("media/offset-short-audio.mp4").use { input ->
+            file.outputStream().use { input.copyTo(it) }
+        }
+        val pts = samples(file).pts
+        val origin = pts.first()
+        assertTrue("Fixture must have a nonzero source origin", origin > 0L)
+        for (normalized in listOf(false, true)) {
+            DisplayHarness().use { display ->
+                VideoDecoderCursor(file, display.inputSurface, normalizeTimestamps = normalized).use { cursor ->
+                    for (relative in listOf(717_777L, 1_177_777L, 217_777L)) {
+                        val physical = origin + relative
+                        val requested = if (normalized) relative else physical
+                        cursor.beginRange(requested)
+                        assertTrue(cursor.advanceTo(requested) { display.awaitTexture() })
+                        assertEquals("Decode uses the intended physical sample in either mode",
+                            pts.first { it >= physical }, cursor.currentTexturePtsUs)
+                    }
+                }
+            }
+        }
+    }
+
     private fun exactSeek(fps: Int) {
         val file = fixture(fps)
         val samples = samples(file)

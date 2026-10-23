@@ -82,14 +82,14 @@ internal class SmartFramingTrack private constructor(
 
         /** Equal contribution of alpha-weighted foreground centroid and thresholded bounds midpoint. */
         private fun maskCenter(mask: FrameAttachments.Plane, t: Long): Point? {
-            val foreground = mask.values.indices.filter { mask.values[it] >= .5f }
-            val coverage = foreground.size.toFloat() / mask.values.size
+            val foreground = (0 until mask.size).filter { mask[it] >= .5f }
+            val coverage = foreground.size.toFloat() / mask.size
             if (coverage !in .02f.. .85f) return null
             var weight = 0.0; var x = 0.0; var y = 0.0
             var minX = mask.width; var maxX = 0; var minY = mask.height; var maxY = 0
             for (i in foreground) {
                 val px = i % mask.width; val py = i / mask.width
-                val alpha = mask.values[i].coerceIn(0f, 1f).toDouble()
+                val alpha = mask[i].coerceIn(0f, 1f).toDouble()
                 weight += alpha; x += (px + .5) / mask.width * alpha; y += (py + .5) / mask.height * alpha
                 minX = minOf(minX, px); maxX = maxOf(maxX, px); minY = minOf(minY, py); maxY = maxOf(maxY, py)
             }
@@ -98,20 +98,20 @@ internal class SmartFramingTrack private constructor(
         }
 
         private fun ambiguous(mask: FrameAttachments.Plane): Boolean {
-            val foreground = mask.values.count { it >= .5f }
+            val foreground = (0 until mask.size).count { mask[it] >= .5f }
             if (foreground == 0) return false
-            val visited = BooleanArray(mask.values.size)
-            val queue = IntArray(mask.values.size)
+            val visited = BooleanArray(mask.size)
+            val queue = IntArray(mask.size)
             val centers = ArrayList<Pair<Float, Float>>()
-            for (start in mask.values.indices) {
-                if (visited[start] || mask.values[start] < .5f) continue
+            for (start in (0 until mask.size)) {
+                if (visited[start] || mask[start] < .5f) continue
                 var head = 0; var tail = 1; var x = 0.0; var y = 0.0
                 queue[0] = start; visited[start] = true
                 while (head < tail) {
                     val i = queue[head++]; val px = i % mask.width; val py = i / mask.width
                     x += (px + .5) / mask.width; y += (py + .5) / mask.height
                     fun add(n: Int) {
-                        if (!visited[n] && mask.values[n] >= .5f) { visited[n] = true; queue[tail++] = n }
+                        if (!visited[n] && mask[n] >= .5f) { visited[n] = true; queue[tail++] = n }
                     }
                     if (px > 0) add(i - 1)
                     if (px + 1 < mask.width) add(i + 1)

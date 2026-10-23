@@ -62,7 +62,7 @@ object FramingPlan {
         val source = background ?: sample.foregroundSource
         val destination = if (background != null) whole else sample.foregroundDestination
         if (source == whole && destination == whole) return plane
-        val values = FloatArray(plane.values.size) { index ->
+        val values = FloatArray(plane.size) { index ->
             val x = (index % plane.width + .5f) / plane.width
             val y = (index / plane.width + .5f) / plane.height
             if (x < destination.left || x >= destination.right || y < destination.top || y >= destination.bottom) 0f
@@ -71,7 +71,7 @@ object FramingPlan {
                 val v = source.top + (y - destination.top) / (destination.bottom - destination.top) * (source.bottom - source.top)
                 val sx = (u * plane.width).toInt().coerceIn(0, plane.width - 1)
                 val sy = (v * plane.height).toInt().coerceIn(0, plane.height - 1)
-                plane.values[sy * plane.width + sx]
+                plane[sy * plane.width + sx]
             }
         }
         return FrameAttachments.Plane(plane.width, plane.height, values, plane.confidence)

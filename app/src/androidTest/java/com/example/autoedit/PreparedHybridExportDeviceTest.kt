@@ -52,13 +52,16 @@ class PreparedHybridExportDeviceTest {
             val times = mutableListOf<Long>()
             while (extractor.sampleTime >= 0) { times += extractor.sampleTime; extractor.advance() }
             assertEquals(30, times.size)
+            assertEquals("First encoded PTS must be zero", 0L, times.first())
             for (index in times.indices) {
-                val expected = kotlin.math.round(index * 1_000_000.0 / 30).toLong()
-                // MediaMuxer/extractor may quantize a rounded EGL PTS by one microsecond.
-                // Frame count and the full independent clock remain checked; this admits no missing slot.
-                assertTrue("Encoded frame $index: expected $expected us, actual ${times[index]} us",
-                    kotlin.math.abs(times[index] - expected) <= 1L)
-                if (index > 0) assertTrue("Encoded PTS must increase at frame $index", times[index] > times[index - 1])
+                val expectedUs = kotlin.math.round(index * 1_000_000.0 / 30).toLong()
+                val actualUs = times[index]
+                if (index > 0) assertTrue(
+                    "Encoded PTS must strictly increase at frame $index: previous=${times[index - 1]}, actual=$actualUs",
+                    actualUs > times[index - 1])
+                // MP4 media-timescale ticks can round-trip to microseconds with a 1 us difference.
+                assertTrue("Encoded PTS at frame $index: expected=$expectedUs us, actual=$actualUs us",
+                    kotlin.math.abs(actualUs - expectedUs) <= 1L)
             }
         } finally { extractor.release() }
         MediaMetadataRetriever().use { retriever ->

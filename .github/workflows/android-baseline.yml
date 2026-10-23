@@ -16,6 +16,8 @@ concurrency:
 jobs:
   baseline:
     runs-on: ubuntu-latest
+    env:
+      GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -39,34 +41,58 @@ jobs:
         run: python -m pip install -r tools/requirements-test.txt
       - name: Verify baseline
         run: ./gradlew --no-daemon clean baselineVerify -PpythonExecutable=python
-      - name: Assemble separate manual MVP
+      - name: Assemble isolated preview APK
         run: ./gradlew --no-daemon :app:assembleManualMvp
-      - name: Record manual MVP source and APK
+      - name: Locate isolated ARM64 preview APK
+        id: preview-apk
         run: |
           python - <<'PY'
-          import json, shutil
+          import hashlib, json, os
           from pathlib import Path
           directory = Path('app/build/outputs/apk/manualMvp')
           metadata = json.loads((directory / 'output-metadata.json').read_text())
-          assert metadata['applicationId'] == 'com.veycad.app.manualmvp'
-          outputs = [entry for entry in metadata['elements'] if not entry['filters']]
-          assert len(outputs) == 1, 'Expected exactly one universal manual MVP APK'
+          assert metadata['applicationId'] == 'com.veycad.app.preview'
+          outputs = [entry for entry in metadata['elements'] if entry['filters'] == [{'filterType': 'ABI', 'value': 'arm64-v8a'}]]
+          assert len(outputs) == 1
           apk = directory / outputs[0]['outputFile']
           assert apk.is_file() and apk.suffix == '.apk' and apk.resolve().parent == directory.resolve()
-          target = Path('manual-mvp-artifact')
-          target.mkdir()
-          shutil.copy2(apk, target / 'Veycad-manual-MVP-universal.apk')
+          info = {'sourceSha': os.environ['GIT_SHA'], 'builtCommit': os.environ['GITHUB_SHA'],
+                  'applicationId': metadata['applicationId'], 'variant': 'manualMvp',
+                  'apk': apk.name, 'sha256': hashlib.sha256(apk.read_bytes()).hexdigest()}
+          (directory / 'preview-build.json').write_text(json.dumps(info, indent=2) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'apk={apk.as_posix()}\n')
           PY
-          {
-            echo "checkout_sha=$(git rev-parse HEAD)"
-            echo "pull_head_sha=${{ github.event.pull_request.head.sha || github.sha }}"
-            sha256sum manual-mvp-artifact/Veycad-manual-MVP-universal.apk
-          } > manual-mvp-artifact/provenance.txt
-      - name: Upload manual MVP APK
+      - name: Save isolated ARM64 preview APK and identity
         uses: actions/upload-artifact@v4
         with:
-          name: manual-mvp-universal-apk
-          path: manual-mvp-artifact/
+          name: veykad-preview-arm64-${{ env.GIT_SHA }}
+          path: |
+            ${{ steps.preview-apk.outputs.apk }}
+            app/build/outputs/apk/manualMvp/output-metadata.json
+            app/build/outputs/apk/manualMvp/preview-build.json
+          if-no-files-found: error
+      - name: Locate verified ARM64 debug APK
+        id: debug-apk
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          directory = Path('app/build/outputs/apk/debug')
+          metadata = json.loads((directory / 'output-metadata.json').read_text())
+          assert metadata['applicationId'] == 'com.veycad.app'
+          outputs = [entry for entry in metadata['elements'] if entry['filters'] == [{'filterType': 'ABI', 'value': 'arm64-v8a'}]]
+          assert len(outputs) == 1, 'Expected exactly one ARM64 debug APK'
+          apk = directory / outputs[0]['outputFile']
+          assert apk.is_file() and apk.suffix == '.apk' and apk.resolve().parent == directory.resolve()
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'apk={apk.as_posix()}\n')
+          PY
+      - name: Save ARM64 debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: veycad-arm64-debug-${{ github.sha }}
+          path: ${{ steps.debug-apk.outputs.apk }}
           if-no-files-found: error
       - name: Save test reports
         if: always()

@@ -339,10 +339,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
-        findViewById<Button>(R.id.manualMvpButton).setOnClickListener {
+        findViewById<Button>(R.id.manualMvpButton).apply {
+            visibility = if (BuildConfig.LIVE_PREVIEW_ENABLED) View.VISIBLE else View.GONE
+            setOnClickListener {
+                if (!rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null) {
+                    stopPreviewPlayback()
+                    startActivity(Intent(this@MainActivity, ManualMvpActivity::class.java))
+                }
+            }
+        }
+        findViewById<Button>(R.id.musicEditorButton).setOnClickListener {
             if (!rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null) {
                 stopPreviewPlayback()
-                startActivity(Intent(this, ManualMvpActivity::class.java))
+                startActivity(Intent(this, MusicEditorActivity::class.java))
             }
         }
         findViewById<Button>(R.id.importMusicButton).setOnClickListener {
@@ -407,7 +416,7 @@ class MainActivity : AppCompatActivity() {
             val id = CompletedRenderStore.list(filesDir).firstOrNull { it.file == renderedFile }?.projectId
                 ?: return@setOnClickListener
             stopPreviewPlayback()
-            startActivity(Intent(this, ManualMvpActivity::class.java).putExtra(ManualMvpActivity.EXTRA_PROJECT_ID, id))
+            startActivity(Intent(this, MusicEditorActivity::class.java).putExtra(MusicEditorActivity.EXTRA_PROJECT_ID, id))
         }
         findViewById<Button>(R.id.myEditsButton).setOnClickListener {
             LocalDiagnostics.record(this, "tap_my_edits")
@@ -495,6 +504,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateReadyState() {
         val ready = !rendering && !importing && !saving && !customMusic.busy && legacySaveEntry == null
+        findViewById<Button>(R.id.musicEditorButton).isEnabled = ready
         findViewById<Button>(R.id.manualMvpButton).isEnabled = ready
         findViewById<Button>(R.id.editMontageButton).isEnabled = ready
         findViewById<Button>(R.id.textEditorButton).isEnabled = ready

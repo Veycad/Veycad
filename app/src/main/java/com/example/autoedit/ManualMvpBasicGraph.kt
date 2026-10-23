@@ -1,6 +1,6 @@
 package com.veycad.app
 
-/** Caller input for the existing importer, visibly labelled as a basic test montage. */
+/** Analysis-free basic montage for the existing importer and common editing commands. */
 internal object ManualMvpBasicGraph {
     fun validateSources(sources: List<MediaSource>) { sourceWindows(sources) }
 
@@ -24,7 +24,7 @@ internal object ManualMvpBasicGraph {
     }
 
     private fun sourceWindows(sources: List<MediaSource>): List<Pair<Long, Long>> {
-        require(sources.size in 1..2) { "Для базового тестового монтажа выберите одно или два видео" }
+        require(sources.size in 1..2) { "Для базового монтажа выберите одно или два видео" }
         return sources.map { source ->
             require(source.isBaselineInput) { "Нужен видеоролик AVC со стандартным цветом: ${source.displayName}" }
             val firstUs = requireNotNull(source.firstVideoPtsUs) {

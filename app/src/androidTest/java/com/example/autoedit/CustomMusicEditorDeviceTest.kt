@@ -44,9 +44,9 @@ class CustomMusicEditorDeviceTest {
         val store = HybridProjectStore(fixture.context.filesDir)
         assertEquals(2_000_000L, project.current.music.startUs)
         assertEquals(2_000_000L, project.current.graph.audioTrack!!.sourceStartUs)
-        val intent = Intent(fixture.context, ManualMvpActivity::class.java)
-            .putExtra(ManualMvpActivity.EXTRA_PROJECT_ID, project.id)
-        ActivityScenario.launch<ManualMvpActivity>(intent).use { scenario ->
+        val intent = Intent(fixture.context, MusicEditorActivity::class.java)
+            .putExtra(MusicEditorActivity.EXTRA_PROJECT_ID, project.id)
+        ActivityScenario.launch<MusicEditorActivity>(intent).use { scenario ->
             fixture.waitUntil("custom project opened") {
                 var ready = false
                 scenario.onActivity { activity ->
