@@ -1,6 +1,11 @@
 package com.veycad.app
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.graphics.Typeface
+import android.view.View
+import com.google.android.material.button.MaterialButton
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.content.res.ColorStateList
@@ -48,6 +53,21 @@ class MusicEditorActivity : AppCompatActivity() {
     private var newProjectFps = 30
     private var renderJob: Future<*>? = null
     private var refreshAfterStop = false
+    private val disabledControls = java.util.IdentityHashMap<View, Boolean>()
+    private val playbackHandler = Handler(Looper.getMainLooper())
+    private var videoSeek: SeekBar? = null
+    private var playbackButton: Button? = null
+    private val playbackTicker = object : Runnable {
+        override fun run() {
+            val movie = video ?: return
+            val seek = videoSeek ?: return
+            if (!seek.isPressed && movie.duration > 0) {
+                seek.progress = (movie.currentPosition.toLong() * seek.max / movie.duration).toInt()
+            }
+            playbackButton?.text = if (movie.isPlaying) "Пауза" else "Воспроизвести"
+            playbackHandler.postDelayed(this, 250)
+        }
+    }
     private var musicPlayer: MediaPlayer? = null
     private val musicPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importMusic(uri)
@@ -108,6 +128,7 @@ class MusicEditorActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        playbackHandler.removeCallbacks(playbackTicker)
         stopMusic()
         if (renderJob != null) {
             renderJob?.cancel(true)
@@ -122,6 +143,7 @@ class MusicEditorActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (video != null) playbackHandler.post(playbackTicker)
         if (refreshAfterStop) {
             refreshAfterStop = false
             refresh("Рендер остановлен. Черновик сохранён.")
@@ -133,29 +155,75 @@ class MusicEditorActivity : AppCompatActivity() {
     private fun label(text: String, size: Int): TextView = TextView(this).apply {
         this.text = text
         textSize = size.toFloat()
-        if (size >= 20) typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-        setTextColor(ContextCompat.getColor(this@MusicEditorActivity,
-            if (size >= 16) R.color.text_primary else R.color.text_secondary))
         setPadding(0, dp(8), 0, dp(8))
+        setTextColor(getColor(if (size >= 20) R.color.text_primary else R.color.text_secondary))
+        if (size >= 20) typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        layoutParams = LinearLayout.LayoutParams(-1, -2)
     }
 
-    private fun button(text: String, action: () -> Unit): Button = Button(this).apply {
+    private fun button(text: String, primary: Boolean = false, action: () -> Unit): Button = MaterialButton(this).apply {
         this.text = text
         isAllCaps = false
-        minHeight = dp(48)
-        backgroundTintList = null
-        setBackgroundResource(R.drawable.soft_surface)
-        setTextColor(ContextCompat.getColor(this@MusicEditorActivity, R.color.text_primary))
+        textSize = 14f
+        minHeight = dp(52)
+        minimumHeight = dp(52)
+        cornerRadius = dp(18)
+        insetTop = 0
+        insetBottom = 0
+        strokeWidth = dp(1)
+        strokeColor = ColorStateList.valueOf(getColor(R.color.stroke))
+        val states = arrayOf(intArrayOf(-android.R.attr.state_enabled),
+            intArrayOf(android.R.attr.state_selected), intArrayOf())
+        backgroundTintList = ColorStateList(states, intArrayOf(getColor(R.color.surface_high),
+            getColor(R.color.accent_soft), getColor(if (primary) R.color.neon else R.color.surface)))
+        setTextColor(ColorStateList(states, intArrayOf(getColor(R.color.text_muted),
+            getColor(R.color.text_primary), getColor(R.color.text_primary))))
+        setPadding(dp(14), dp(12), dp(14), dp(12))
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
         setOnClickListener { if (!busy) action() }
     }
 
     private fun row(vararg buttons: Button): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        buttons.forEach { button ->
-            addView(button, LinearLayout.LayoutParams(0, dp(52), 1f))
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
+        buttons.forEachIndexed { index, button ->
+            addView(button, LinearLayout.LayoutParams(0, -1, 1f).apply {
+                if (index > 0) marginStart = dp(8)
+            })
         }
+        // Both controls grow together when labels wrap or system font size increases.
+        minimumHeight = dp(52)
     }
+
+    private fun panel(title: String): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(16), dp(12), dp(16), dp(16))
+        setBackgroundResource(R.drawable.panel_surface)
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) }
+        addView(label(title, 20))
+        content.addView(this)
+    }
+
+    private fun header(message: String) {
+        content.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label("VEYKAD  •", 13).apply {
+                setTextColor(getColor(R.color.text_primary))
+                letterSpacing = .20f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(button("‹ Назад") { finish() }, LinearLayout.LayoutParams(-2, -2))
+        })
+        content.addView(label("Довести монтаж", 30))
+        status = label(message, 14).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
+        content.addView(status)
+    }
+
+    private fun projectName(project: HybridProject): String =
+        project.selectedVideos?.firstOrNull()?.displayName
+            ?.substringBeforeLast('.')?.take(48)?.takeIf { it.isNotBlank() } ?: "Мой монтаж"
 
     private fun rememberSelection() {
         getSharedPreferences("manual_mvp", MODE_PRIVATE).edit()
@@ -164,6 +232,19 @@ class MusicEditorActivity : AppCompatActivity() {
 
     private fun setBusy(value: Boolean, message: String? = null) {
         busy = value
+        if (value) {
+            fun disable(view: View) {
+                if (view is Button || view is SeekBar) {
+                    disabledControls.putIfAbsent(view, view.isEnabled)
+                    view.isEnabled = false
+                }
+                if (view is ViewGroup) repeat(view.childCount) { disable(view.getChildAt(it)) }
+            }
+            disable(content)
+        } else {
+            disabledControls.forEach { (view, enabled) -> view.isEnabled = enabled }
+            disabledControls.clear()
+        }
         content.descendantFocusability = if (value) ViewGroup.FOCUS_BLOCK_DESCENDANTS else ViewGroup.FOCUS_AFTER_DESCENDANTS
         content.isEnabled = !value
         if (message != null) status.text = message
@@ -194,46 +275,46 @@ class MusicEditorActivity : AppCompatActivity() {
     private fun showError(message: String) {
         stopPlayback()
         content.removeAllViews()
-        content.addView(label("Довести монтаж", 26))
-        status = label(message, 14).also(content::addView)
+        header(message)
         content.addView(button("Повторить") { refresh() })
     }
 
     private fun showProjects(projects: List<HybridProject>, selected: HybridProject?, message: String?) {
         stopPlayback()
         content.removeAllViews()
-        content.addView(label("Довести монтаж", 26))
         val custom = selected?.let(::isCustomMusic) == true
-        status = label(message ?: if (custom) "Правки сохраняются автоматически" else
-            "Выберите сохранённый проект или создайте базовый тестовый монтаж.", 14)
-        content.addView(status)
-        if (custom) content.addView(button("← К монтажу") { finish() })
-        if (!custom) {
-        content.addView(label("Базовый тестовый монтаж · 1–2 ваших видео · без анализа ИИ", 16))
-        content.addView(row(
-            button("30 кадр/с") { chooseFps(30) }.apply { isEnabled = newProjectFps != 30 },
-            button("60 кадр/с") { chooseFps(60) }.apply { isEnabled = newProjectFps != 60 }
-        ))
-        content.addView(button("Выбрать видео для базового монтажа") {
-            videoPicker.launch(arrayOf("video/*"))
-        })
-        }
+        header(message ?: if (selected != null) "Правки сохраняются автоматически." else
+            "Выберите сохранённый монтаж или добавьте свои видео.")
         if (selected != null) showEditor(selected) else {
             projectId = null
             clipId = null
             rememberSelection()
         }
-        content.addView(label("Сохранённые проекты", 20))
-        if (projects.isEmpty()) content.addView(label("Пока нет проектов ручной доводки.", 14))
-        projects.forEach { project ->
-            val title = if (isCustomMusic(project)) "♫ ${project.assets.single { it.id == project.current.music.assetId }.displayName}"
-                else "Открыть ${project.id} · ${project.fps} кадр/с"
-            content.addView(button(title) {
-                projectId = project.id
-                clipId = null
-                rememberSelection()
-                refresh()
+        if (!custom) panel("Новый монтаж").apply {
+            addView(label("1–2 ваших видео · базовая сборка без анализа ИИ", 14))
+            addView(row(
+                button("30 кадр/с") { chooseFps(30) }.apply { isSelected = newProjectFps == 30 },
+                button("60 кадр/с") { chooseFps(60) }.apply { isSelected = newProjectFps == 60 }
+            ))
+            addView(button("Выбрать видео для базового монтажа", primary = selected == null) {
+                videoPicker.launch(arrayOf("video/*"))
             })
+        }
+        panel("Сохранённые проекты").apply {
+            if (projects.isEmpty()) addView(label("Пока нет проектов ручной доводки.", 14))
+            projects.forEachIndexed { index, project ->
+                val name = if (isCustomMusic(project)) "♫ ${project.assets.single { it.id == project.current.music.assetId }.displayName}"
+                    else projectName(project)
+                addView(button("${index + 1}. $name · ${project.fps} кадр/с") {
+                    projectId = project.id
+                    clipId = null
+                    rememberSelection()
+                    refresh()
+                }.apply {
+                    isSelected = project.id == selected?.id
+                    contentDescription = "Открыть проект ${index + 1}: $name"
+                })
+            }
         }
     }
 
@@ -245,14 +326,14 @@ class MusicEditorActivity : AppCompatActivity() {
         }
         val clips = editable.current.clips
         showMusic(project)
+        val custom = isCustomMusic(project)
         val selected = clips.firstOrNull { it.id == clipId } ?: clips.first()
         if (clipId != selected.id) {
             clipId = selected.id
             rememberSelection()
         }
-        val custom = isCustomMusic(project)
-        content.addView(label(if (custom) "${clips.size} фрагментов · версия ${project.current.id}" else
-            "Проект ${project.id} · версия ${project.current.id} · ${project.fps} кадр/с", 16))
+        val previewPanel = panel(projectName(project))
+        previewPanel.addView(label("Версия ${project.current.id} · ${project.fps} кадр/с · черновик сохранён", 14))
         val currentPreview = previewFile?.takeIf { previewProjectId == project.id &&
             previewRevisionId == project.current.id && it.isFile && it.length() > 0L }
         val exported = project.exports.lastOrNull { it.revisionId == project.current.id }?.let {
@@ -260,57 +341,58 @@ class MusicEditorActivity : AppCompatActivity() {
         }
         val playable = currentPreview ?: exported
         if (playable != null) {
-            content.addView(label(if (currentPreview != null) "Предпросмотр этой версии · полный рендер 720p" else
+            previewPanel.addView(label(if (currentPreview != null) "Предпросмотр этой версии · полный рендер 720p" else
                 "Сохранённая версия · воспроизведение и перемотка", 14))
-            showVideo(playable)
-        } else content.addView(label("Для просмотра нужен полный рендер текущей версии.", 14))
-        if (exported != null) content.addView(button("Поделиться сохранённой версией") { share(exported) })
+            showVideo(playable, previewPanel)
+        } else previewPanel.addView(label("Обновите предпросмотр, чтобы увидеть текущие правки.", 14))
+        if (exported != null) previewPanel.addView(button("Поделиться сохранённой версией") { share(exported) })
         if (unsupportedReason(project, export) == null) {
-            content.addView(button("Просмотреть · полный рендер 720p") { renderVersion(false) })
-            content.addView(button("Сохранить новую версию · 1080p") { renderVersion(true) })
+            previewPanel.addView(button("Просмотреть · полный рендер 720p") { renderVersion(false) })
+            previewPanel.addView(button("Сохранить новую версию · 1080p", primary = true) { renderVersion(true) })
         }
         unsupportedReason(project, export)?.let { reason ->
-            content.addView(label("Просмотр и экспорт недоступны: $reason", 14))
+            previewPanel.addView(label("Просмотр и экспорт недоступны: $reason", 14))
         }
+        val timeline = panel("Порядок клипов")
         clips.forEachIndexed { index, clip ->
             val marker = if (clip.id == selected.id) "● " else "○ "
-            content.addView(button(if (custom) "$marker${index + 1}. Фрагмент · ${musicTime(frameTimeUs(clip.visible.count, project.fps))}"
+            timeline.addView(button(if (custom) "$marker${index + 1}. Фрагмент · ${musicTime(frameTimeUs(clip.visible.count, project.fps))}"
                 else "$marker${index + 1}. ${clip.origin.id} · ${clip.visible.count} кадров") {
                 clipId = clip.id
                 rememberSelection()
                 refresh()
-            })
+            }.apply { isSelected = clip.id == selected.id })
         }
-        content.addView(label(if (custom) "Выбран фрагмент ${clips.indexOf(selected) + 1}. Подрезка по одному кадру." else
-            "Выбран: ${selected.id}. Подрезка по одному выходному кадру.", 14))
-        content.addView(row(
+        val controls = panel("Правки клипа ${selected.origin.id}")
+        controls.addView(label("Подрезка по одному кадру · ${project.fps} кадр/с", 14))
+        controls.addView(row(
             button("Начало −1") { edit(TimelineCommand.Trim(selected.id, ClipEdge.START, selected.visible.start - 1)) },
             button("Начало +1") { edit(TimelineCommand.Trim(selected.id, ClipEdge.START, selected.visible.start + 1)) }
         ))
-        content.addView(row(
+        controls.addView(row(
             button("Конец −1") { edit(TimelineCommand.Trim(selected.id, ClipEdge.END, selected.visible.endExclusive - 1)) },
             button("Конец +1") { edit(TimelineCommand.Trim(selected.id, ClipEdge.END, selected.visible.endExclusive + 1)) }
         ))
         val index = clips.indexOf(selected)
-        content.addView(row(
+        controls.addView(row(
             button("Выше") { edit(TimelineCommand.Move(selected.id, index - 1)) }.apply { isEnabled = index > 0 },
             button("Ниже") { edit(TimelineCommand.Move(selected.id, index + 1)) }.apply { isEnabled = index < clips.lastIndex }
         ))
         if (index > 0) {
-            content.addView(button("Обычная склейка перед клипом") {
+            controls.addView(button("Обычная склейка перед клипом") {
                 edit(TimelineCommand.SetTransition(selected.id, MontageGraph.Transition.HARD_CUT))
             })
         }
         val flashes = editable.current.effects.filter {
             it.originalOverlay?.overlayKind == MontageGraph.OverlayKind.FLASH
         }
-        if (flashes.isEmpty()) content.addView(label("В этом монтаже нет вспышки для переноса.", 14))
+        if (flashes.isEmpty()) controls.addView(label("В этом монтаже нет вспышки для переноса.", 14))
         flashes.forEach { flash ->
-            content.addView(label("Вспышка ${flash.id}", 14))
+            controls.addView(label("Вспышка на стыке", 14))
             val boundary = flash.anchor as? EffectAnchor.Boundary
             val boundaryIndex = clips.indexOfFirst { it.id == boundary?.incomingClipId }
             val nextValid = boundaryIndex >= 0 && boundaryIndex < clips.lastIndex
-            content.addView(row(
+            controls.addView(row(
                 button(if (flash.enabled) "Отключить вспышку" else "Включить вспышку") {
                     edit(TimelineCommand.SetFlashEnabled(flash.id, !flash.enabled))
                 },
@@ -318,11 +400,12 @@ class MusicEditorActivity : AppCompatActivity() {
                     .apply { isEnabled = nextValid }
             ))
         }
-        content.addView(row(
+        val history = panel("История правок")
+        history.addView(row(
             button("Отменить") { common(ProjectCommand.Undo) }.apply { isEnabled = project.undo.isNotEmpty() },
             button("Повторить") { common(ProjectCommand.Redo) }.apply { isEnabled = project.redo.isNotEmpty() }
         ))
-        content.addView(button(if (project.original.graph.metadata.generator == "manual-basic-test")
+        history.addView(button(if (project.original.graph.metadata.generator == "manual-basic-test")
             "Вернуть базовый монтаж" else "Вернуть автосборку") { edit(TimelineCommand.RestoreBaseline) })
     }
 
@@ -543,16 +626,34 @@ class MusicEditorActivity : AppCompatActivity() {
         } finally { metadata.release() }
     }
 
-    private fun showVideo(file: File) {
-        val movie = VideoView(this)
+    private fun showVideo(file: File, parent: LinearLayout) {
+        val frame = FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            contentDescription = "Предпросмотр монтажа"
+        }
+        val movie = VideoView(this).apply {
+            isFocusable = false
+            isFocusableInTouchMode = false
+        }
         video = movie
-        content.addView(movie, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)))
-        val seek = SeekBar(this).apply { max = 1_000 }
-        content.addView(seek)
+        // VideoView measures to its video aspect ratio. Center it inside a full-width
+        // container rather than leaving portrait playback against the left edge.
+        frame.addView(movie, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
+        parent.addView(frame, LinearLayout.LayoutParams(-1, dp(300)).apply { topMargin = dp(8) })
+        val seek = SeekBar(this).apply {
+            max = 1_000
+            contentDescription = "Позиция в предпросмотре"
+            progressTintList = ColorStateList.valueOf(getColor(R.color.neon))
+            thumbTintList = progressTintList
+            minimumHeight = dp(48)
+        }
+        videoSeek = seek
+        parent.addView(seek, LinearLayout.LayoutParams(-1, dp(48)))
         val playback = button("Воспроизвести") {
             if (movie.isPlaying) movie.pause() else movie.start()
         }
-        content.addView(playback)
+        playbackButton = playback
+        parent.addView(playback)
         val playbackToken = ++playbackGeneration
         movie.setOnPreparedListener { player ->
             if (playbackToken != playbackGeneration) return@setOnPreparedListener
@@ -560,6 +661,8 @@ class MusicEditorActivity : AppCompatActivity() {
             seek.progress = 0
             movie.seekTo(1)
             movie.start()
+            playbackHandler.removeCallbacks(playbackTicker)
+            playbackHandler.post(playbackTicker)
         }
         movie.setOnErrorListener { _, _, _ ->
             if (playbackToken == playbackGeneration) status.text = "Видео не открылось. Повторите экспорт."
@@ -570,13 +673,14 @@ class MusicEditorActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(bar: SeekBar?) = Unit
             override fun onStopTrackingTouch(bar: SeekBar?) {
                 val duration = movie.duration
-                if (duration > 0) movie.seekTo((duration.toLong() * seek.progress / seek.max).toInt())
+                if (!busy && duration > 0) movie.seekTo((duration.toLong() * seek.progress / seek.max).toInt())
             }
         })
         movie.setVideoPath(file.absolutePath)
     }
 
     private fun chooseFps(fps: Int) {
+        if (newProjectFps == fps) return
         newProjectFps = fps
         getSharedPreferences("manual_mvp", MODE_PRIVATE).edit().putInt("newProjectFps", fps).apply()
         refresh()
@@ -642,6 +746,9 @@ class MusicEditorActivity : AppCompatActivity() {
     }.getOrNull()?.takeIf { it.isNotBlank() } ?: "Видео ${index + 1}"
 
     private fun stopPlayback() {
+        playbackHandler.removeCallbacks(playbackTicker)
+        videoSeek = null
+        playbackButton = null
         stopMusic()
         playbackGeneration++
         video?.apply {
