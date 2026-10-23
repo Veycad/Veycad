@@ -1,0 +1,82 @@
+# A2b: durable manual montage acceptance contract
+
+Status: acceptance tests are a checkpoint for the common-core owner. The current
+`main` codec does not persist `MontageGraph.manualMontageState`; remote RED and
+later A2b GREEN have not yet been observed for this checkpoint. These tests do
+not complete storage, runtime, physical-source, or artistic acceptance.
+
+## Producer and storage authority
+
+At producer BASE `a32a6a849abb3c781c21790c409b484f0fb65488`,
+`EditableMontageImporter.create` attaches `ManualMontageState` to the shared
+`HybridRevision.graph`. `MontageTimelineEditor.prepare` returns a candidate at
+the current revision ID; `HybridEditCommands.apply(ProjectCommand.CommitRevision)`
+alone allocates the next ID, parents it, and changes undo/redo. The same core
+owns `ProjectCommand.Undo`, `Redo`, and `RestoreMontage`. The adapter
+`EditableMontageProject` is a view, and `EditableMontageCompiler.compile`
+produces `editableTiming`, effect `sampleWindow`s, and render overrides from
+that view. Neither adapter nor compiler is a second persisted project.
+
+`HybridProjectStore.create`, `save(project, expectedRevisionId)`, `load`, and
+`loadRevision` remain the only storage entry points. A2b belongs in
+`HybridProjectCodec`/`HybridProjectStore` and must persist the complete graph
+of every retained original, current, undo, and redo revision, plus separately
+indexed published revisions. It must include `manualMontageState` clip-local
+tracks, origin frame count, 1201 ms `ClipPhase`, effects with segment/logical/
+origin IDs, authored overlay or node, enabled flag, anchor and phase; and the
+graph's `editableTiming`, effect sample-window and source-specific attachment
+entries when present. Null remains the legacy default for optional manual
+fields, and existing physical formats remain readable. The next physical
+writer version is the preceding **accepted** A2t/A2x version plus one, assigned
+and implemented by the common-core owner; this checkpoint does not assign a
+number or alter production serialization.
+
+The shared `HybridClip.originalFrameOffset` is the signed start of the visible
+window, while its end is checked `offset + span.length`. Its `sourceMap` samples
+and `original.sourceIndex` must remain literal across persistence and edits.
+Selection identity is `selectedVideos[sourceIndex].id` to asset ID, including
+unused or repeated selections where inspected metadata exists. A deduplicated
+file ID alone cannot replace that association. Existing `ProjectAsset`
+duration/hash and optional inspected `VideoSourceMetadata` are immutable source
+facts. The reviewed source-store direction requires raw `firstVideoPtsUs` and
+independently validated `videoEndPtsUs`, usable span `rawEnd - origin`, and
+provenance for endpoint/version facts; `KEY_DURATION` alone does not prove a
+measured endpoint. A2b must consume accepted A2t/A2x facts rather than infer
+or fabricate them. This acceptance fixture uses legacy unknown selection order
+because its tiny synthetic bytes are not inspected video and cannot establish
+physical geometry or raw endpoint provenance.
+
+## Executable boundary
+
+`ManualMontagePersistenceTest.manualEditsAndHistorySurviveFreshStoreAt30Fps`
+and `manualEditsAndHistorySurviveFreshStoreAt60Fps` independently exercise
+actual trim, transition, flash move/disable, reorder, undo, store save with CAS,
+and a load through a new store instance. Before the save each verifies a
+successful manual commit, literal nonlinear/repeated source samples, 1201 ms
+phase, local tracks, effect identity/anchor/enabled state, music gain 2 and
+offset, and independent frame-plan PTS. Raw reopened original/current/undo/redo
+graphs, samples, source indices, signed offsets, music/style/text/visual values,
+and two distinct source attachment entries are compared without re-import or
+payload repair. The test then redoes, trims again from the reopened project,
+saves and freshly reopens, checks its frame plan, undoes/redoes, performs the
+real `RestoreMontage`, saves and reopens the reset. Each test uses its own
+project directory and small owned files with actual SHA-256 hashes.
+
+The untouched original winner has null `editableTiming` and effect
+`sampleWindow`. Each edited candidate is compiled by
+`MontageTimelineEditor.prepare` before the common commit, so the raw saved
+current and edited history graphs carry concrete `editableTiming`; an enabled-flash
+undo revision carries a concrete overlay `sampleWindow`. The tests assert
+these preconditions before save, compare the raw graph fields after reopening,
+and compare the resulting frame plans. Source 0's synthetic mask is an indexed
+persistence entry in this fixture; its source PTS is outside the rendered
+source 0 frames, so the frame-plan assertion does not prove it was sampled.
+
+The source-specific synthetic masks verify durable per-index graph entries;
+they do not claim successful native mask rendering or actual sampled video.
+Inspected `SelectedVideo` metadata, raw PTS endpoints, asset lease/freeze,
+source-backed expansion after history pruning, runtime preview/export parity,
+MP4/AAC quality, device behavior, and human visual approval require their
+respective owner gates. The remote test run must first show an intended loss
+failure **after** valid edits and save, then pass at the A2b implementation
+head. The test source by itself is reviewable but is not a GREEN claim.
