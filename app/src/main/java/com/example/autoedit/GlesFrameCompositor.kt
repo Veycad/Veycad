@@ -95,7 +95,6 @@ internal class GlesFrameCompositor(
 
     init {
         try {
-            require(textProject == null || previewOwner == null) { "Text finishing requires the export path" }
             manualFraming?.requireTarget(target.size)
             if (previewOwner != null) {
                 PreviewAllocationOwner.imageBytes(width, height)

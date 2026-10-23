@@ -7,12 +7,11 @@ plugins {
     id("com.android.application")
 }
 
-// MVP instrumentation compiles only the reused real helpers/editor cases, never the
-// uiTest fake application. The default complete uiTest source set remains unchanged.
 val previewSourceSha = providers.environmentVariable("GIT_SHA").orNull?.also {
     require(it.matches(Regex("[0-9a-f]{40}"))) { "GIT_SHA must be a complete source commit" }
 } ?: providers.gradleProperty("sourceSha").orElse("local-unverified").get()
 
+// MVP instrumentation compiles only real helpers/editor cases, without the uiTest fake app.
 val mvpDeviceTests = providers.gradleProperty("deviceTestBuildType").orNull == "mvp"
 val mvpSmokeSources = layout.buildDirectory.dir("generated/mvpSmokeSources")
 val prepareMvpSmokeSources by tasks.registering(Sync::class) {
@@ -102,6 +101,7 @@ android {
             applicationIdSuffix = ".integrated2"
             versionNameSuffix = "-integrated"
             buildConfigField("boolean", "GALLERY_MVP", "true")
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
             matchingFallbacks += "debug"
         }
         create("musicEditor") {
