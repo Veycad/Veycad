@@ -70,6 +70,7 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
         $restartCalls.Add($Arguments)
         [pscustomobject]@{ ExitCode = 0 }
     }
+    function Collect-UiPreviewEvidence { param([switch]$Required) }
     function Get-Content { param($LiteralPath, [switch]$Raw) '{"passed":true,"phases":[{},{}]}' }
     foreach ($LegacySaveOnly in @($true, $false)) {
         $uiPhases = [Collections.Generic.List[object]]::new()
@@ -83,3 +84,91 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
     }
 }
 Write-Host 'UI runner legacy/restart routing check PASS.'
+
+# Execute the real collector and routing against files that the restart boundary erases.
+$collector = $runnerAst.Find({
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Collect-UiPreviewEvidence'
+}, $true)
+if ($null -eq $collector) { throw 'Cannot locate preview collection boundary.' }
+& {
+    $fixtureRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('veycad-preview-retention-' + [guid]::NewGuid())))
+    New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+    try {
+        $uiProjectRoot = $fixtureRoot
+        $uiDevice = Join-Path $fixtureRoot 'device'
+        New-Item -ItemType Directory -Path $uiDevice | Out-Null
+        $names = @('music-editor-empty.png', 'music-editor-controls.png', 'music-editor-preview.png',
+            'music-editor-export.png', 'music-editor-final.mp4', 'editor-export-success.png',
+            'editor-export-success.txt', 'editor-paused-after-seek.png', 'editor-paused-after-seek.txt',
+            'editor-landscape-large-font-retry.png', 'editor-landscape-large-font-retry.txt')
+        foreach ($name in $names) { [IO.File]::WriteAllText((Join-Path $uiDevice $name), "native-fixture-$name") }
+        $LegacySaveOnly = $false
+        $uiRunId = 'before-restart'
+        $script:uiPreviewCollected = $false
+        $script:retentionPulls = 0
+        . ([scriptblock]::Create($collector.Extent.Text))
+        function Invoke-UiAdb {
+            param([string[]]$Arguments)
+            if ($Arguments[0] -cne 'pull' -or -not (Test-Path -LiteralPath $uiDevice)) { throw 'Device evidence was cleared' }
+            $script:retentionPulls++
+            Get-ChildItem -LiteralPath $uiDevice -File | Copy-Item -Destination $Arguments[2]
+        }
+        function Invoke-UiPhase {
+            param($Name, $SelectionArgument, $Expected)
+            $uiPhases.Add([pscustomobject]@{ name = $Name; passed = $true })
+        }
+        function Invoke-UiNative {
+            param($Executable, [switch]$EchoOutput, $Arguments)
+            $inventory = Join-Path $fixtureRoot 'build/reports/ui-tests/runs/before-restart/preview-evidence/inventory.json'
+            if (-not $script:uiPreviewCollected -or -not (Test-Path -LiteralPath $inventory)) {
+                throw 'Restart reached pm clear before preview evidence was retained'
+            }
+            if (-not [IO.Path]::GetFullPath($uiDevice).StartsWith($fixtureRoot + [IO.Path]::DirectorySeparatorChar)) {
+                throw 'Unsafe fixture removal target'
+            }
+            Remove-Item -LiteralPath $uiDevice -Recurse -Force
+            [pscustomobject]@{ ExitCode = 0 }
+        }
+        function Get-Content {
+            param($LiteralPath, [switch]$Raw)
+            if ($LiteralPath.EndsWith('atomic-import-restart.json')) { return '{"passed":true,"phases":[{},{}]}' }
+            Microsoft.PowerShell.Management\Get-Content -LiteralPath $LiteralPath -Raw
+        }
+        $Serial = 'test'; $AvdName = 'test'; $SdkRoot = 'test'
+        $uiPermissionExpected = @(); $uiOrdinaryExpected = @()
+        $uiPhases = [Collections.Generic.List[object]]::new()
+        . ([scriptblock]::Create($phaseCode))
+        Collect-UiPreviewEvidence
+        $saved = Join-Path $fixtureRoot 'build/reports/ui-tests/runs/before-restart/preview-evidence'
+        $inventory = [IO.File]::ReadAllText((Join-Path $saved 'inventory.json')) | ConvertFrom-Json
+        if (-not $uiSucceeded -or $script:retentionPulls -ne 1 -or $inventory.files.Count -ne $names.Count -or -not $inventory.required) {
+            throw 'Successful preview collection was not retained once before restart'
+        }
+        foreach ($entry in $inventory.files) {
+            $file = Join-Path $saved $entry.path
+            if ((Get-Item -LiteralPath $file).Length -ne $entry.bytes -or
+                (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry.sha256) {
+                throw 'Retained preview inventory does not authenticate its bytes'
+            }
+        }
+        $uiRunId = 'missing-success-evidence'
+        $script:uiPreviewCollected = $false
+        New-Item -ItemType Directory -Path $uiDevice | Out-Null
+        [IO.File]::WriteAllText((Join-Path $uiDevice 'music-editor-empty.png'), 'partial-native-fixture')
+        $rejected = $false
+        try { Collect-UiPreviewEvidence -Required } catch { $rejected = $_.Exception.Message.Contains('Successful UI phase did not retain') }
+        if (-not $rejected -or $script:uiPreviewCollected) { throw 'Missing successful-route evidence was accepted' }
+        Collect-UiPreviewEvidence
+        if (-not (Test-Path -LiteralPath (Join-Path $fixtureRoot 'build/reports/ui-tests/runs/missing-success-evidence/preview-evidence/music-editor-empty.png'))) {
+            throw 'Failed phase lost its partial preview evidence'
+        }
+    } finally {
+        $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+        if (-not $fixtureRoot.StartsWith($temporaryRoot) -or (Split-Path -Leaf $fixtureRoot) -notlike 'veycad-preview-retention-*') {
+            throw 'Unsafe fixture cleanup target'
+        }
+        Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+    }
+}
+Write-Host 'Preview evidence pre-restart retention and hash-inventory check PASS.'

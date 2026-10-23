@@ -28,6 +28,7 @@ $uiRunId = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff')
 $uiSummaryFile = Join-Path $uiProjectRoot 'build/reports/ui-tests.json'
 $uiPhases = [Collections.Generic.List[object]]::new()
 $uiOriginalSettings = [Collections.Generic.List[object]]::new()
+$script:uiPreviewCollected = $false
 
 function Invoke-UiNative {
     param([string]$Executable, [string[]]$Arguments, [switch]$EchoOutput)
@@ -92,6 +93,40 @@ function Read-UiExpectedTests {
     if ($uiExpected.Count -eq 0) { throw 'No instrumented tests found in source.' }
     if (@($uiExpected | Sort-Object -Unique).Count -ne $uiExpected.Count) { throw 'Duplicate source test identities.' }
     return $uiExpected.ToArray()
+}
+
+function Collect-UiPreviewEvidence {
+    param([switch]$Required)
+    if ($LegacySaveOnly -or $script:uiPreviewCollected) { return }
+    $uiPreviewEvidence = Join-Path $uiProjectRoot "build/reports/ui-tests/runs/$uiRunId/preview-evidence"
+    New-Item -ItemType Directory -Path $uiPreviewEvidence -Force | Out-Null
+    try {
+        Invoke-UiAdb @('pull', '/sdcard/Android/data/com.veycad.app.uitest/files/preview-evidence/.', $uiPreviewEvidence) | Out-Null
+    } catch {
+        if ($Required) { throw }
+        Write-Host "Preview evidence unavailable: $($_.Exception.Message)"
+        return
+    }
+    $uiEvidenceFiles = @(Get-ChildItem -LiteralPath $uiPreviewEvidence -Recurse -File | Where-Object Name -ne 'inventory.json')
+    if ($Required) {
+        $uiRequiredNames = @('music-editor-empty.png', 'music-editor-controls.png', 'music-editor-preview.png',
+            'music-editor-export.png', 'music-editor-final.mp4', 'editor-export-success.png',
+            'editor-export-success.txt', 'editor-paused-after-seek.png', 'editor-paused-after-seek.txt',
+            'editor-landscape-large-font-retry.png', 'editor-landscape-large-font-retry.txt')
+        foreach ($uiName in $uiRequiredNames) {
+            $uiMatches = @($uiEvidenceFiles | Where-Object Name -ceq $uiName)
+            if ($uiMatches.Count -ne 1 -or $uiMatches[0].Length -le 0) {
+                throw "Successful UI phase did not retain preview evidence: $uiName"
+            }
+        }
+    }
+    $uiInventory = @($uiEvidenceFiles | Sort-Object FullName | ForEach-Object {
+        [ordered]@{ path = $_.FullName.Substring($uiPreviewEvidence.TrimEnd('\', '/').Length + 1).Replace('\', '/')
+            bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+    })
+    [ordered]@{ runId = $uiRunId; source = $env:GIT_SHA; required = [bool]$Required; files = $uiInventory } |
+        ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $uiPreviewEvidence 'inventory.json') -Encoding UTF8
+    $script:uiPreviewCollected = $true
 }
 
 function Invoke-UiPhase {
@@ -309,6 +344,8 @@ try {
     $uiExpectedPhases = if ($LegacySaveOnly) { 1 } else { 2 }
     $uiSucceeded = $uiPhases.Count -eq $uiExpectedPhases -and @($uiPhases | Where-Object { -not $_.passed }).Count -eq 0
     if ($uiSucceeded -and -not $LegacySaveOnly) {
+        # Restart probes clear the isolated app, including its external preview files.
+        Collect-UiPreviewEvidence -Required
         $uiRestartRun = Invoke-UiNative -Executable (Get-Process -Id $PID).Path -EchoOutput -Arguments @(
             '-NoProfile', '-File', (Join-Path $uiProjectRoot 'tools/run_atomic_import_restart_tests.ps1'),
             '-Serial', $Serial, '-AvdName', $AvdName, '-SdkRoot', $SdkRoot
@@ -324,11 +361,8 @@ try {
 } finally {
     # Pull while emulator-runner still owns a live device, even when instrumentation failed.
     # Only the isolated synthetic fixture screenshots are collected.
-    try {
-        $uiPreviewEvidence = Join-Path $uiProjectRoot 'build/reports/ui-tests/preview-evidence'
-        New-Item -ItemType Directory -Path $uiPreviewEvidence -Force | Out-Null
-        Invoke-UiAdb @('pull', '/sdcard/Android/data/com.veycad.app.uitest/files/preview-evidence/.', $uiPreviewEvidence) | Out-Null
-    } catch { Write-Host "Preview evidence unavailable: $($_.Exception.Message)" }
+    try { Collect-UiPreviewEvidence }
+    catch { Write-Host "Partial preview evidence could not be inventoried: $($_.Exception.Message)" }
     foreach ($uiOriginalSetting in $uiOriginalSettings) {
         try {
             if ($uiOriginalSetting.Value -eq 'null' -or [string]::IsNullOrWhiteSpace($uiOriginalSetting.Value)) {
