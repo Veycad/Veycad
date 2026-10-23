@@ -104,20 +104,59 @@ class MultiSourceRequestDeviceTest {
             })
             session.render(source, null, music, MontageStyleCatalog.fearStrobe,
                 captureSessionId = capture.id, captureTakeOrdinal = 2,
-                captureAutoRecommendation = true)
+                captureAutoRecommendation = true, musicStartUs = 1_000_000L,
+                exportOperationId = "legacy-capture-share")
         }
         try {
             assertTrue(received.await(10, TimeUnit.SECONDS))
             assertNotSame(Looper.getMainLooper().thread, inspectionThread)
             assertEquals(listOf(source), requireNotNull(observed).sources.items.map { it.file })
             assertEquals(descriptor.fingerprint, observed!!.sources.items.single().fingerprint)
+            assertEquals(1_000_000L, observed!!.musicStartUs)
             awaitIdle(session)
+            assertEquals("legacy-capture-share", session.state.value!!.exportOperationId)
             assertEquals(CompletedRenderStore.CaptureLink(capture.id, 2, true),
                 session.state.value!!.entry!!.captureLink)
         } finally {
             instrumentation.runOnMainSync { session.cancelRender() }
             awaitIdle(session)
             session.close()
+        }
+    }
+
+    @Test fun listAndImmutableWrappersKeepShareCompletionIdentity() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val source = SyntheticVideo.create(File(context.cacheDir, "g2-share-route.mp4"), 1000)
+        val descriptor = MediaInputInspector().inspect("share-source", source, source.name)
+        val sources = MediaSourceSet(listOf(descriptor))
+        val music = BuiltInMusicCatalog.select(context, MontageStyleCatalog.heartbeat.id).file
+        for (immutable in listOf(false, true)) {
+            val token = "share-route-$immutable"
+            lateinit var session: EditSession
+            instrumentation.runOnMainSync {
+                session = EditSession(context, EditSession.RenderEngine { request ->
+                    source.copyTo(request.outputFile, overwrite = true)
+                    EditSession.RenderSummary(1, 1f, true, emptyList())
+                }, EditSession.SourceInspector { id, _, name, checkCancelled ->
+                    checkCancelled()
+                    descriptor.copy(id = id, displayName = name)
+                })
+                if (immutable) session.render(sources, music, MontageStyleCatalog.heartbeat,
+                    exportOperationId = token)
+                else session.render(listOf(source), music, MontageStyleCatalog.heartbeat,
+                    exportOperationId = token)
+            }
+            try {
+                awaitIdle(session)
+                assertNull(session.state.value!!.error)
+                assertEquals(token, session.state.value!!.exportOperationId)
+                assertNotNull(session.state.value!!.entry)
+            } finally {
+                instrumentation.runOnMainSync { session.cancelRender() }
+                awaitIdle(session)
+                session.close()
+            }
         }
     }
 

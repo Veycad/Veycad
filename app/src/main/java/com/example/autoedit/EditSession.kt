@@ -68,7 +68,9 @@ internal class EditSession internal constructor(
         val entry: CompletedRenderStore.Entry? = null,
         val draft: Draft? = null,
         val error: String? = null,
-        val operationDetail: String? = null
+        val operationDetail: String? = null,
+        // Set only for successful publication by this render; previous/latest results have no identity.
+        val exportOperationId: String? = null
     )
 
     data class Draft(val files: List<File>, val names: List<String>, val music: BuiltInMusicCatalog.Selection?)
@@ -207,7 +209,8 @@ internal class EditSession internal constructor(
         continuingCapturePreparation: Boolean = false,
         captureTakeOrdinal: Int? = null,
         captureAutoRecommendation: Boolean = false,
-        musicStartUs: Long = 0L
+        musicStartUs: Long = 0L,
+        exportOperationId: String? = null
     ) {
         renderResolved({ checkCancelled ->
             require(secondary == null || secondary.canonicalPath != source.canonicalPath)
@@ -215,7 +218,7 @@ internal class EditSession internal constructor(
                 sourceInspector.inspect("legacy-$index", file, file.name, checkCancelled)
             })
         }, music, style, width, height, bitrate, captureSessionId, continuingCapturePreparation,
-            captureTakeOrdinal, captureAutoRecommendation, musicStartUs)
+            captureTakeOrdinal, captureAutoRecommendation, musicStartUs, exportOperationId)
     }
 
     fun render(
@@ -224,14 +227,15 @@ internal class EditSession internal constructor(
         style: MontageStyleCatalog.Style,
         width: Int = 720,
         height: Int = 1_280,
-        bitrate: Int = 5_000_000
+        bitrate: Int = 5_000_000,
+        exportOperationId: String? = null
     ) {
         val snapshot = files.toList()
         renderResolved({ checkCancelled ->
             MediaSourceSet(snapshot.mapIndexed { index, file ->
                 sourceInspector.inspect("gallery-$index", file, file.name, checkCancelled)
             })
-        }, music, style, width, height, bitrate, null, false, null, false)
+        }, music, style, width, height, bitrate, null, false, null, false, exportOperationId = exportOperationId)
     }
 
     fun render(
@@ -244,9 +248,11 @@ internal class EditSession internal constructor(
         captureSessionId: String? = null,
         continuingCapturePreparation: Boolean = false,
         captureTakeOrdinal: Int? = null,
-        captureAutoRecommendation: Boolean = false
+        captureAutoRecommendation: Boolean = false,
+        exportOperationId: String? = null
     ) = renderResolved({ checkCancelled -> checkCancelled(); sources }, music, style, width, height,
-        bitrate, captureSessionId, continuingCapturePreparation, captureTakeOrdinal, captureAutoRecommendation)
+        bitrate, captureSessionId, continuingCapturePreparation, captureTakeOrdinal, captureAutoRecommendation,
+        exportOperationId = exportOperationId)
 
     private fun renderResolved(
         resolveSources: (() -> Unit) -> MediaSourceSet,
@@ -259,7 +265,8 @@ internal class EditSession internal constructor(
         continuingCapturePreparation: Boolean,
         captureTakeOrdinal: Int?,
         captureAutoRecommendation: Boolean,
-        musicStartUs: Long = 0L
+        musicStartUs: Long = 0L,
+        exportOperationId: String? = null
     ) {
         require(captureSessionId == null || captureTakeOrdinal != null)
         if (state.value?.busy == true && !(continuingCapturePreparation && captureSessionId != null &&
@@ -331,6 +338,7 @@ internal class EditSession internal constructor(
             main.post {
                 val completed = result.getOrNull()
                 mutableState.value = State(entry = completed?.first ?: previous, draft = previousDraft,
+                    exportOperationId = if (completed != null) exportOperationId else null,
                     error = result.exceptionOrNull()?.let {
                         MontageFailurePresentation.message(it, style.sourceCount)
                     } ?: completed?.second?.let {

@@ -27,12 +27,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.NotificationCompat
-import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.Executors
 
 /** Automatic montage flow, with a separate text finishing editor for source or result MP4. */
@@ -52,6 +52,8 @@ class MainActivity : AppCompatActivity() {
     private var importing = false
     private var montageStyle = MontageStyleCatalog.heartbeat
     private lateinit var session: EditSession
+    private lateinit var shareCoordinator: HybridShareCoordinator
+    private lateinit var automaticShare: HybridShareCoordinator.AutomaticRequest
     private var completedEntry: CompletedRenderStore.Entry? = null
     private var legacySaveEntry: CompletedRenderStore.Entry? = null
     private var saving = false
@@ -166,6 +168,8 @@ class MainActivity : AppCompatActivity() {
         }
         ViewCompat.requestApplyInsets(content)
         session = EditSession.get(this)
+        shareCoordinator = HybridShareCoordinator(this)
+        automaticShare = HybridShareCoordinator.AutomaticRequest(shareCoordinator::consume)
         bindViews()
         customMusic = CustomMusicController(this,
             onChanged = { updateMusicDisplay(); updateReadyState() },
@@ -285,6 +289,8 @@ class MainActivity : AppCompatActivity() {
             findViewById<Button>(R.id.cancelRenderButton).visibility =
                 if ((rendering || importing) && !state.publishing) View.VISIBLE else View.GONE
             updateMyEditsButton()
+            if (!state.busy) automaticShare.complete(state.exportOperationId, state.entry, activityResumed)
+                ?.let { shareFile(it.entry.file) }
         }
     }
 
@@ -306,6 +312,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         if (::customMusic.isInitialized) customMusic.stopPreview()
         activityResumed = false
+        automaticShare.abandon()
         if (resultVideo.isPlaying) resultVideo.pause()
         super.onPause()
     }
@@ -402,6 +409,12 @@ class MainActivity : AppCompatActivity() {
         renderButton.setOnClickListener {
             LocalDiagnostics.record(this, "tap_render")
             if (autoCapture) openCapture() else startAutomaticEdit()
+        }
+        findViewById<Button>(R.id.renderShareButton).setOnClickListener {
+            if (!autoCapture) {
+                LocalDiagnostics.record(this, "tap_render_share")
+                startAutomaticEdit(shareAfter = true)
+            }
         }
         saveButton.setOnClickListener {
             LocalDiagnostics.record(this, "tap_save")
@@ -526,6 +539,10 @@ class MainActivity : AppCompatActivity() {
         val musicReady = if (customStyle) customMusic.ready else musicSelection?.let { it.styleId == montageStyle.id && it.file.isFile } == true
         customMusic.updateControls(customStyle && !autoCapture, ready, !autoCapture)
         renderButton.isEnabled = if (autoCapture) ready else ready && montageStyle.available && sourcesReady && musicReady
+        findViewById<Button>(R.id.renderShareButton).apply {
+            visibility = if (autoCapture) View.GONE else View.VISIBLE
+            isEnabled = !autoCapture && renderButton.isEnabled
+        }
         renderButton.text = if (autoCapture) getString(R.string.capture_open) else "Создать монтаж"
         findViewById<TextView>(R.id.renderHint).text = when {
             importing -> "Добавляю исходники…"
@@ -662,7 +679,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startAutomaticEdit() {
+    private fun startAutomaticEdit(shareAfter: Boolean = false) {
         if (rendering || importing || saving || customMusic.busy || legacySaveEntry != null) return
         if (!montageStyle.available) {
             toast(montageStyle.unavailableLabel)
@@ -680,10 +697,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val fullHd = settingsPreferences().getString(PREF_QUALITY, QUALITY_720) == QUALITY_1080
+        val exportOperationId = if (shareAfter) UUID.randomUUID().toString() else null
+        exportOperationId?.let(automaticShare::request)
         if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE) {
             session.render(selectedSourceFiles, requireNotNull(music).file, montageStyle,
                 width = if (fullHd) 1080 else 720, height = if (fullHd) 1920 else 1280,
-                bitrate = if (fullHd) 8_000_000 else 5_000_000)
+                bitrate = if (fullHd) 8_000_000 else 5_000_000,
+                exportOperationId = exportOperationId)
             return
         }
         session.render(
@@ -691,7 +711,8 @@ class MainActivity : AppCompatActivity() {
             width = if (fullHd) 1080 else 720,
             height = if (fullHd) 1920 else 1280,
             bitrate = if (fullHd) 8_000_000 else 5_000_000,
-            musicStartUs = selectedCustomMusic?.startUs ?: 0L
+            musicStartUs = selectedCustomMusic?.startUs ?: 0L,
+            exportOperationId = exportOperationId
         )
     }
 
@@ -726,6 +747,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCompletedResult(entry: CompletedRenderStore.Entry) {
+        findViewById<View>(R.id.shareError).visibility = View.GONE
         completedEntry = entry
         renderedFile = entry.file
         resultOpenedFromLibrary = false
@@ -1042,6 +1064,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStoredEdit(file: File) {
         if (rendering || importing || saving || legacySaveEntry != null) return
+        findViewById<View>(R.id.shareError).visibility = View.GONE
         renderedFile = file
         findViewById<Button>(R.id.editMontageButton).visibility =
             if (CompletedRenderStore.list(filesDir).firstOrNull { it.file == file }?.projectId != null) View.VISIBLE else View.GONE
@@ -1070,18 +1093,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun shareResult() {
-        val source = renderedFile?.takeIf { it.isFile } ?: return
-        val uri = FileProvider.getUriForFile(this, "$packageName.files", source)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "video/mp4"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        renderedFile?.let(::shareFile)
+    }
+
+    private fun shareFile(source: File) {
+        val errorView = findViewById<TextView>(R.id.shareError)
+        errorView.visibility = View.GONE
+        shareCoordinator.openChooser(this, source).onSuccess {
+            LocalDiagnostics.record(this, "share_opened", mapOf(
+                "saved" to renderedSaved.toString(),
+                "bytes" to source.length().toString()
+            ))
+        }.onFailure {
+            errorView.setText(R.string.share_failed)
+            errorView.visibility = View.VISIBLE
+            toast(getString(R.string.share_failed))
         }
-        startActivity(Intent.createChooser(intent, "Поделиться монтажом"))
-        LocalDiagnostics.record(this, "share_opened", mapOf(
-            "saved" to renderedSaved.toString(),
-            "bytes" to source.length().toString()
-        ))
     }
 
     private fun myEditsDirectory(): File = File(filesDir, "my-edits").apply { mkdirs() }
