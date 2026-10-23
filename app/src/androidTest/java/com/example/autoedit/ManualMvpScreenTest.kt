@@ -209,9 +209,11 @@ class ManualMvpScreenTest {
             capture("editor-landscape-large-font-retry")
         } finally {
             source.writeBytes(bytes)
-            shell("settings put system font_scale ${previousScale.toFloatOrNull() ?: 1f}")
-            shell("wm size reset")
-            finishEditor()
+            try { finishEditor() }
+            finally {
+                shell("settings put system font_scale ${previousScale.toFloatOrNull() ?: 1f}")
+                shell("wm size reset")
+            }
         }
     }
 
@@ -307,7 +309,21 @@ class ManualMvpScreenTest {
     private fun tapTag(tag: String) = onView(withTagValue(`is`(tag))).perform(scrollTo(), click())
     private fun finishEditor() {
         instrumentation.runOnMainSync { current()?.onBackPressedDispatcher?.onBackPressed() }
-        fixture.waitUntil("Back returns only after editor cleanup", 30_000) { current() == null }
+        // A destroyed editor root cannot regain the window focus required by Espresso.
+        val deadline = android.os.SystemClock.elapsedRealtime() + 30_000
+        while (true) {
+            var returned = false
+            instrumentation.runOnMainSync {
+                val monitor = ActivityLifecycleMonitorRegistry.getInstance()
+                val editors = listOf(Stage.RESUMED, Stage.STARTED, Stage.PAUSED, Stage.STOPPED, Stage.CREATED)
+                    .flatMap { monitor.getActivitiesInStage(it) }.filterIsInstance<ManualMvpActivity>()
+                val main = monitor.getActivitiesInStage(Stage.RESUMED).filterIsInstance<MainActivity>().singleOrNull()
+                returned = editors.isEmpty() && main?.hasWindowFocus() == true
+            }
+            if (returned) return
+            assertTrue("Back returns only after editor cleanup to focused Main", android.os.SystemClock.elapsedRealtime() < deadline)
+            android.os.SystemClock.sleep(25)
+        }
     }
     private fun shell(command: String): String = instrumentation.uiAutomation.executeShellCommand(command)
         .use { descriptor -> java.io.FileInputStream(descriptor.fileDescriptor).bufferedReader().readText() }
