@@ -16,7 +16,6 @@ else
   adb install -r "$report/app-mvp.apk"
 fi
 adb install -r app/build/outputs/apk/androidTest/mvp/app-mvp-androidTest.apk
-adb shell pm grant "$package" android.permission.READ_MEDIA_VIDEO
 adb shell pm grant "$package" android.permission.POST_NOTIFICATIONS
 adb shell svc wifi disable
 adb shell svc data disable
