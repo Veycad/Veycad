@@ -97,7 +97,7 @@ class FeatureIntegrationTest {
         pressBack()
         ui.awaitDisplayed(R.id.directorContent)
         ui.click(R.id.settingsButton)
-        ui.awaitText(R.id.settingsStyleValue, "DUALITY")
+        ui.awaitText(R.id.settingsStyleValue, "Диалог двух сцен")
         ui.awaitText(R.id.settingsQualityValue, "1080p")
     }
 

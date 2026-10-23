@@ -227,7 +227,9 @@ internal class EditSession internal constructor(
                 val completed = result.getOrNull()
                 mutableState.value = State(entry = completed?.first ?: previous,
                     exportOperationId = if (completed != null) exportOperationId else null,
-                    error = result.exceptionOrNull()?.message ?: completed?.second?.let {
+                    error = result.exceptionOrNull()?.let {
+                        MontageFailurePresentation.message(it, style.sourceCount)
+                    } ?: completed?.second?.let {
                         "Эдит сохранён. Связь с дублем восстановится при следующем запуске приложения."
                     })
             }
