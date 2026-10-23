@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:name=".UiTestApplication">
         <activity android:name=".UiImportRestartProbeActivity" android:exported="true" />
+        <activity android:name=".ShareReadActivity" android:exported="false" />
         <provider android:name=".UiFixtureProvider"
             android:authorities="${applicationId}.ui_fixtures"
             android:exported="false" android:grantUriPermissions="true" />

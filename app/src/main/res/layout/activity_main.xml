@@ -259,6 +259,17 @@
                 android:textColor="@color/render_button_text"
                 android:textSize="16sp" />
 
+            <Button
+                android:id="@+id/renderShareButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/surface_high"
+                android:enabled="false"
+                android:text="@string/create_and_share"
+                android:textAllCaps="false"
+                android:textColor="@color/text_primary" />
+
             <TextView
                 android:id="@+id/renderHint"
                 android:layout_width="match_parent"
@@ -325,6 +336,9 @@
                     android:backgroundTint="@color/surface_high" android:text="@string/text_result_action" android:textAllCaps="false" android:textColor="@color/text_primary" />
                 <Button android:id="@+id/saveButton" android:layout_width="match_parent" android:layout_height="58dp" android:layout_marginTop="14dp" android:backgroundTint="@color/neon" android:text="↓  Сохранить в галерею" android:textAllCaps="false" android:textColor="@color/white" android:textStyle="bold" />
                 <Button android:id="@+id/shareButton" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="8dp" android:backgroundTint="@color/surface_high" android:text="↗  Поделиться" android:textAllCaps="false" android:textColor="@color/text_primary" />
+                <TextView android:id="@+id/shareError" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" android:padding="12dp" android:textColor="@color/text_primary"
+                    android:visibility="gone" android:accessibilityLiveRegion="polite" />
                 <Button android:id="@+id/otherTakeButton" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="8dp" android:backgroundTint="@color/surface_high" android:text="@string/capture_other_take" android:textAllCaps="false" android:textColor="@color/text_primary" android:visibility="gone" />
             </LinearLayout>
             <Button android:id="@+id/newEditButton" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="8dp" android:backgroundTint="@android:color/transparent" android:text="＋  Создать новый" android:textAllCaps="false" android:textColor="@color/text_secondary" />

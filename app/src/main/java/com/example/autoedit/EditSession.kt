@@ -74,7 +74,9 @@ internal class EditSession internal constructor(
         val draftGeneration: Long = 0,
         val cleanupReport: TemporaryFileCleanup.Report? = null,
         val cleanupScope: TemporaryFileCleanup.Scope? = null,
-        val sourceSelectionConfirmed: Boolean = false
+        val sourceSelectionConfirmed: Boolean = false,
+        // Set only for successful publication by this render; previous/latest results have no identity.
+        val exportOperationId: String? = null
     )
 
     data class Draft(val files: List<File>, val names: List<String>, val music: BuiltInMusicCatalog.Selection)
@@ -260,7 +262,8 @@ internal class EditSession internal constructor(
         captureSessionId: String? = null,
         continuingCapturePreparation: Boolean = false,
         captureTakeOrdinal: Int? = null,
-        captureAutoRecommendation: Boolean = false
+        captureAutoRecommendation: Boolean = false,
+        exportOperationId: String? = null
     ) {
         withMediaWork {
             require(captureSessionId == null || captureTakeOrdinal != null)
@@ -332,6 +335,7 @@ internal class EditSession internal constructor(
                 mediaWork.post {
                     val completed = result.getOrNull()
                     publish(State(entry = completed?.first ?: previous,
+                        exportOperationId = if (completed != null) exportOperationId else null,
                         error = result.exceptionOrNull()?.let {
                             MontageFailurePresentation.message(it, style.sourceCount)
                         } ?: completed?.second?.let {
