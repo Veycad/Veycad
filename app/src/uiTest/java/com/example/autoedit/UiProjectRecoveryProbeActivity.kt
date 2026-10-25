@@ -46,9 +46,11 @@ internal class UiProjectRecoveryProbeActivity : AppCompatActivity() {
             val videoAsset = assets.importVideo(source, metadata.geometry.pixelAspectRatio)
             val style = MontageStyleCatalog.heartbeat
             val musicFile = BuiltInMusicCatalog.select(applicationContext, style.id).file
-            val duration = MediaMetadataRetriever().use { retriever ->
-                retriever.setDataSource(musicFile.path)
-                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() * 1_000
+            val duration = MediaMetadataRetriever().let { retriever ->
+                try {
+                    retriever.setDataSource(musicFile.path)
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() * 1_000
+                } finally { retriever.release() }
             }
             val music = assets.import(musicFile, ProjectAsset.Kind.AUDIO, duration)
             val graph = ManualMvpBasicGraph.create(listOf(source), music.id)
