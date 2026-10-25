@@ -519,7 +519,8 @@ object MediaCodecSpeedRampRenderer {
         val info = MediaCodec.BufferInfo()
         var ended = false
         val deadlineNs = System.nanoTime() + CODEC_STALL_TIMEOUT_NS
-        while (!ended) when (val index = encoder.dequeueOutputBuffer(info, 10_000)) {
+        // Between frames consume available packets; EOS still waits for delayed encoder output.
+        while (!ended) when (val index = encoder.dequeueOutputBuffer(info, if (endOfStream) 10_000L else 0L)) {
             MediaCodec.INFO_TRY_AGAIN_LATER -> {
                 if (!endOfStream) return
                 check(System.nanoTime() < deadlineNs) { "Video encoder stalled while finalizing output" }
