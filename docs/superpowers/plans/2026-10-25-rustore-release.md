@@ -18,7 +18,7 @@
 - No new editor, account, payments, analytics, cloud upload or aesthetic redesign in this release preparation.
 - Primary acceptance paths: gallery montage and text/subtitles. Auto camera and any other exposed feature must pass its own acceptance or have an explicit owner-approved deferral; do not silently remove it.
 - Keep Sigma's existing paused status. No revival in this work.
-- Permanent signing key/account availability is pending owner information. Never place secrets in source, logs or chat. No replacement signing identity without explicit agreement.
+- Owner confirmed no permanent signing key or RuStore account exists yet. Follow [account/signing preparation](../../release/account-and-signing.md). Never place secrets in source, logs or chat. No replacement signing identity without explicit agreement.
 - Each coherent implementation gets its own commit/PR. Merge only after owner approval and applicable checks; store submission is a separate approval.
 
 ## Realistic schedule
@@ -130,3 +130,5 @@ Consumes: verified current features and accepted build. Produces: honest listing
 - README's previous claim that duration/work limits were absent was stale. Existing owning source and tests confirm 60 s/240-observation preflight; README corrected and Task 3 narrowed to verification and measured fixes.
 - Documentation checks: listing title 26/30 characters, short copy 77/80; rights block unchanged. Fresh documentation review identified exact-binary reacceptance gap; Task 6 corrected.
 - UX copy execution: separate clean checkout `D:/CodexWork/VeycadRuStore-20261025-shallow`, branch `codex/rustore-ux-copy`, based on the same remote main. Existing failure-copy tests first failed in the two expected cases; full JVM/lint and instrumentation compilation started after the text change. Fresh diff review found no blocking copy issues; existing final progress overflow is tracked above. Native UI acceptance remains open.
+- PR #71: 1392 JVM tests and lint pass; targeted emulator UI 9/9 pass at 320x480/density160/font1.0 after replacing the test helper's whole-card scroll/click with title scroll/click. Initial 8/9 failure and fix are recorded in the PR. No physical-device or real-render acceptance inferred.
+- PR #72: final VERIFYING count corrected to N/N; JVM suite passed and independent review found no issues. Direct native regression for that producer event remains pending. Decision: keep the arithmetic fix one line rather than introduce a test-only abstraction; existing UI tests exercise formatting but do not prove the real producer's execution.
