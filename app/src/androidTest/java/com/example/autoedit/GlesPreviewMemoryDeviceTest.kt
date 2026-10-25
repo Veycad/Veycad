@@ -356,12 +356,16 @@ class GlesPreviewMemoryDeviceTest {
                 val frame = HighQualityFramePlan.build(GlesFrameCompositorDeviceTest.graph()).frames.first()
                 compositor.drawScheduled(frame, 0)
                 val active = fixture.pixels.copyOf()
+                assertEquals("Initial text frame GL error", GLES20.GL_NO_ERROR, GLES20.glGetError())
                 val charged = manager?.usedBytes
                 compositor.drawScheduled(frame.copy(outputTimeUs = 500_000, globalOutputTimeUs = 500_000), 0)
                 val ended = fixture.pixels.copyOf()
                 assertFalse("End-exclusive text must actually disappear from output pixels", active.contentEquals(ended))
-                repeat(12) { compositor.drawScheduled(frame, 0) }
-                assertArrayEquals(active, fixture.pixels)
+                repeat(12) { index ->
+                    compositor.drawScheduled(frame, 0)
+                    assertEquals("Repeated text frame $index GL error", GLES20.GL_NO_ERROR, GLES20.glGetError())
+                    assertArrayEquals("Repeated text frame $index, budgeted=${manager != null}", active, fixture.pixels)
+                }
                 if (manager != null) assertEquals(charged, manager.usedBytes)
                 active to ended
             } finally { compositor.close() }
