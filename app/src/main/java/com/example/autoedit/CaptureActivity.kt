@@ -132,13 +132,6 @@ class CaptureActivity : AppCompatActivity() {
                 if (frame.layoutParams.height != height) frame.layoutParams = frame.layoutParams.apply { this.height = height }
             }
         }
-        findViewById<View>(R.id.captureActionBar).addOnLayoutChangeListener { bar, _, _, _, _, _, _, _, _ ->
-            findViewById<View>(R.id.captureRoot).let { root ->
-                val bottom = bar.height + (16 * resources.displayMetrics.density).toInt()
-                if (root.paddingBottom != bottom)
-                    root.setPadding(root.paddingLeft, root.paddingTop, root.paddingRight, bottom)
-            }
-        }
         findViewById<Button>(R.id.captureBack).setOnClickListener { leave() }
         findViewById<Button>(R.id.captureFlip).setOnClickListener {
             if (!owner.state.value!!.busy && countdown == 0) { front = !front; bindCamera() }
