@@ -148,7 +148,7 @@
                 android:maxLines="2"
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
-                android:text="1 видео · от 15 секунд"
+                android:text="1 видео · 15–60 секунд"
                 android:textColor="@color/text_muted"
                 android:textSize="12sp" />
 

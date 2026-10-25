@@ -57,7 +57,7 @@ class StylePickerScreenTest {
         ui.recreate()
         ui.awaitDisplayed(R.id.directorContent)
         onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Динамичный бит")))
-        onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · от 15 секунд")))
+        onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · 15–60 секунд")))
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
     }
 
