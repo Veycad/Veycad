@@ -125,6 +125,10 @@ Consumes: verified current features and accepted build. Produces: honest listing
 
 ## Execution notes
 
+- 2026-10-26: [combined PR #70–81 receipt](../../release/integration-2026-10-26.md). No textual conflicts; combined baseline 1392 JVM + 338 Python, lint/security/build and instrumentation compilation pass. Selected Android tests: 14/18 pass, four fail. This is not a release or full UI pass. Exact heads, tree, APK hash and per-test results are recorded; no PR merged.
+- PR #79: reproduced controller shutdown race fixed; 640 stop requests and JVM/lint passed. PR #80: oversized native PCM outputs read in bounded portions; all samples/PTS verified, 15 Android tests and clean baseline passed. PR #81 depends on #79: Activity retirement waits for render callback before closing jobs; corrected owner-boundary regression reproduced the real crash before the fix, then both targeted Android tests and baseline passed. All three regressions also passed in the combined snapshot.
+- Next: repair ambiguous custom-music selection in the shared UI fixture, investigate manual preview MP4 assertion, minute-project paused readiness and preview text pixel parity. Investigate the CI/local direct-frame discrepancy. Then repeat affected checks and acceptance on the updated combined tree; do not mark the broad Task 3/4 gates complete from the narrow passes.
+
 - 2026-10-25: active goal created. Historical checkout fetch failed on Codex checkpoint refs; clean clone used instead. Clone completed file checkout but Git blocked automatically installed Git LFS post-checkout hook; clean `git status` and materialized tracked model were verified, no protection override used.
 - Signing/account question sent to owner; no secret requested. No store submission, device acceptance or release pass claimed.
 - README's previous claim that duration/work limits were absent was stale. Existing owning source and tests confirm 60 s/240-observation preflight; README corrected and Task 3 narrowed to verification and measured fixes.
