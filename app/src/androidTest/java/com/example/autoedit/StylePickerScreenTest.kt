@@ -8,7 +8,6 @@ import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.not
 import org.hamcrest.Matchers.startsWith
 import org.junit.Assert.assertEquals
@@ -20,15 +19,11 @@ import org.junit.runner.RunWith
 class StylePickerScreenTest {
     @get:Rule val ui = UiTestFixtureRule()
 
-    private fun pickPending(title: String) {
-        onView(allOf(isClickable(), hasDescendant(withText(title)))).perform(scrollTo(), click())
-    }
-
     @Test fun all_styles_opens_the_same_picker_and_cancel_preserves_the_selected_style() {
         ui.launch()
         ui.click(R.id.allStylesButton)
         onView(withText("Выбрать стиль")).check(matches(isDisplayed()))
-        pickPending("FEAR")
+        ui.pickPendingStyle("FEAR")
         assertEquals(null, ui.context.getSharedPreferences("montage_style", Context.MODE_PRIVATE)
             .getString("selected", null))
         onView(withText("Отмена")).perform(click())
@@ -41,7 +36,7 @@ class StylePickerScreenTest {
         ui.launch()
         ui.importVideos("portrait.mp4")
         ui.click(R.id.selectStyleButton)
-        pickPending("DUALITY")
+        ui.pickPendingStyle("DUALITY")
         pressBack()
         onView(withId(R.id.selectStyleButton)).check(matches(withSubstring("Пульс под музыку")))
         onView(withId(R.id.videoSelection)).check(matches(withText("portrait.mp4")))
