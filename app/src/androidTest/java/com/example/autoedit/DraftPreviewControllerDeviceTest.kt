@@ -20,6 +20,31 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DraftPreviewControllerDeviceTest {
+    @Test fun overlappingStopsAndCloseAcknowledgeEveryCallerWithoutLateExecutorWork() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(20) {
+            val stopped = CountDownLatch(32)
+            val callbacks = java.util.concurrent.atomic.AtomicInteger()
+            lateinit var controller: DraftPreviewController
+            instrumentation.runOnMainSync {
+                controller = DraftPreviewController {}
+                repeat(32) { index ->
+                    controller.stopAndRelease(keepPrepared = index % 2 == 0) {
+                        callbacks.incrementAndGet()
+                        stopped.countDown()
+                    }
+                }
+                controller.close()
+                controller.close()
+            }
+            assertTrue("Every stop must be acknowledged", stopped.await(10, TimeUnit.SECONDS))
+            val closed = CountDownLatch(1)
+            instrumentation.runOnMainSync { controller.stopAndRelease { closed.countDown() } }
+            assertTrue("Already closed must acknowledge stop", closed.await(10, TimeUnit.SECONDS))
+            assertEquals(32, callbacks.get())
+        }
+    }
+
     @Test fun pausedNormalMinuteDropsProducerAnalysisAndKeepsOnlyBoundedOwnedPages() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
