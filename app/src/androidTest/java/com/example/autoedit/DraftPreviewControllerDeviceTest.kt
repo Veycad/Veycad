@@ -54,12 +54,14 @@ class DraftPreviewControllerDeviceTest {
             assertTrue("Owned preparation callback", prepared.await(60, TimeUnit.SECONDS))
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
             var ready: DraftPreviewController.State? = null
+            val observed = mutableListOf<DraftPreviewController.State>()
             while (System.nanoTime() < deadline && ready == null) {
                 val state = states.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                observed += state
                 assertNull(state.error)
                 if (state.exactFrameReady) ready = state
             }
-            assertNotNull("Actual paused native display must be ready", ready)
+            assertNotNull("Actual paused native display must be ready; states=$observed; image=${pixel.count == 0L}", ready)
             assertFalse(ready!!.playing)
             assertTrue("Prepared pages and actual GL share one 32 MiB owner: ${ready.appOwnedBytes}",
                 ready.appOwnedBytes in 1..(32L * 1024 * 1024))
