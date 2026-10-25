@@ -80,6 +80,7 @@ class StylePickerScreenTest {
     @Test fun scrolling_the_last_choice_keeps_apply_and_cancel_fully_accessible() {
         ui.launch()
         ui.click(R.id.selectStyleButton)
+        onView(withText("Пульс под музыку")).check(matches(isCompletelyDisplayed()))
         onView(withText("Next Portrait")).perform(scrollTo())
         onView(withText("Next Portrait")).check(matches(isDisplayed()))
         onView(withText("Применить")).check(matches(isCompletelyDisplayed()))

@@ -15,7 +15,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatButton
 
-/** A bounded central dialog: only the choices scroll, never the actions. */
+/** A bounded central dialog: explanatory text scrolls with choices, never the actions. */
 internal object StylePickerDialog {
     fun show(activity: AppCompatActivity, styles: List<MontageStyleCatalog.Style>, selectedId: String,
         onApply: (MontageStyleCatalog.Style) -> Unit): Dialog {
@@ -42,14 +42,14 @@ internal object StylePickerDialog {
             androidx.core.view.ViewCompat.setAccessibilityHeading(this,true)
         }
         root.addView(title)
-        root.addView(label("Смотри примеры и выбирай настроение\nБез звука · каждый пример 3 секунды",14f,R.color.text_secondary),
-            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8); bottomMargin=dp(20) })
         val scroll = ScrollView(activity).apply {
             isFillViewport = false
             isVerticalScrollBarEnabled = true
             isScrollbarFadingEnabled = false
         }
         val list = LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
+        list.addView(label("Смотри примеры и выбирай настроение\nБез звука · каждый пример 3 секунды",14f,R.color.text_secondary),
+            LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8); bottomMargin=dp(20) })
         scroll.addView(list,ViewGroup.LayoutParams(-1,-2))
         root.addView(scroll,LinearLayout.LayoutParams(-1,-2))
         val rows = mutableListOf<Triple<MontageStyleCatalog.Style,View,TextView>>()
