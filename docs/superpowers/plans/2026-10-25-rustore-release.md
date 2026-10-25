@@ -34,7 +34,7 @@ Planning estimate, not a release date: 10–18 working days of engineering and r
 | 5. Store/GitHub materials | 1–2 days | Accurate listing, current screenshots, policy and rights inventory |
 | 6. Release handoff | 1–2 days | Signed verified package and update test; owner-approved submission |
 
-Stages 2 and 5 can overlap. Other stores are evaluated after the RuStore candidate is accepted; their account eligibility and policies need a separate current check.
+Stages 2 and 5 can overlap. Other stores are evaluated after the RuStore candidate is accepted; their account eligibility and policies need a separate current check. See the [AppGallery/Galaxy Store sequence and gates](../../release/other-android-stores.md); account verification and moderation are outside engineering estimates.
 
 ## Review focus
 
