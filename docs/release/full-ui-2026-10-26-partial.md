@@ -69,3 +69,29 @@
 `D:/CodexWork/veycad-integration-v3-full-ui.log`. Физическая arm64/no-GMS
 приёмка, просмотр/прослушивание результатов и проверка подписанного release APK
 остаются открытыми. API 26 AVD содержит Google APIs и не закрывает no-GMS gate.
+
+### V3: обнаруженные ошибки до завершения прогона
+
+Runner продолжает работу; следующий список не является итоговым XML-отчётом.
+На этапе запуска сценария №135 зарегистрированы четыре ошибки:
+
+| Сценарий | Свидетельство |
+| --- | --- |
+| CaptureReviewScreenTest.automaticChoiceSurvivesRecreationAfterOpeningSpecificResultTake | SyntheticVideo.create:57, Synthetic AVC encoding timed out до открытия Activity |
+| GlesFrameCompositorDeviceTest.surface_texture_metadata_rotation_is_not_applied_twice | Строка 386, compositionPixels отличаются уже в байте 0: -1 против 0 |
+| GlesFrameCompositorDeviceTest.supplied_manual_window_has_display_encoder_parity_and_centered_legacy_parity | Строка 197, display/encoder compositionPixels: 0 против -1 в байте 0 |
+| ManualMvpScreenTest.importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision | Строка 124, Espresso RootViewWithoutFocusException после перехода в landscape |
+
+Для первой ошибки logcat показывает работу кодера вплоть до лимита 20 секунд:
+MPEG4Writer получил 1735 кадров из ожидаемых 1770 (59 секунд × 30 fps).
+Это свидетельство незавершённой генерации, а не доказательство причины замедления.
+Прежняя ошибка перекрытия picker здесь не воспроизведена: сценарий не дошёл до неё.
+Таймауты и pixel assertions не ослаблялись. Причины GLES-различий и ошибки
+landscape пока не установлены; нельзя объявлять их просто особенностью эмулятора.
+
+Все четыре DraftPreviewControllerDeviceTest в V3 завершились успешно, включая
+native overlap/export и проверку освобождения producer-данных; это узкий PASS,
+который не отменяет четыре ошибки выше. После завершения полного прогона нужны
+изолированные воспроизведения ошибок на тех же APK и сбор более точных данных.
+Локальные логи: `veycad-integration-v3-full-ui.log`,
+`veycad-integration-v3-live-logcat.txt`, `veycad-integration-v3-gles-logcat.txt`.
