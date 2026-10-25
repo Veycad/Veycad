@@ -66,6 +66,7 @@ Consumes: existing session states and typed failures. Produces: clearer copy and
 - [ ] Search every caller and existing copy assertion before editing shared presentation helpers.
 - [ ] Replace codec/candidate jargon with actionable Russian; retain technical errors in diagnostics. Never describe a limited failed search as proof that the entire source is unsuitable.
 - [ ] Explain source count/duration and style suitability before render; make DUALITY input order clear.
+- [ ] Fix the existing final `VERIFYING` progress event in `VeycadAutomaticEditor`: it reports `alternatives.size + 1` completed against `alternatives.size` total. Add regression coverage for the final-selection stage; preserve actual progress rather than merely hiding invalid values in text.
 - [ ] Unify visible Veykad → Veycad without renaming storage keys, package IDs or historical evidence.
 - [ ] Check and fix recovery from error, save/share states, navigation, touch targets, font scaling and accessibility labels using current UI.
 - [ ] Run affected JVM/UI checks, then capture native screens. Commit and PR with visual acceptance still explicit.
@@ -128,3 +129,4 @@ Consumes: verified current features and accepted build. Produces: honest listing
 - Signing/account question sent to owner; no secret requested. No store submission, device acceptance or release pass claimed.
 - README's previous claim that duration/work limits were absent was stale. Existing owning source and tests confirm 60 s/240-observation preflight; README corrected and Task 3 narrowed to verification and measured fixes.
 - Documentation checks: listing title 26/30 characters, short copy 77/80; rights block unchanged. Fresh documentation review identified exact-binary reacceptance gap; Task 6 corrected.
+- UX copy execution: separate clean checkout `D:/CodexWork/VeycadRuStore-20261025-shallow`, branch `codex/rustore-ux-copy`, based on the same remote main. Existing failure-copy tests first failed in the two expected cases; full JVM/lint and instrumentation compilation started after the text change. Fresh diff review found no blocking copy issues; existing final progress overflow is tracked above. Native UI acceptance remains open.
