@@ -36,6 +36,7 @@ Source: existing `dexter-matte-reference.mp4`, 18.033 seconds, 720x720, 30 fps. 
 - A25 supplementary native regression run: 11/12 passed. Native export, default small probe, 30/60 fps seeking/EOS and cancellation/cleanup cases passed. `VideoDecoderCursorDeviceTest.normalized_first_advance_without_begin_range_adds_raw_origin_exactly_once` fails its fixture keyframe precondition at line 34, before creating a decoder. The exact same test fails on the untouched baseline APK. This pre-existing device-dependent fixture issue is not fixed or reported as a passing test here.
 - Early setup attempts with software GPU and an unsmudged Git LFS model were excluded. Both accepted APK variants contain the verified real model; within each ABI, ZIP entry content differs only in the application DEX.
 - No codec quality settings or analysis sampling were reduced. No proof is claimed for other footage, longer sustained thermal loads, other devices, resolutions or codec combinations. Human editorial acceptance and the full UI suite are separate from this bounded performance/quality comparison.
+- Fresh independent review found no Critical, Important or Minor findings and independently repeated all 48 export comparisons and verified the six APK/eight report hashes. No injected MPImage-construction failure or driver hang was tested; exceptional ownership/cleanup was reviewed in code. [Draft PR #69](https://github.com/Veycad/Veycad/pull/69) retains these limits and awaits CI/human acceptance.
 
 ## Reproduction
 

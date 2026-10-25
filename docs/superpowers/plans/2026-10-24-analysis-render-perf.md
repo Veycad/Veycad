@@ -40,7 +40,7 @@
 - [x] In `MediaCodecSpeedRampRenderer.drainEncoder`, use timeout 0 between frames and 10000 us while draining EOS. Preserve error handling and stall guard.
 - [x] Run baseline/optimized/baseline/optimized blocks with warmup and repeat samples. Verify complete MP4 decode, per-frame hashes/PTS and decoded PCM against baseline.
 - [x] Run `clean baselineVerify`, native smoke, provider/exact-matte checks, cancellation and applicable regressions; see the explicit baseline fixture failure and local lint rerun below.
-- [ ] Commit separately, obtain fresh review, publish draft PR with exact results and device limitations. Do not merge.
+- [x] Commit separately, obtain fresh review, publish draft PR with exact results and device limitations. PR #69; not merged.
 
 ## Execution record
 
@@ -51,3 +51,8 @@
 - Task 2: Ruling: A25's existing normalized-origin regression fails its generated-fixture keyframe precondition on both baseline and optimized APKs, before the decoder under test is constructed. Leave the unrelated fixture unchanged and report 11/12 supplementary tests; this one decoder scenario remains unverified on A25.
 - 1,392 JVM and 340 Python tests pass. The initial clean gate failed solely on this worktree's ignored SDK-path escaping; fixed it and reran lint analysis/report explicitly, then `baselineVerify` passed (0 lint errors, 42 existing warnings).
 - Exact protocol, raw measurements, APK hashes and limitations: [performance report](../../reports/analysis-render-perf-20261025.md).
+- Final review: independent fresh reviewer found no Critical, Important or Minor findings. Independently rechecked all 48 decoded exports, six APK hashes and eight report hashes against the retained evidence.
+- Final: Ruling: long-running backpressure, thermal throttling and other devices/resolutions/codecs remain outside the short measured scenario; no broad speed or liveness guarantee is made. Cost if extrapolated incorrectly: slower or stalled exports on an untested workload.
+- Final: Ruling: normalized-origin native scenario remains blocked by the unchanged fixture precondition on A25; retain the explicit 11/12 result. Cost: this decoder scenario lacks device acceptance until that separate fixture is corrected.
+- Final: Ruling: full UI, subjective editorial acceptance and total automatic-pipeline speed remain outside these measurements; PR stays draft with CI/human acceptance pending. Cost if inferred from these results: unrelated regressions or overall latency could go unnoticed.
+- Final: Ruling: MPImage-construction failure and driver-hang fault injection were not performed; ownership and cleanup are reviewed and existing EOS deadline is unchanged. Cost: exceptional native-resource behavior lacks injected-failure runtime evidence.
