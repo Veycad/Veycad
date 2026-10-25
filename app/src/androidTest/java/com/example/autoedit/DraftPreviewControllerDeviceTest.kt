@@ -8,6 +8,7 @@ import android.os.Looper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -48,7 +49,8 @@ class DraftPreviewControllerDeviceTest {
         }
         // The helper deliberately returns no project/graph/plane. An accidentally retained UI or
         // executor closure therefore keeps these real 120 MiB producer arrays observable here.
-        val producers = prepareNormalMinute(controller, assets, source, score, inspected, settings, output, prepared)
+        val released = ReferenceQueue<Any>()
+        val producers = prepareNormalMinute(controller, assets, source, score, inspected, settings, output, prepared, released)
         var ownedPages = emptyList<File>()
         try {
             assertTrue("Owned preparation callback", prepared.await(60, TimeUnit.SECONDS))
@@ -72,12 +74,16 @@ class DraftPreviewControllerDeviceTest {
             assertEquals("Large analysis uses one exact owned spool", 1, ownedPages.size)
             assertTrue(ownedPages.single().length() >= 120L * 1024 * 1024)
             val gcDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-            while (producers.any { it.get() != null } && System.nanoTime() < gcDeadline) {
+            var collected = 0
+            // Poll notifications, not referents: get() can keep the observed project alive across GC.
+            while (collected < producers.size && System.nanoTime() < gcDeadline) {
                 Runtime.getRuntime().gc()
                 System.runFinalization()
                 instrumentation.waitForIdleSync()
+                while (released.poll() != null) collected++
                 Thread.sleep(50)
             }
+            assertEquals("Every producer must be collected", producers.size, collected)
             assertTrue("Paused production controller must not retain the input project or any producer float array",
                 producers.all { it.get() == null })
             assertFalse(output.exists())
@@ -98,7 +104,8 @@ class DraftPreviewControllerDeviceTest {
 
     private fun prepareNormalMinute(controller: DraftPreviewController, assets: ProjectAssetStore,
         source: ProjectAsset, score: ProjectAsset, inspected: MediaSource,
-        settings: ProjectExportSettings, output: File, prepared: CountDownLatch): List<WeakReference<*>> {
+        settings: ProjectExportSettings, output: File, prepared: CountDownLatch,
+        released: ReferenceQueue<Any>): List<WeakReference<*>> {
         val frames = List(240) { index -> FrameAttachments(index * 250_000L,
             mask = FrameAttachments.Plane(256, 256, FloatArray(256 * 256) { (index + 1) / 1000f }, .9f),
             depth = FrameAttachments.Plane(256, 256, FloatArray(256 * 256) { .7f }, .8f)) }
@@ -111,8 +118,8 @@ class DraftPreviewControllerDeviceTest {
         val revision = imported.current.copy(visualSettings = ProjectVisualSettings(ProjectAspect.SQUARE_1_1, true),
             audioMix = AudioMixSettings(AudioMixMode.SOURCE))
         val project = imported.copy(original = revision, current = revision)
-        val references = listOf(WeakReference(project)) + frames.flatMap {
-            listOf(WeakReference(it.mask!!.values), WeakReference(it.depth!!.values))
+        val references = listOf(WeakReference(project, released)) + frames.flatMap {
+            listOf(WeakReference(it.mask!!.values, released), WeakReference(it.depth!!.values, released))
         }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             controller.prepareAndOpen(project, settings, assets, output,
