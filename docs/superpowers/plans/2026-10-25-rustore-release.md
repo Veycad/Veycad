@@ -51,7 +51,7 @@ Consumes: current main and installed Android/JDK/NDK tools. Produces: exact buil
 
 - [x] Read current main, repository contribution rules, RuStore publication/signature requirements.
 - [x] Isolate changes from historical dirty checkout and create task branch.
-- [ ] Run `gradlew.bat baselineVerify` with configured JDK/SDK/Python; record failures without calling them regressions until compared to base.
+- [x] Run `gradlew.bat baselineVerify` with configured JDK/SDK/Python; record failures without calling them regressions until compared to base. [Baseline receipt](../../release/baseline-2026-10-25.md): 1392 JVM + 338 Python, build/lint/security passed; no release/device verdict.
 - [ ] Inspect release manifest, all runtime features/build flags, native payload and model/music licenses.
 - [ ] Configure external release signing inputs without debug fallback; fail clearly when signing is requested but inputs are missing. Keep unsigned verification possible without secrets.
 - [ ] Build release APK; verify signature, application ID, version, non-debuggable state, debug component exclusion and package size. Record SHA-256, source SHA, certificate fingerprint and tool versions.
