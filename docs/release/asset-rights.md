@@ -13,7 +13,7 @@
 | `selfie_multiclass_256x256.tflite` | [README модели](../../app/src/main/assets/models/README.md): источник Google, карточка модели, SHA-256, заявленная Apache-2.0 | Сверить условия именно модели, сохранить нужный текст лицензии/уведомления в поставке; README сам по себе не заменяет текст лицензии |
 | `speech/ggml-base.bin` | `prepareSpeechAssets`: revision `5359861c739e955e79d9a303bcbc70fb988958b1`, SHA-256 `60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe`; `assets/licenses/whisper-model.txt` | Перепроверить наличие модели и MIT-уведомления в финальном APK |
 | whisper.cpp | CMake закрепляет `48f628a84833905ee4a0658ee6d4a5c915ce1997`; MIT-текст в `assets/licenses/whisper.txt` | Проверить уведомления включённого native-кода и транзитивных компонентов |
-| AndroidX, Material, CameraX, ML Kit, MediaPipe и транзитивные зависимости | Прямые зависимости в `app/build.gradle.kts` | Собрать перечень реально разрешённых версий и необходимых уведомлений; два Whisper-файла не покрывают остальные зависимости |
+| AndroidX, Material, CameraX, ML Kit, MediaPipe и транзитивные зависимости | [119 разрешённых release-артефактов с хешами и лицензионными свидетельствами](dependencies-2026-10-26.md) | Проверить встроенные LICENSE/NOTICE и условия, подготовить необходимые уведомления и сверить финальный APK; два Whisper-файла не покрывают остальные зависимости |
 
 ## Проверенные сведения
 
