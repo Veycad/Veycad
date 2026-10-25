@@ -49,6 +49,8 @@ class ManualMvpScreenTest {
             assertTrue("Preview owners must stop before fixture cleanup", android.os.SystemClock.elapsedRealtime() < deadline)
             android.os.SystemClock.sleep(25)
         }
+        assertFalse("Retired editor must remove all preview/export temporary files",
+            File(fixture.context.cacheDir, "manual-renders").walkTopDown().any { it.isFile })
     }
 
     @Test fun importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision() {
@@ -65,8 +67,14 @@ class ManualMvpScreenTest {
             assertSurfacePixels()
             capture("editor-${aspect.name}-paused")
         }
-        assertFalse("Preview must never create an MP4", File(fixture.context.cacheDir, "manual-renders")
-            .walkTopDown().any { it.isFile })
+        val previewDirectory = File(fixture.context.cacheDir, "manual-renders")
+        val previewFiles = previewDirectory.walkTopDown().filter { it.isFile }.toList()
+        assertTrue("Preview must not create video or unknown files: ${previewFiles.map { it.relativeTo(previewDirectory) }}",
+            previewFiles.all { file ->
+                file.parentFile == File(previewDirectory, "preview-audio") &&
+                    ((file.name.startsWith("project-audio-") && file.extension == "wav") ||
+                        (file.name.startsWith("project-speech-") && file.extension == "pcm"))
+            })
         onView(withText(containsString("2. B ·"))).perform(scrollTo(), click())
         fixture.waitUntil("selected B") { view<TextView>("selected-clip")?.text?.contains("B") == true && ready() }
         onView(withText("Конец −1")).perform(scrollTo(), click())
