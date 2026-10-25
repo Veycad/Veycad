@@ -258,7 +258,7 @@ internal object VeycadAutomaticEditor {
             RenderedCandidateSelector.Candidate(candidate, candidate.alternative.graph, candidate.acceptance)
         })
         val selectedIndex = candidates.indexOf(selection.candidate.value)
-        request.onProgress(Progress(Stage.VERIFYING, alternatives.size + 1, alternatives.size))
+        request.onProgress(Progress(Stage.VERIFYING, alternatives.size, alternatives.size))
         var winner: Candidate = selection.candidate.value
         if (selectedIndex in candidates.indices &&
             candidates[selectedIndex].alternative.graph.frameAttachments.maskRefinements.isEmpty()) {
