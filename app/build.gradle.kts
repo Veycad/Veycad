@@ -94,6 +94,9 @@ android {
     }
 
     buildTypes {
+        getByName("release") {
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
+        }
         create("manualMvp") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".preview"
