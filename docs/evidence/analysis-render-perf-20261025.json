@@ -1,0 +1,643 @@
+{
+  "baseline_commit": "beca0960fbac96837e39a92ed751909eb9e83715",
+  "date": "2026-10-25",
+  "ffmpeg_version": "9.0.2-essentials_build",
+  "apk_provenance": {
+    "baseline-model.apk": {
+      "sha256": "98505f95c88a3bc70798c9a0a9b2f4409dd9dbfb2dd35b8616b117b37829472f",
+      "bytes": 229514642,
+      "model_sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+    },
+    "optimized-model.apk": {
+      "sha256": "32135cdb8b2d8e6a529942c59e7f80a2f0e9e26ec0da78d770693a3940218aeb",
+      "bytes": 227777525,
+      "model_sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+    },
+    "probe-final.apk": {
+      "sha256": "0830300d19709657c6982a84f81eff7bcc86dd4cd9b0e7a8e197dbb293bdec99",
+      "bytes": 2374133
+    },
+    "baseline-arm.apk": {
+      "sha256": "b6aae160609b54a26191e35e31f628f300150e0513c1b8303e23c36b732fdc2a",
+      "bytes": 224307421,
+      "model_sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+    },
+    "optimized-arm.apk": {
+      "sha256": "d6571e2a2c0a9768517db219d40201ddad449b622bf94c061f404aa0982aaa4b",
+      "bytes": 222570304,
+      "model_sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+    },
+    "probe-arm.apk": {
+      "sha256": "08f6d557751942233a98a153757a9bda81be1e4108a47952974d51e312d5a709",
+      "bytes": 1885524
+    }
+  },
+  "comparisons": {
+    "a25": {
+      "device": "SM-A256E",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "exact_matte_sha256": "b71539237bc1fcbb02e14b982668b07a723a71afdcdd15131ea7bbf6e7fc091b",
+      "decoded_exports_checked": 24,
+      "decoded_media_identical": true,
+      "reports": [
+        {
+          "folder": "baseline-a25-a",
+          "report_sha256": "5a210f7df8bf7c6c871044eae21968ae9d754409ba3169a0b7455b41e03b4b59"
+        },
+        {
+          "folder": "baseline-a25-b",
+          "report_sha256": "ff97a2671a1cbba5b98941611182af6afa6a2f170dea9c771d8570b5b6614fbf"
+        },
+        {
+          "folder": "optimized-a25-a",
+          "report_sha256": "3e091d72d6d4b6611e6deb849046fd94249b8f7e587ae19cd05d34106d58da9c"
+        },
+        {
+          "folder": "optimized-a25-b",
+          "report_sha256": "b47e0f164f447b2e78ef994fe947de8edad0c4c215e99bc5743945954f305678"
+        }
+      ],
+      "timings": {
+        "frame_decode_ns": {
+          "baseline_ms": 5084.3071885,
+          "optimized_ms": 4932.4241315,
+          "reduction_percent": 2.9872911169399536,
+          "baseline_samples_ms": [
+            5210.106496,
+            5164.451689,
+            5178.663727,
+            4797.850804,
+            4910.328996,
+            5004.162688
+          ],
+          "optimized_samples_ms": [
+            4835.53492,
+            4634.193728,
+            4891.022805,
+            4973.825458,
+            4988.452342,
+            5116.267574
+          ]
+        },
+        "render_30_ns": {
+          "baseline_ms": 5395.5749775,
+          "optimized_ms": 4133.504901,
+          "reduction_percent": 23.390835671136774,
+          "baseline_samples_ms": [
+            5357.946957,
+            5392.076843,
+            5326.06392,
+            5412.403611,
+            5477.070111,
+            5399.073112
+          ],
+          "optimized_samples_ms": [
+            4059.614035,
+            4127.87492,
+            4061.679881,
+            4139.134882,
+            4147.389881,
+            4389.911459
+          ]
+        },
+        "render_60_ns": {
+          "baseline_ms": 7287.6662065,
+          "optimized_ms": 4614.2817855,
+          "reduction_percent": 36.68368370954697,
+          "baseline_samples_ms": [
+            7243.029572,
+            7332.302841,
+            7191.721495,
+            7624.600033,
+            7129.489649,
+            7417.070918
+          ],
+          "optimized_samples_ms": [
+            4575.279959,
+            4680.757073,
+            4621.300535,
+            4510.191112,
+            4678.622535,
+            4607.263036
+          ]
+        }
+      }
+    },
+    "emulator": {
+      "device": "Android SDK built for x86_64",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "exact_matte_sha256": "9e3168248ae097cd9c0cd7ab3bb87dd6acf83f203581c1ca4a8f941696953f8f",
+      "decoded_exports_checked": 24,
+      "decoded_media_identical": true,
+      "reports": [
+        {
+          "folder": "baseline-model-a",
+          "report_sha256": "f3710f22450828a75d1cee9f055beedd8bb31979ba624b65186a3d94ff4153cf"
+        },
+        {
+          "folder": "baseline-model-b",
+          "report_sha256": "017f41a2ec4881269360798ecc8cec44e1a497ce02f356dbfcff6eb3250de297"
+        },
+        {
+          "folder": "optimized-model-a",
+          "report_sha256": "78f325c7231f6178d617f12462958f9b29ceb0155ff63799e66c800059b11b84"
+        },
+        {
+          "folder": "optimized-model-b",
+          "report_sha256": "5e2905caadd2e6f71ed27e17a463fc19c5eb0436907143c041f3a9daa3559e10"
+        }
+      ],
+      "timings": {
+        "frame_decode_ns": {
+          "baseline_ms": 9876.89,
+          "optimized_ms": 9829.88555,
+          "reduction_percent": 0.4759033460937603,
+          "baseline_samples_ms": [
+            9608.5082,
+            10520.6428,
+            9892.7198,
+            9861.0602,
+            9799.9947,
+            10152.7359
+          ],
+          "optimized_samples_ms": [
+            8963.3681,
+            9437.0246,
+            9874.6262,
+            9785.1449,
+            9876.4336,
+            9890.116
+          ]
+        },
+        "render_30_ns": {
+          "baseline_ms": 11209.5654,
+          "optimized_ms": 9566.762,
+          "reduction_percent": 14.655371028032897,
+          "baseline_samples_ms": [
+            11198.6193,
+            11541.5968,
+            12228.2614,
+            10996.348,
+            11220.5115,
+            11107.9672
+          ],
+          "optimized_samples_ms": [
+            9409.9115,
+            9690.7901,
+            9442.7339,
+            10293.508,
+            9179.2029,
+            9703.4217
+          ]
+        },
+        "render_60_ns": {
+          "baseline_ms": 15347.85785,
+          "optimized_ms": 12998.4471,
+          "reduction_percent": 15.30774374483798,
+          "baseline_samples_ms": [
+            15553.2896,
+            14429.1297,
+            15142.4261,
+            15840.6026,
+            15631.8874,
+            14962.4371
+          ],
+          "optimized_samples_ms": [
+            12586.8889,
+            12829.3324,
+            13571.9114,
+            12688.5494,
+            13412.4243,
+            13167.5618
+          ]
+        }
+      }
+    }
+  },
+  "raw_reports": {
+    "baseline-a25-a": {
+      "run": "baseline-a25-a",
+      "device": "SM-A256E",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "samples": [
+        {
+          "iteration": 0,
+          "warmup": true,
+          "frame_decode_ns": 6765083111,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 6254598380,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 7267745380,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 1,
+          "warmup": false,
+          "frame_decode_ns": 5210106496,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 5357946957,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 7243029572,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 2,
+          "warmup": false,
+          "frame_decode_ns": 5164451689,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 5392076843,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 7332302841,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 3,
+          "warmup": false,
+          "frame_decode_ns": 5178663727,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 5326063920,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 7191721495,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        }
+      ],
+      "exact_matte_sha256": "b71539237bc1fcbb02e14b982668b07a723a71afdcdd15131ea7bbf6e7fc091b",
+      "status": "ok"
+    },
+    "baseline-a25-b": {
+      "run": "baseline-a25-b",
+      "device": "SM-A256E",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "samples": [
+        {
+          "iteration": 0,
+          "warmup": true,
+          "frame_decode_ns": 5386198304,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 5602940880,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 7123534265,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 1,
+          "warmup": false,
+          "frame_decode_ns": 4797850804,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 5412403611,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 7624600033,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 2,
+          "warmup": false,
+          "frame_decode_ns": 4910328996,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 5477070111,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 7129489649,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 3,
+          "warmup": false,
+          "frame_decode_ns": 5004162688,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 5399073112,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 7417070918,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        }
+      ],
+      "exact_matte_sha256": "b71539237bc1fcbb02e14b982668b07a723a71afdcdd15131ea7bbf6e7fc091b",
+      "status": "ok"
+    },
+    "optimized-a25-a": {
+      "run": "optimized-a25-a",
+      "device": "SM-A256E",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "samples": [
+        {
+          "iteration": 0,
+          "warmup": true,
+          "frame_decode_ns": 5273986496,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 4320952228,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 4736017689,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 1,
+          "warmup": false,
+          "frame_decode_ns": 4835534920,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 4059614035,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 4575279959,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 2,
+          "warmup": false,
+          "frame_decode_ns": 4634193728,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 4127874920,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 4680757073,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 3,
+          "warmup": false,
+          "frame_decode_ns": 4891022805,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 4061679881,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 4621300535,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        }
+      ],
+      "exact_matte_sha256": "b71539237bc1fcbb02e14b982668b07a723a71afdcdd15131ea7bbf6e7fc091b",
+      "status": "ok"
+    },
+    "optimized-a25-b": {
+      "run": "optimized-a25-b",
+      "device": "SM-A256E",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "samples": [
+        {
+          "iteration": 0,
+          "warmup": true,
+          "frame_decode_ns": 5096625073,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 4235123612,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 4650056574,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 1,
+          "warmup": false,
+          "frame_decode_ns": 4973825458,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 4139134882,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 4510191112,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 2,
+          "warmup": false,
+          "frame_decode_ns": 4988452342,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 4147389881,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 4678622535,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        },
+        {
+          "iteration": 3,
+          "warmup": false,
+          "frame_decode_ns": 5116267574,
+          "frame_sha256": "120cf0bc507e053713b6e091e206a6a63ac838b1788e0a2cef33f3965fda796f",
+          "analysis_frames": 72,
+          "render_30_ns": 4389911459,
+          "audio_30_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774",
+          "render_60_ns": 4607263036,
+          "audio_60_sha256": "ec2557a4a47dacb34183ca30f9a3f379cf13d9f769c750c215e91667c7af3774"
+        }
+      ],
+      "exact_matte_sha256": "b71539237bc1fcbb02e14b982668b07a723a71afdcdd15131ea7bbf6e7fc091b",
+      "status": "ok"
+    },
+    "baseline-model-a": {
+      "run": "baseline-model-a",
+      "device": "Android SDK built for x86_64",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "samples": [
+        {
+          "iteration": 0,
+          "warmup": true,
+          "frame_decode_ns": 11884562100,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 13353025400,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 15668484300,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 1,
+          "warmup": false,
+          "frame_decode_ns": 9608508200,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 11198619300,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 15553289600,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 2,
+          "warmup": false,
+          "frame_decode_ns": 10520642800,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 11541596800,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 14429129700,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 3,
+          "warmup": false,
+          "frame_decode_ns": 9892719800,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 12228261400,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 15142426100,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        }
+      ],
+      "exact_matte_sha256": "9e3168248ae097cd9c0cd7ab3bb87dd6acf83f203581c1ca4a8f941696953f8f",
+      "status": "ok"
+    },
+    "baseline-model-b": {
+      "run": "baseline-model-b",
+      "device": "Android SDK built for x86_64",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "samples": [
+        {
+          "iteration": 0,
+          "warmup": true,
+          "frame_decode_ns": 10839539800,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 11434604600,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 15614700100,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 1,
+          "warmup": false,
+          "frame_decode_ns": 9861060200,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 10996348000,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 15840602600,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 2,
+          "warmup": false,
+          "frame_decode_ns": 9799994700,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 11220511500,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 15631887400,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 3,
+          "warmup": false,
+          "frame_decode_ns": 10152735900,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 11107967200,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 14962437100,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        }
+      ],
+      "exact_matte_sha256": "9e3168248ae097cd9c0cd7ab3bb87dd6acf83f203581c1ca4a8f941696953f8f",
+      "status": "ok"
+    },
+    "optimized-model-a": {
+      "run": "optimized-model-a",
+      "device": "Android SDK built for x86_64",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "samples": [
+        {
+          "iteration": 0,
+          "warmup": true,
+          "frame_decode_ns": 9755065700,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 9862726500,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 13130494500,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 1,
+          "warmup": false,
+          "frame_decode_ns": 8963368100,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 9409911500,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 12586888900,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 2,
+          "warmup": false,
+          "frame_decode_ns": 9437024600,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 9690790100,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 12829332400,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 3,
+          "warmup": false,
+          "frame_decode_ns": 9874626200,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 9442733900,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 13571911400,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        }
+      ],
+      "exact_matte_sha256": "9e3168248ae097cd9c0cd7ab3bb87dd6acf83f203581c1ca4a8f941696953f8f",
+      "status": "ok"
+    },
+    "optimized-model-b": {
+      "run": "optimized-model-b",
+      "device": "Android SDK built for x86_64",
+      "source_sha256": "2ca03adc816ecd8af757a66b705d3bbda1a54328bfb4ddf9eb158e6f81b91c82",
+      "samples": [
+        {
+          "iteration": 0,
+          "warmup": true,
+          "frame_decode_ns": 11820255500,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 10675099600,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 13128828100,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 1,
+          "warmup": false,
+          "frame_decode_ns": 9785144900,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 10293508000,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 12688549400,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 2,
+          "warmup": false,
+          "frame_decode_ns": 9876433600,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 9179202900,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 13412424300,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        },
+        {
+          "iteration": 3,
+          "warmup": false,
+          "frame_decode_ns": 9890116000,
+          "frame_sha256": "d07f3140afab0166bcd88946c0e28a4092c3099c5550cc836d35aba4e6c63b66",
+          "analysis_frames": 72,
+          "render_30_ns": 9703421700,
+          "audio_30_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585",
+          "render_60_ns": 13167561800,
+          "audio_60_sha256": "a64c615427ff3822d30995696ec002fe9c6e554428e8622b6f770f648465d585"
+        }
+      ],
+      "exact_matte_sha256": "9e3168248ae097cd9c0cd7ab3bb87dd6acf83f203581c1ca4a8f941696953f8f",
+      "status": "ok"
+    }
+  }
+}
