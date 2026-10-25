@@ -149,6 +149,9 @@ internal object MediaCodecAudioDecoder {
         private var lastProgressNs = System.nanoTime()
         private val info = MediaCodec.BufferInfo()
         private var clockDiagnostics = 0
+        private var pendingOutput: ByteBuffer? = null
+        private var pendingIndex = -1
+        private var pendingPtsUs = 0L
         override val format: PcmFormat get() = requireNotNull(signature).let { PcmFormat(it.first, if (it.second <= 2) it.second else 1) }
         init { metrics.opened() }
 
@@ -177,8 +180,25 @@ internal object MediaCodecAudioDecoder {
         }
 
         private fun next(): PcmChunk? {
-            while (!outputEnded) {
+            while (!outputEnded || pendingOutput != null) {
                 checkCancelled()
+                pendingOutput?.let { bytes ->
+                    val actual = requireNotNull(signature)
+                    val width = when (actual.third) { 2 -> 2; 3 -> 1; else -> 4 }
+                    val size = minOf(bytes.remaining(), actual.first * actual.second * width)
+                    val part = bytes.duplicate().apply { limit(position() + size) }
+                    val chunk = try {
+                        DecodedPcmBuffer.convert(part, actual.first, actual.second, actual.third, pendingPtsUs)
+                    } catch (failure: Throwable) {
+                        runCatching { releasePendingOutput() }.exceptionOrNull()?.let(failure::addSuppressed)
+                        throw failure
+                    }
+                    bytes.position(bytes.position() + size)
+                    if (bytes.hasRemaining()) pendingPtsUs = Math.addExact(pendingPtsUs, 1_000_000L)
+                    else releasePendingOutput()
+                    if (chunk != null) return chunk
+                }
+                if (pendingOutput != null || outputEnded) continue
                 check(System.nanoTime() - lastProgressNs < STALL_TIMEOUT_NS) { "Source audio decoder stalled" }
                 if (!inputEnded) {
                     val index = decoder.dequeueInputBuffer(10_000)
@@ -218,12 +238,17 @@ internal object MediaCodecAudioDecoder {
                                             "gaplessPCM codecPts=${info.presentationTimeUs} pcmPts=$it frames=${info.size / (actual.second * width)}")
                                     }
                                 } else info.presentationTimeUs
-                                val chunk = DecodedPcmBuffer.convert(bytes, actual.first, actual.second, actual.third, ptsUs)
                                 metrics.buffer(info.size)
                                 if (outputEnded) gaplessClock?.finish()
-                                if (chunk != null) return chunk
+                                // Borrow the codec buffer until its bounded PCM portions are consumed.
+                                pendingOutput = bytes
+                                pendingIndex = index
+                                pendingPtsUs = ptsUs
                             }
-                        } finally { decoder.releaseOutputBuffer(index, false); lastProgressNs = System.nanoTime() }
+                        } finally {
+                            if (pendingIndex != index) decoder.releaseOutputBuffer(index, false)
+                            lastProgressNs = System.nanoTime()
+                        }
                     }
                 }
             }
@@ -231,11 +256,19 @@ internal object MediaCodecAudioDecoder {
             return null
         }
 
+        private fun releasePendingOutput() {
+            val index = pendingIndex
+            pendingOutput = null
+            pendingIndex = -1
+            if (index >= 0) decoder.releaseOutputBuffer(index, false)
+            lastProgressNs = System.nanoTime()
+        }
+
         override fun close() {
             if (closed) return
             closed = true
             if (first != null) { first = null; metrics.released() }
-            try { try { decoder.stop() } finally { decoder.release() } }
+            try { try { releasePendingOutput() } finally { try { decoder.stop() } finally { decoder.release() } } }
             finally { try { extractor.release() } finally { metrics.closed() } }
         }
     }
