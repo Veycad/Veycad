@@ -95,3 +95,14 @@ native overlap/export и проверку освобождения producer-да
 изолированные воспроизведения ошибок на тех же APK и сбор более точных данных.
 Локальные логи: `veycad-integration-v3-full-ui.log`,
 `veycad-integration-v3-live-logcat.txt`, `veycad-integration-v3-gles-logcat.txt`.
+
+Изолированная проверка двух упавших GLES-сценариев на API 26:
+**2/2 PASS**, failures/errors/skipped = 0, 5,034 секунды. AVD
+`VeycadRelease_API26`, host GPU RTX 3060 Laptop (OpenGL ES 2.0 translator).
+Установлены те же V3 APK: app SHA-256
+`06b1baceeab691b2c7d7826951c2ba1b919371ac1aac9121ab830a463e398dbf`,
+test SHA-256 `3b1347db8ccb435a0cdc5deba118baf3c95d5e155c7ef42f3e7f38b7c44069c6`.
+XML и logcat сохранены в `D:/CodexWork/veycad-v3-gles-api26-*`.
+Это не отменяет failures на API 36 и не доказывает причину: после полного
+прогона требуется изолированное повторение на том же API 36 AVD, затем
+разделение влияния версии Android, GL-драйвера и порядка тестов.
