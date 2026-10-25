@@ -733,11 +733,11 @@ class MainActivity : AppCompatActivity() {
                 "Анализирую видео" to if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
                     "Ищу движение, композицию и чистые моменты" else "Ищу лица, движение, композицию и чистые моменты"
             VeycadAutomaticEditor.Stage.DIRECTING ->
-                "Строю режиссуру" to "Сопоставляю визуальные события с ритмом музыки"
+                "Подбираю фрагменты" to "Соединяю выбранные моменты с ритмом музыки"
             VeycadAutomaticEditor.Stage.RENDERING ->
-                "Рендерю варианты" to "Кандидат ${progress.completedCandidates + 1} из ${progress.totalCandidates}: GLES, H.264 и AAC"
+                "Создаю видео" to "Вариант ${progress.completedCandidates + 1} из ${progress.totalCandidates} · собираю изображение и звук"
             VeycadAutomaticEditor.Stage.VERIFYING ->
-                "Проверяю результат" to "Готово ${progress.completedCandidates} из ${progress.totalCandidates}: декодирую и измеряю качество"
+                "Проверяю результат" to "Проверено вариантов: ${progress.completedCandidates} из ${progress.totalCandidates} · проверяю изображение и звук"
             VeycadAutomaticEditor.Stage.COMPLETE -> "Монтаж готов" to "Выбран лучший вариант"
         }
         progressTitle.text = copy.first

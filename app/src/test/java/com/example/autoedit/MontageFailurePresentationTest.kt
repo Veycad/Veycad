@@ -11,8 +11,8 @@ class MontageFailurePresentationTest {
         assertEquals("insufficient_distinct_moments", error.code)
         for (sourceCount in listOf(1, 2)) {
             val message = MontageFailurePresentation.message(error, sourceCount)
-            assertEquals("Heartbeat не нашёл подходящую комбинацию среди проверенных измеренных фрагментов. " +
-                "Это не означает, что видео непригодно", message)
+            assertEquals("Не удалось собрать Heartbeat из проверенных фрагментов. " +
+                "Попробуй другой стиль или другое видео. Этот результат не означает, что исходник непригоден", message)
             assertFalse(message.contains("Недостаточно разных"))
             assertFalse(message.contains("generated="))
             assertFalse(message.contains("exhausted=true"))
@@ -30,8 +30,8 @@ class MontageFailurePresentationTest {
     @Test fun computational_limit_is_not_a_material_rejection_and_hides_debug_counters() {
         val error = HeartbeatCandidateSearchIncompleteException(trace(exhausted = false))
         val message = MontageFailurePresentation.message(error, 1)
-        assertEquals("Не удалось завершить подбор измеренных фрагментов для Heartbeat. " +
-            "Это не означает, что видео непригодно", message)
+        assertEquals("Не удалось закончить подбор фрагментов для Heartbeat. " +
+            "Попробуй другой стиль или другое видео. Этот результат не означает, что исходник непригоден", message)
         assertFalse(message.contains("visits="))
         assertFalse(message.contains("validations="))
         assertTrue(error.message.orEmpty().contains("visits=17/20"))

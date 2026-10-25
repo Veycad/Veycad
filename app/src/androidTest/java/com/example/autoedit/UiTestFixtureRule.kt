@@ -149,8 +149,15 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
 
     fun selectStyle(title: String) {
         click(R.id.selectStyleButton)
-        onView(allOf(isClickable(), hasDescendant(withText(title)))).perform(scrollTo(), click())
+        pickPendingStyle(title)
         onView(withText("Применить")).perform(click())
+    }
+
+    fun pickPendingStyle(title: String) {
+        // A preview card can exceed a small viewport; its visible title selects the same row.
+        onView(allOf(withTagValue(equalTo("style_title")),
+            isDescendantOfA(allOf(isClickable(), hasDescendant(withText(title))))))
+            .perform(scrollTo(), click())
     }
 
     fun videoUri(name: String): Uri {

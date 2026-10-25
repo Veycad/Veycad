@@ -105,6 +105,7 @@ internal object StylePickerDialog {
             }
             val copy=LinearLayout(activity).apply { orientation=LinearLayout.VERTICAL }
             copy.addView(label(presentation.title,18f,if(style.available) R.color.text_primary else R.color.text_muted).apply {
+                tag = "style_title"
                 setTypeface(typeface,android.graphics.Typeface.BOLD)
             })
             if (style.available) copy.addView(label(presentation.profileName,12f,R.color.text_muted),
