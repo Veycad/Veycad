@@ -24,7 +24,7 @@ RuStore's [signature guidance](https://www.rustore.ru/help/developers/publishing
 ## Pending acceptance
 
 - [ ] Owner account registered and access verified.
-- [ ] Public developer identity/support contact confirmed.
+- [x] Public developer identity/support contact confirmed on 2026-10-26: Leonid Polyakov; whiteking.power12@gmail.com. Console entry remains pending.
 - [ ] Permanent key created under owner control; protected backup verified.
 - [ ] External signing configuration implemented and tested without publishing secrets.
 - [ ] Exact signed artifact accepted; owner approves store submission.
