@@ -18,10 +18,12 @@ Evidence: `app/build.gradle.kts` defaultConfig and uiTest configuration;
 Generated files under `app/build/generated/source/buildConfig/{release,uiTest}`
 confirmed the values above in their respective checkouts.
 
-The owner has been asked whether the first release should expose the manual
-editor and complete its acceptance or preserve the currently hidden entry.
-No flag was changed by this audit. Until the scope is settled, do not silently
-claim that uiTest's visible workflows represent the store APK.
+Owner decision on 2026-10-26: expose the manual editor in the first RuStore
+release and complete its acceptance before publication. The values above are
+the audited pre-change state, not the desired release configuration.
+Implement the release flag change in a separate PR and verify the entry in
+the actual release candidate. Do not defer the editor or hide its button as
+a workaround for failing tests. The V3 landscape scenario failure remains open.
 
 Acceptance remains on the final release candidate: check available entry
 points, exact feature flags, imports, preview, export, save/share, lifecycle and
