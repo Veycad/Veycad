@@ -115,6 +115,7 @@ android {
     buildTypes {
         getByName("release") {
             if (signRelease) signingConfig = signingConfigs.getByName("production")
+            buildConfigField("boolean", "LIVE_PREVIEW_ENABLED", "true")
         }
         create("manualMvp") {
             initWith(getByName("debug"))
