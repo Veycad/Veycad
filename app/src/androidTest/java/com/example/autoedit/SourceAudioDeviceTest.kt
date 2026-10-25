@@ -39,6 +39,44 @@ class SourceAudioDeviceTest {
     private fun source(files: Map<String, File>, metrics: MediaCodecAudioDecoder.StreamMetrics = MediaCodecAudioDecoder.StreamMetrics(), cancel: () -> Unit = {}) =
         MediaCodecAudioDecoder.sourceProvider(files, metrics, cancel)
 
+    @Test fun low_rate_wave_large_codec_buffers_preserve_samples_and_bounded_chunks() {
+        val file = SyntheticAudio.writeWave(File(directory("large-pcm"), "score.wav"), 4)
+        val expected = ByteBuffer.wrap(file.readBytes(), 44, SyntheticAudio.RATE * 4 * 2)
+            .slice().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        val metrics = MediaCodecAudioDecoder.StreamMetrics()
+        var frames = 0
+        source(mapOf("score" to file), metrics).open("score", 0)!!.use { stream ->
+            while (true) {
+                val chunk = stream.read() ?: break
+                assertTrue(chunk.frames <= SyntheticAudio.RATE)
+                assertEquals(frames * 1_000_000L / SyntheticAudio.RATE, chunk.startPtsUs)
+                repeat(chunk.frames) { index ->
+                    assertEquals(expected.get() / 32768.0, chunk.sample(index, 0), 0.0)
+                }
+                frames += chunk.frames
+            }
+            assertNull(stream.read())
+        }
+        assertEquals(SyntheticAudio.RATE * 4, frames)
+        assertFalse(expected.hasRemaining())
+        assertTrue("Fixture must exercise a codec buffer over one second",
+            metrics.peakDecoderBufferBytes > SyntheticAudio.RATE * 2)
+        assertEquals(0, metrics.openDecoders)
+        assertEquals(0, metrics.retainedChunks)
+        for (cancel in listOf(false, true)) {
+            var cancelled = false
+            val failure = CancellationException("pending codec output")
+            source(mapOf("score" to file), metrics) { if (cancelled) throw failure }
+                .open("score", 0)!!.use { stream ->
+                    assertEquals(SyntheticAudio.RATE, stream.read()!!.frames)
+                    cancelled = cancel
+                    if (cancel) assertSame(failure, assertThrows(CancellationException::class.java) { stream.read() })
+                }
+            assertEquals(0, metrics.openDecoders)
+            assertEquals(0, metrics.retainedChunks)
+        }
+    }
+
     @Test fun three_sources_silent_middle_early_eof_repeat_match_literal_markers_at_30_and_60() {
         val dir = directory("markers")
         val files = mapOf(
