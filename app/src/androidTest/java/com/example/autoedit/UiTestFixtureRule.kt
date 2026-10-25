@@ -149,7 +149,8 @@ class UiTestFixtureRule(private val grantPermissions: Boolean = true) : External
 
     fun selectStyle(title: String) {
         click(R.id.selectStyleButton)
-        onView(allOf(isClickable(), hasDescendant(withText(title)))).perform(scrollTo(), click())
+        // A preview card can exceed a small viewport; its visible title selects the same row.
+        onView(withText(title)).perform(scrollTo(), click())
         onView(withText("Применить")).perform(click())
     }
 
