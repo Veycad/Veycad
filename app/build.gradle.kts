@@ -113,7 +113,7 @@ android {
             initWith(getByName("integrated"))
             applicationIdSuffix = ".musiceditor"
             versionNameSuffix = "-music-editor"
-            resValue("string", "app_name", "Veykad · своя музыка")
+            resValue("string", "app_name", "Veycad · своя музыка")
         }
         create("mvp") {
             initWith(getByName("debug"))

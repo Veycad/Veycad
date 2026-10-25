@@ -175,7 +175,7 @@ class MainActivity : AppCompatActivity() {
                 updateStyleLabel()
             })
         findViewById<TextView>(R.id.appVersion).text =
-            "Veykad ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}"
+            "Veycad ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}"
         montageStyle = MontageStyleCatalog.restore(
             getSharedPreferences("montage_style", MODE_PRIVATE).getString("selected",
                 if (BuildConfig.GALLERY_MVP) MontageStyleCatalog.galleryMontage.id else null))
@@ -858,7 +858,7 @@ class MainActivity : AppCompatActivity() {
         notificationSwitch.isChecked = settingsPreferences().getBoolean(PREF_NOTIFICATIONS, false)
         findViewById<TextView>(R.id.settingsCacheValue).text = formatBytes(temporaryBytes())
         findViewById<Button>(R.id.versionButton).text =
-            "Версия Veykad                                      ${BuildConfig.VERSION_NAME}"
+            "Версия Veycad                                      ${BuildConfig.VERSION_NAME}"
     }
 
     private fun showQualityPicker() {
@@ -893,7 +893,7 @@ class MainActivity : AppCompatActivity() {
     private fun showPrivacy() {
         AlertDialog.Builder(this)
             .setTitle("Конфиденциальность")
-            .setMessage("Видео обрабатываются только на устройстве. Veykad не отправляет исходники, кадры или готовые монтажи в интернет. Доступ к видео используется только для выбранных вами файлов.")
+            .setMessage("Видео обрабатываются только на устройстве. Veycad не отправляет исходники, кадры или готовые монтажи в интернет. Доступ к видео используется только для выбранных вами файлов.")
             .setPositiveButton("Понятно", null)
             .show()
     }
@@ -902,14 +902,14 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(R.string.capture_help_title)
             .setMessage(getString(R.string.capture_help_body) + "\n\n" + getString(R.string.capture_report_help))
-            .setNeutralButton(R.string.capture_save_report) { _, _ -> diagnosticExport.launch("Veykad-Auto-report.json") }
+            .setNeutralButton(R.string.capture_save_report) { _, _ -> diagnosticExport.launch("Veycad-Auto-report.json") }
             .setPositiveButton(R.string.capture_help_done, null)
             .show()
     }
 
     private fun showVersion() {
         AlertDialog.Builder(this)
-            .setTitle("Veykad ${BuildConfig.VERSION_NAME}")
+            .setTitle("Veycad ${BuildConfig.VERSION_NAME}")
             .setMessage("Сборка ${BuildConfig.VERSION_CODE}\nЛокальный движок автоматического монтажа")
             .setPositiveButton("Закрыть", null)
             .show()
@@ -946,7 +946,7 @@ class MainActivity : AppCompatActivity() {
         manager.notify(READY_NOTIFICATION_ID, NotificationCompat.Builder(this, READY_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Монтаж готов")
-            .setContentText("Откройте Veykad, чтобы посмотреть результат")
+            .setContentText("Откройте Veycad, чтобы посмотреть результат")
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .build())
