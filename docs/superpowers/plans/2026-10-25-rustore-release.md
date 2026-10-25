@@ -76,7 +76,7 @@ Files: existing import/media validation, `EditSession.kt`, source/cache/workspac
 Consumes: supported-input contract and baseline measurements. Produces: measurable limits and safe interruption behavior.
 
 - [ ] Measure analysis/render duration, peak memory/storage and output size on representative sources before choosing limits.
-- [ ] Define and test a bounded duration/work policy from measurements; reject unsupported inputs before expensive work with clear guidance.
+- [ ] Validate existing `SourceAnalysisBudget.preflight` limits (60 s/source, 240 observations, cache/storage budgets) and callers in `MediaFrameVisualAnalyzer`, `MulticlassMatteProvider` and `SmartFramingSourceAnalysis`; run `SourceAnalysisBudgetTest`. Change limits only if device measurements justify it; do not reimplement the existing policy.
 - [ ] Exercise corrupt/empty input, rotation, VFR, HDR handling, absent audio, unavailable URI and insufficient storage; add a regression test for each reproduced defect.
 - [ ] Exercise cancel, back, background, lock and process death during import/analysis/render/save. Check temporary cleanup and completed-result recovery.
 - [ ] Check subtitle RU/EN transcription, manual timing/text correction and exported sound, not just UI appearance.
@@ -98,7 +98,7 @@ Consumes: signed candidate SHA and explicit feature scope. Produces: evidence-ba
 Files: `README.md`, `docs/release/rustore-listing.md`, future approved screenshots/privacy/third-party notice material.
 Consumes: verified current features and accepted build. Produces: honest listing and understandable repository entry point.
 
-- [ ] Move full rights block lower in README unchanged, retain prominent license link; lead with benefit and current availability.
+- [x] Move full rights block lower in README unchanged, retain prominent license link; lead with benefit and current availability.
 - [ ] Draft RuStore name (≤30 chars), short text (≤80), full text (≤4000), support contact, what's new and moderator instructions.
 - [ ] Inventory data/permissions and third-party terms including music distribution rights; owner confirms any rights not documented in repository.
 - [ ] Prepare privacy text and an accessible policy URL consistent with actual SDK behavior; do not equate local inference with a completed SDK privacy audit.
@@ -126,3 +126,5 @@ Consumes: verified current features and accepted build. Produces: honest listing
 
 - 2026-10-25: active goal created. Historical checkout fetch failed on Codex checkpoint refs; clean clone used instead. Clone completed file checkout but Git blocked automatically installed Git LFS post-checkout hook; clean `git status` and materialized tracked model were verified, no protection override used.
 - Signing/account question sent to owner; no secret requested. No store submission, device acceptance or release pass claimed.
+- README's previous claim that duration/work limits were absent was stale. Existing owning source and tests confirm 60 s/240-observation preflight; README corrected and Task 3 narrowed to verification and measured fixes.
+- Documentation checks: listing title 26/30 characters, short copy 77/80; rights block unchanged. Fresh documentation review identified exact-binary reacceptance gap; Task 6 corrected.
