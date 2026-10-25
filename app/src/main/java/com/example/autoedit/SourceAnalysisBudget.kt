@@ -3,7 +3,7 @@ package com.veycad.app
 /** Conservative full-source costs; the provider never exceeds 480 × 480 ARGB pixels. */
 internal object SourceAnalysisBudget {
     const val MAX_INPUT_SIDE = 480
-    private const val MAX_DURATION_US = 60_000_000L
+    const val MAX_DURATION_US = 60_000_000L
     private const val MAX_FRAMES = 240L
     private const val MAX_RAW_CACHE_BYTES = 256L * 1024 * 1024
     private const val MAX_ATTACHMENT_BYTES = 128L * 1024 * 1024

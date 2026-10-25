@@ -187,7 +187,7 @@ class SettingsScreenTest {
         ui.click(R.id.backFromSettingsButton)
         ui.awaitDisplayed(R.id.directorContent)
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
-        onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · от 15 секунд")))
+        onView(withId(R.id.videoSelection)).check(matches(withText("1 видео · 15–60 секунд")))
     }
 
     @Test fun failed_source_clear_preserves_selection_and_owned_cache() {
