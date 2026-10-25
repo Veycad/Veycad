@@ -9,4 +9,6 @@ local test entry points.
 - Source: `https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite`
 - Model card: `https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf`
 - License: Apache License 2.0
+- Packaged license: `assets/licenses/apache-2.0.txt`; model attribution and source:
+  `assets/licenses/selfie-multiclass.txt`.
 - SHA-256: `c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0`
