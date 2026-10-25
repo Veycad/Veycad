@@ -20,6 +20,10 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DraftPreviewControllerDeviceTest {
+    private fun previewWorkerStack(): String = Thread.getAllStackTraces()
+        .filterKeys { it.name == "Veycad-preview-GL" }.values
+        .joinToString("\n") { it.joinToString("\n") }
+
     @Test fun pausedNormalMinuteDropsProducerAnalysisAndKeepsOnlyBoundedOwnedPages() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -174,12 +178,14 @@ class DraftPreviewControllerDeviceTest {
                 instrumentation.runOnMainSync { controller.seekTo(time) }
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
                 var accepted: DraftPreviewController.State? = null
+                val observed = mutableListOf<DraftPreviewController.State>()
                 while (System.nanoTime() < deadline && accepted == null) {
                     val state = states.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                    observed += state
                     assertNull(state.error)
                     if (state.exactFrameReady && state.shownOutputTimeUs == time) accepted = state
                 }
-                assertNotNull("Expected native direct frame $time", accepted)
+                if (accepted == null) fail("Expected native direct frame $time; states=$observed; worker=${previewWorkerStack()}")
                 if (time == 500_000L || time == 1_100_000L) {
                     assertNotNull("Actual second decoder role must participate", accepted!!.secondarySourceIndex)
                     assertNotNull(accepted.decodedSecondarySourceTimeUs)
@@ -296,13 +302,15 @@ class DraftPreviewControllerDeviceTest {
             val generation = emitted.get().generation
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
             var ready: DraftPreviewController.State? = null
+            val observed = mutableListOf<DraftPreviewController.State>()
             while (System.nanoTime() < deadline) {
                 val state = states.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                observed += state
                 if (state.generation != generation) continue
                 assertNull(state.error)
                 if (state.exactFrameReady && state.shownOutputTimeUs == timeUs) { ready = state; break }
             }
-            assertNotNull("Expected direct frame $timeUs", ready)
+            if (ready == null) fail("Expected direct frame $timeUs; states=$observed; worker=${previewWorkerStack()}")
             assertEquals(source, ready!!.sourceIndex)
             val expected = PreviewFrameSelection.nearest(prepared.framePlan, timeUs).sourceTimeUs
             assertTrue(ready.decodedSourceTimeUs!! >= expected)
