@@ -245,9 +245,9 @@ class ManualMvpScreenTest {
         val previous = requireNotNull(old)
         val borrowed = requireNotNull(field<Any>(previous, "binding"))
         val prepared = requireNotNull(field<PreparedHybridPreview>(borrowed, "prepared"))
-        val executor = if (exportQueued) requireNotNull(field<java.util.concurrent.ExecutorService>(previous, "jobs"))
-            else requireNotNull(field<java.util.concurrent.ExecutorService>(
-                requireNotNull(field<DraftPreviewController>(previous, "controller")), "worker"))
+        val player = requireNotNull(field<DraftPreviewController>(previous, "controller"))
+        val executor = requireNotNull(field<java.util.concurrent.ExecutorService>(player, "worker"))
+        val exports = store.list().single().exports
         val entered = java.util.concurrent.CountDownLatch(1)
         val release = java.util.concurrent.CountDownLatch(1)
         executor.execute {
@@ -261,12 +261,14 @@ class ManualMvpScreenTest {
                 }
             } finally { if (interrupted) Thread.currentThread().interrupt() }
         }
-        assertTrue("Old native/job boundary entered", entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue("Old GL owner boundary entered", entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
         try {
             if (exportQueued) {
                 tapTag("export")
-                fixture.waitUntil("native ack transferred prepared to queued export", 10_000) {
-                    field<Any>(previous, "binding") == null && field<Any>(previous, "controller") == null
+                // Export waits for display/audio retirement on this same GL owner.
+                fixture.waitUntil("export queued behind held GL owner", 10_000) {
+                    field<Any>(previous, "binding") == null && field<Any>(previous, "controller") === player &&
+                        field<Boolean>(previous, "exporting") == true
                 }
             }
             instrumentation.runOnMainSync { previous.recreate() }
@@ -290,6 +292,7 @@ class ManualMvpScreenTest {
         } finally { release.countDown() }
         fixture.waitUntil("one paused replacement after old cleanup", 30_000) { ready() }
         assertTrue("Old prepared closed after actual cleanup", runCatching { prepared.framePlan }.isFailure)
+        assertEquals("Lifecycle cancellation must not publish the queued export", exports, store.list().single().exports)
         fixture.waitUntil("one native preview owner", 10_000) {
             Thread.getAllStackTraces().keys.count { it.isAlive && it.name == "Veycad-preview-GL" } == 1
         }
