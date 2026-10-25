@@ -11,6 +11,13 @@ val previewSourceSha = providers.environmentVariable("GIT_SHA").orNull?.also {
     require(it.matches(Regex("[0-9a-f]{40}"))) { "GIT_SHA must be a complete source commit" }
 } ?: providers.gradleProperty("sourceSha").orElse("local-unverified").get()
 
+val signRelease = providers.gradleProperty("signRelease").map { it.toBooleanStrict() }.orElse(false).get()
+if (signRelease) {
+    require(previewSourceSha.matches(Regex("[0-9a-f]{40}"))) {
+        "Signed release requires GIT_SHA or -PsourceSha with the complete source commit"
+    }
+}
+
 // MVP instrumentation compiles only real helpers/editor cases, without the uiTest fake app.
 val mvpDeviceTests = providers.gradleProperty("deviceTestBuildType").orNull == "mvp"
 val mvpSmokeSources = layout.buildDirectory.dir("generated/mvpSmokeSources")
@@ -93,7 +100,22 @@ android {
         }
     }
 
+    if (signRelease) {
+        signingConfigs.create("production") {
+            fun requiredVariable(name: String): String = providers.environmentVariable(name).orNull
+                ?.takeIf { it.isNotBlank() } ?: error("Signed release requires $name")
+            storeFile = file(requiredVariable("VEYCAD_RELEASE_KEYSTORE"))
+            require(storeFile!!.isFile && storeFile!!.canRead()) { "Release keystore is not a readable file" }
+            storePassword = requiredVariable("VEYCAD_RELEASE_STORE_PASSWORD")
+            keyAlias = requiredVariable("VEYCAD_RELEASE_KEY_ALIAS")
+            keyPassword = requiredVariable("VEYCAD_RELEASE_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
+        getByName("release") {
+            if (signRelease) signingConfig = signingConfigs.getByName("production")
+        }
         create("manualMvp") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".preview"
