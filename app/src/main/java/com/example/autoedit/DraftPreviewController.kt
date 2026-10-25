@@ -120,7 +120,7 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
                 main.post {
                     if (closed || closeRequested || stopping || preparationEpoch != epoch) return@post
                     onPrepared(prepared, request)
-                    open(request)
+                    openPrepared(request)
                 }
             } catch (cancelled: CancellationException) {
                 candidate?.let { disposeCandidate(it, cancelled) }
@@ -236,6 +236,12 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
     fun open(request: MediaCodecSpeedRampRenderer.Request) {
         requireMainOpen()
         preparationEpoch++
+        openPrepared(request)
+    }
+
+    private fun openPrepared(request: MediaCodecSpeedRampRenderer.Request) {
+        requireMainOpen()
+        // Owned pages still use this preparation's cancellation epoch when loading a page.
         // No file I/O or full-plan validation on main. Legacy rejection is also reported as state.
         policy.reset(); policy.seeks.invalidateProject(); audio.pause()
         input = input.copy(request = request)
