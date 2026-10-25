@@ -37,7 +37,7 @@ class RenderProgressScreenTest {
         ui.scenario.onActivity { it.findViewById<ScrollView>(R.id.directorContent).scrollTo(0, 0) }
         onView(withId(R.id.progressTitle)).check(matches(not(isDisplayed())))
         ui.renderer.progress(VeycadAutomaticEditor.Stage.DIRECTING, 0, 4)
-        ui.awaitText(R.id.progressTitle, "Строю режиссуру")
+        ui.awaitText(R.id.progressTitle, "Подбираю фрагменты")
         ui.scenario.onActivity {
             assertEquals("Progress updates must preserve the user's scroll position", 0,
                 it.findViewById<ScrollView>(R.id.directorContent).scrollY)
@@ -59,18 +59,18 @@ class RenderProgressScreenTest {
         onView(withId(R.id.progressDetail)).check(matches(withSubstring("лица, движение, композицию")))
 
         ui.renderer.progress(VeycadAutomaticEditor.Stage.DIRECTING, 0, 4)
-        ui.awaitText(R.id.progressTitle, "Строю режиссуру")
+        ui.awaitText(R.id.progressTitle, "Подбираю фрагменты")
         ui.waitUntil("directing progress is indeterminate") { progress.isIndeterminate }
         onView(withId(R.id.progressDetail)).check(matches(withSubstring("ритмом музыки")))
 
         ui.renderer.progress(VeycadAutomaticEditor.Stage.RENDERING, 1, 4)
-        ui.awaitText(R.id.progressTitle, "Рендерю варианты")
-        ui.awaitText(R.id.progressDetail, "Кандидат 2 из 4")
+        ui.awaitText(R.id.progressTitle, "Создаю видео")
+        ui.awaitText(R.id.progressDetail, "Вариант 2 из 4")
         ui.waitUntil("one of four candidates gives 25 percent") { !progress.isIndeterminate && progress.progress == 25 }
 
         ui.renderer.progress(VeycadAutomaticEditor.Stage.VERIFYING, 3, 4)
         ui.awaitText(R.id.progressTitle, "Проверяю результат")
-        ui.awaitText(R.id.progressDetail, "Готово 3 из 4")
+        ui.awaitText(R.id.progressDetail, "Проверено вариантов: 3 из 4")
         ui.waitUntil("three of four verified candidates gives 75 percent") { !progress.isIndeterminate && progress.progress == 75 }
 
         ui.renderer.progress(VeycadAutomaticEditor.Stage.COMPLETE, 4, 4)
@@ -186,10 +186,10 @@ class RenderProgressScreenTest {
         ui.startRender()
         val request = requireNotNull(ui.renderer.currentRequest)
         ui.renderer.progress(VeycadAutomaticEditor.Stage.RENDERING, 1, 3)
-        ui.awaitText(R.id.progressDetail, "Кандидат 2 из 3")
+        ui.awaitText(R.id.progressDetail, "Вариант 2 из 3")
         ui.recreate()
         ui.awaitDisplayed(R.id.directorContent)
-        ui.awaitText(R.id.progressDetail, "Кандидат 2 из 3")
+        ui.awaitText(R.id.progressDetail, "Вариант 2 из 3")
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
         var activity: MainActivity? = null
         ui.scenario.onActivity { activity = it }

@@ -70,6 +70,7 @@ class ManualMvpActivity : AppCompatActivity() {
     private var export: Button? = null
     private var dragging = false
     private var exporting = false
+    private var awaitingRenderResult = false
     private var preparingPreview = false
     private var pendingImports: List<Uri>? = null
     private val surfaces = mutableListOf<BorrowedSurface>()
@@ -194,7 +195,7 @@ class ManualMvpActivity : AppCompatActivity() {
         stopForLifecycle()
     }
     private fun finishRetirement() {
-        if (retirementScheduled || jobs.isShutdown) return
+        if (retirementScheduled || jobs.isShutdown || awaitingRenderResult) return
         retirementScheduled = true
         val lease = retiringLease
         retiringLease = null
@@ -795,6 +796,7 @@ class ManualMvpActivity : AppCompatActivity() {
         setBusy(true, getString(R.string.manual_exporting))
         val sequence = ++generation
         binding = null // No UI getter may borrow an input after the GL owner disposes it.
+        awaitingRenderResult = true
         player.renderPrepared { outcome ->
             // Display/audio and the prepared lifetime have actually retired on their GL owner.
             surfaces.forEach { held -> held.surface.release(); if (held.destroyed) held.texture.release() }
@@ -841,6 +843,9 @@ class ManualMvpActivity : AppCompatActivity() {
                     refresh(getString(if (result.isSuccess) R.string.manual_exported else R.string.manual_export_failed))
                 }
             }
+            // Queue publication/cleanup before the retirement fences can close jobs.
+            awaitingRenderResult = false
+            if (!stopping && retiringLease != null) finishRetirement()
         }
     }
     private fun requireVideoShape(file: File, settings: ProjectExportSettings) {

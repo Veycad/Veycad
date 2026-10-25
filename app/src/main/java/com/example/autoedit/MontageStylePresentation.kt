@@ -23,8 +23,9 @@ internal object MontageStylePresentation {
             unavailableLabel?.let { return it }
             if (sourceCount == 20) return "1–20 видео MP4 · H.264 · без HDR"
             val seconds = requireNotNull(minimumSourceDurationMs) / 1_000L
-            return if (sourceCount == 2) "2 видео · каждое от $seconds секунд"
-            else "1 видео · от $seconds секунд"
+            val maximumSeconds = SourceAnalysisBudget.MAX_DURATION_US / 1_000_000L
+            return if (sourceCount == 2) "2 видео · каждое $seconds–$maximumSeconds секунд"
+            else "1 видео · $seconds–$maximumSeconds секунд"
         }
         val musicPlaceholder: String get() = unavailableLabel?.let { "♫ $it" }
             ?: "♫ Выберите трек · $title".takeIf { customMusic }

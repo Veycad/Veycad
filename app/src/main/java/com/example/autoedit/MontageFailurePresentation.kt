@@ -5,11 +5,11 @@ internal object MontageFailurePresentation {
     fun message(error: Throwable, sourceCount: Int): String = when {
         // This subtype describes only the finite measured candidate family, not the whole video.
         error is HeartbeatCandidateDomainExhaustedException ->
-            "Heartbeat не нашёл подходящую комбинацию среди проверенных измеренных фрагментов. " +
-                "Это не означает, что видео непригодно"
+            "Не удалось собрать Heartbeat из проверенных фрагментов. " +
+                "Попробуй другой стиль или другое видео. Этот результат не означает, что исходник непригоден"
         error is HeartbeatCandidateSearchIncompleteException ->
-            "Не удалось завершить подбор измеренных фрагментов для Heartbeat. " +
-                "Это не означает, что видео непригодно"
+            "Не удалось закончить подбор фрагментов для Heartbeat. " +
+                "Попробуй другой стиль или другое видео. Этот результат не означает, что исходник непригоден"
         error is MaterialRejectedException && error.code == "insufficient_duration" && sourceCount == 2 ->
             "Для DUALITY каждое видео должно быть не короче 6 секунд"
         error is MaterialRejectedException && error.code == "insufficient_duration" ->

@@ -35,7 +35,7 @@
     <string name="capture_exit_body">Текущая запись будет сохранена. К ней можно вернуться из «Эдитов».</string>
     <string name="capture_continue">Продолжить съёмку</string>
     <string name="capture_permission_title">Нужен доступ к камере</string>
-    <string name="capture_permission_body">Разреши камеру, чтобы снимать в Veykad. Для выбора готовых видео этот доступ не нужен.</string>
+    <string name="capture_permission_body">Разреши камеру, чтобы снимать в Veycad. Для выбора готовых видео этот доступ не нужен.</string>
     <string name="capture_permission">Разрешить камеру</string>
     <string name="capture_settings">Настройки доступа</string>
     <string name="capture_unavailable">Не удалось открыть камеру. Закрой приложения, которые её используют, и попробуй снова.</string>
