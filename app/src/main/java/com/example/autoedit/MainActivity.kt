@@ -136,6 +136,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+    private val licenseExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) {
+            val app = applicationContext
+            worker.execute {
+                val saved = LicenseArchive.export(app, uri)
+                runOnUiThread {
+                    if (!isDestroyed) toast(if (saved) "Лицензии сохранены" else
+                        "Не удалось сохранить лицензии. Файл может быть неполным.")
+                }
+            }
+        }
+    }
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -327,7 +339,7 @@ class MainActivity : AppCompatActivity() {
         stopPreviewPlayback()
         musicRequests.invalidate()
         if (::customMusic.isInitialized) customMusic.close()
-        // Music selection and short diagnostics exports use this executor; media jobs belong to EditSession.
+        // Music selection and document exports use this executor; media jobs belong to EditSession.
         worker.shutdown()
         super.onDestroy()
     }
@@ -911,6 +923,7 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Veykad ${BuildConfig.VERSION_NAME}")
             .setMessage("Сборка ${BuildConfig.VERSION_CODE}\nЛокальный движок автоматического монтажа")
+            .setNeutralButton("Сохранить лицензии") { _, _ -> licenseExport.launch("Veycad-licenses.zip") }
             .setPositiveButton("Закрыть", null)
             .show()
     }
