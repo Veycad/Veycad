@@ -30,9 +30,9 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V4 failures tracked; targeted fixes/checks passed; complete V5 rerun pending |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V5 finished 266/267; its failing scenario passes with #100; combined V6 rerun in progress |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | Samsung import/edit/export/lifecycle checks passed; release flag in draft #92; final candidate acceptance open |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | Local V5 builds; device/regression acceptance remains open; no merge approval implied |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | Clean V6 build/full regression in progress; exact final device acceptance and merge approval remain open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Samsung arm64 checks recorded; no-GMS, rear camera, human output review and signed updates remain open |
 | 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Draft materials exist; final screenshots and public policy still pending |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |
@@ -45,6 +45,9 @@ setup and store moderation. Do not turn passing-test counts into release readine
 Materials can progress alongside engineering. Other stores follow the RuStore
 candidate acceptance; account eligibility and policies need a current check.
 See the [AppGallery/Galaxy Store sequence and gates](../../release/other-android-stores.md).
+
+Current combined run: [V6 receipt](../../release/integration-2026-10-26-v6.md).
+Previous completed run and diagnosis: [V5 receipt](../../release/integration-2026-10-26-v5.md).
 
 ## Review focus
 
@@ -63,7 +66,8 @@ Consumes: current main and installed Android/JDK/NDK tools. Produces: exact buil
 - [x] Isolate changes from historical dirty checkout and create task branch.
 - [x] Run `gradlew.bat baselineVerify` with configured JDK/SDK/Python; record failures without calling them regressions until compared to base. [Baseline receipt](../../release/baseline-2026-10-25.md): 1392 JVM + 338 Python, build/lint/security passed; no release/device verdict.
 - [ ] Inspect release manifest, all runtime features/build flags, native payload and model/music licenses.
-- [ ] Configure external release signing inputs without debug fallback; fail clearly when signing is requested but inputs are missing. Keep unsigned verification possible without secrets.
+- [x] External signing configuration implemented in draft #73 and combined source; opt-in signing, required inputs and no debug fallback verified by negative probes.
+- [ ] Validate actual signing, alias/password and same-key updates with the owner-controlled permanent key. The rejected temporary-key probe did not complete this check.
 - [ ] Build release APK; verify signature, application ID, version, non-debuggable state, debug component exclusion and package size. Record SHA-256, source SHA, certificate fingerprint and tool versions.
 - [ ] Evaluate shrinking by measured benefit and native/model regression; do not enable it blindly as a prerequisite.
 - [ ] Commit packaging changes with checks and open a separate PR.

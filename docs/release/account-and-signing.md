@@ -26,7 +26,8 @@ RuStore's [signature guidance](https://www.rustore.ru/help/developers/publishing
 - [ ] Owner account registered and access verified.
 - [x] Public developer identity/support contact confirmed on 2026-10-26: Leonid Polyakov; whiteking.power12@gmail.com. Console entry remains pending.
 - [ ] Permanent key created under owner control; protected backup verified.
-- [ ] External signing configuration implemented and tested without publishing secrets.
+- [x] External signing configuration implemented in draft [PR #73](https://github.com/Veycad/Veycad/pull/73), with negative input probes and no debug fallback.
+- [ ] Positive signing/alias/password and update checks using the permanent owner-controlled key. Temporary-key generation was rejected by automatic approval; no key or successful signing result was produced.
 - [ ] Exact signed artifact accepted; owner approves store submission.
 
 Sources checked 2026-10-25. Recheck account eligibility and store policy at registration/submission.

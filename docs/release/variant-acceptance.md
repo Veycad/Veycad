@@ -21,9 +21,11 @@ confirmed the values above in their respective checkouts.
 Owner decision on 2026-10-26: expose the manual editor in the first RuStore
 release and complete its acceptance before publication. The values above are
 the audited pre-change state, not the desired release configuration.
-Implement the release flag change in a separate PR and verify the entry in
-the actual release candidate. Do not defer the editor or hide its button as
-a workaround for failing tests. The V3 landscape scenario failure remains open.
+The release flag implementation is in PR #92 below; verify the entry in
+the actual signed release candidate. Do not defer the editor or hide its button as
+a workaround for failing tests. The complete manual scenario including landscape
+passed on V5 plus PR #100; see the [V5 receipt](integration-2026-10-26-v5.md).
+This does not close signed-release entry or device acceptance.
 
 Acceptance remains on the final release candidate: check available entry
 points, exact feature flags, imports, preview, export, save/share, lifecycle and
