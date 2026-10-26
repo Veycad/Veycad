@@ -52,22 +52,34 @@ No permanent key has been created, no release signed or submitted, no PR merged.
 Full UI/GLES and physical-device/media acceptance are still open.
 
 
-## Full UI run — partial, still running
+## Full UI run — completed with failures
 
 Run ID `20261026-080232-613`; same V4 source above.
 Command: `tools/run_ui_tests.ps1 -Serial emulator-5556 -AvdName AutoEditUi_API36`,
 with explicit working PYTHON and SDK/JDK paths. Log:
 `D:/CodexWork/veycad-integration-v4-full-ui.log`.
 
-At the start of screens scenario 52/267, no terminal failures were recorded.
+Terminal result: permissions 2/2 PASS; screens 267 executed, 256 passed,
+11 failures, zero errors/skips/duplicates/missing tests. Runner exit code 1.
+The failed screens phase prevented atomic-import restart and project-recovery
+restart phases from running; both remain unverified in this run.
+
+Failures comprise three GLES pixel comparisons; the text-export Back click;
+portable-backup completion scrolling; the looping style preview; four text-editor
+UI interactions; and the nonzero-origin decoder regression fixture assertion.
+Passing isolated/physical tests do not replace this failed integration result.
+
 Scenario 36, CaptureReviewScreenTest.automaticChoiceSurvivesRecreationAfterOpeningSpecificResultTake,
 completed PASS. Unlike V3, its long synthetic AVC source finished within the
 unchanged 20-second limit and the review/recreation assertions executed.
 No change to SyntheticVideo was made. This one pass does not establish the
 cause or permanent absence of the previous encoding timeout.
 
-The runner is live; final XML, media collection and restart phases are still
-pending. This partial observation is not a full-run acceptance result.
+Final XML, instrumentation log, logcat and the 15,133,696-byte source-audio
+archive were collected without collection errors under
+`build/reports/ui-tests/runs/20261026-080232-613/screens/` in the integration
+checkout. Summary: `build/reports/ui-tests.json`. Audio archive collection is
+not a decoded-audio oracle or listening acceptance.
 
 
 ## Packaged manifest and signature inspection
