@@ -68,13 +68,14 @@ class ManualMvpScreenTest {
         assertFalse("Preview must never create an MP4", File(fixture.context.cacheDir, "manual-renders")
             .walkTopDown().any { it.isFile })
         onView(withText(containsString("2. B ·"))).perform(scrollTo(), click())
-        fixture.waitUntil("selected B") { view<TextView>("selected-clip")?.text?.contains("B") == true && ready() }
+        // Rebuilding the native preview needs the same budget as aspect changes on SwiftShader.
+        fixture.waitUntil("selected B", 30_000) { view<TextView>("selected-clip")?.text?.contains("B") == true && ready() }
         onView(withText("Конец −1")).perform(scrollTo(), click())
-        fixture.waitUntil("trim persisted") { store.load(id).current.clips[1].span.length == 59 && ready() }
+        fixture.waitUntil("trim persisted", 30_000) { store.load(id).current.clips[1].span.length == 59 && ready() }
         onView(withText("Ниже")).perform(scrollTo(), click())
-        fixture.waitUntil("reorder persisted") { store.load(id).current.clips.map { it.id } == listOf("A1", "A2", "B") && ready() }
+        fixture.waitUntil("reorder persisted", 30_000) { store.load(id).current.clips.map { it.id } == listOf("A1", "A2", "B") && ready() }
         onView(withText("Отменить")).perform(scrollTo(), click())
-        fixture.waitUntil("undo persisted") { store.load(id).current.clips.map { it.id } == listOf("A1", "B", "A2") && ready() }
+        fixture.waitUntil("undo persisted", 30_000) { store.load(id).current.clips.map { it.id } == listOf("A1", "B", "A2") && ready() }
         assertEquals(59, store.load(id).current.clips[1].span.length)
         tapTag("aspect-LANDSCAPE_16_9")
         fixture.waitUntil("landscape ready", 30_000) { store.load(id).current.visualSettings.aspect == ProjectAspect.LANDSCAPE_16_9 && ready() }
