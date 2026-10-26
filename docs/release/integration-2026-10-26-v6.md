@@ -55,8 +55,18 @@ Earlier full V5 evidence and standalone diagnostic/fix runs remain in the
 - Isolated-main PR #99: process recovery PASS at both 320x960 and 320x480;
   fresh process, six unchanged files, retired scratch and native paused preview.
 - PR #98 (`427ce9f`), #99 (`b219e23`) and #100 (`95340e6`) exact-head
-  baseline/legacy-save CI passed at the latest check; all three UI jobs remained
-  running. Snapshot: `D:/CodexWork/veycad-v6-ci-checkpoint.json`.
+  baseline/legacy-save CI passed. PR #99/#100 UI jobs remained running at the
+  latest check. The earlier snapshot is `D:/CodexWork/veycad-v6-ci-checkpoint.json`.
+- PR #98 UI job [121531142216](https://github.com/Veycad/Veycad/actions/runs/40310783117/job/121531142216)
+  subsequently finished FAIL: all 261 cases executed, eight failures, zero errors/
+  skips, 3623.291s instrumentation time. It was no longer cut off at one hour.
+  This branch contains only the CI time-budget change atop main, not combined V6.
+  Its eight failing cases were compared by name against the archived full V5 XML:
+  seven passed there; the manual trim/export scenario failed there at a different
+  wait, then passed on V5 plus #100. This comparison is supporting evidence,
+  not an assertion that PR #98 or V6 is green. Saved comparison and CI excerpt:
+  `D:/CodexWork/veycad-ci98-v5-comparison.json` and
+  `D:/CodexWork/veycad-ci98-ui-log-excerpt.txt`.
 
 These are scoped results, not a replacement for the combined V6 run.
 
