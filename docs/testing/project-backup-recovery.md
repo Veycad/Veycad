@@ -54,11 +54,51 @@ newer project backup separately if newer edits must be retained. Do not clear or
 uninstall the application as a substitute for a backup, and do not delete the
 newer project because an older build cannot open it.
 
+## Signed update and corrective-release procedure
+
+Status: prepared protocol, not an executed update test. It requires the permanent
+owner-controlled certificate and two exact signed artifacts. Use a dedicated
+test installation and permitted sample media; do not uninstall or clear the
+owner's existing application to make an update succeed.
+
+1. Record both APK hashes, source revisions, package IDs, versionCodes and
+   certificate fingerprints. Candidate B must use the same application ID and
+   certificate as A, with a higher versionCode. For the first publication, A can
+   be an internal pre-release signed with the same permanent key.
+2. On A, create a project with a trim, aspect change, text and audio settings.
+   Export a video, reopen the project, and record its visible settings, source
+   and export hashes. Export a project ZIP to independent storage and verify
+   that it restores as a separate project before proceeding.
+3. Install B through the normal update route, preserving application data.
+   Check the original project and its stored edits, undo/history where retained,
+   source bytes and previously completed exports. Create a further edit, close
+   and reopen the app, then export/play/share the new result. Check preferences
+   and permission-dependent paths without assuming grants survived unchanged.
+4. Restore A's independent ZIP under B. Check that restoration creates a separate
+   project, preserves available source/export bytes, and leaves existing projects
+   intact. Retain A's backup and a separate backup of edits made under B.
+5. If B has a regression, prepare a corrective build C with a higher versionCode,
+   the same certificate and readers compatible with B's persisted project format.
+   Reverting code alone is insufficient if the older code cannot read newer data.
+   Repeat steps 3–4 for B to C and accept the exact C artifact before requesting
+   publication. Do not force a downgrade, relabel project formats or delete data
+   as a routine recovery step.
+
+Record device/OS, exact APK identities and each result in the release receipt.
+Any certificate mismatch, unreadable project, missing previous export or changed
+source bytes stops acceptance; retain the installation and evidence for diagnosis.
+Publishing B or C still requires the owner's explicit submission approval.
+
 ## Evidence scope
 
-For issue #66 the owner explicitly excluded physical-device and emulator runs.
-Only host tests, static checks and build results may be reported as executed.
-The device and force-stop journeys below remain unexecuted acceptance coverage.
+The original issue #66 scope excluded physical-device and emulator runs; its
+historical result was host-only. The later RuStore preparation separately
+authorized device acceptance. [V5 results](../release/integration-2026-10-26-v5.md)
+record a Samsung portable-backup test pass and subsequent recovery/preview
+checks. PR #99's separate process-recovery runs verified a fresh process, six
+unchanged files, retired scratch and paused preview on API36. The combined
+[V6 run](../release/integration-2026-10-26-v6.md) is still pending. None of these
+results proves installation of a permanent-key-signed update.
 
 `HybridProjectBackupTest` verifies byte inventories, both genuine historical-v7
 stores, export-only revisions, rich text, music offset, audio mix, malicious or

@@ -128,7 +128,8 @@ Consumes: verified current features and accepted build. Produces: honest listing
 - [ ] All applicable last-commit CI and exact-candidate checks pass; owner approves PR merges.
 - [ ] Publish only the exact accepted artifact. If rebuilding after merge/tag changes the APK, bind a new SHA receipt and repeat all applicable Task 4 export/audio/UI/device checks, including install/update; earlier binary acceptance does not transfer automatically.
 - [ ] Present final APK/listing/known limitations for explicit submission approval; then submit to RuStore and record moderation result.
-- [ ] Prepare a rollback/hotfix procedure using increasing versionCode and the same certificate; never require deleting user data as a routine recovery.
+- [x] Prepare the [signed update and corrective-release procedure](../../testing/project-backup-recovery.md#signed-update-and-corrective-release-procedure), with increasing versionCode, the same certificate and preserved projects/backups.
+- [ ] Execute that procedure on the exact signed candidate; a written protocol and unsigned UI tests do not prove update preservation.
 - [ ] After RuStore acceptance, evaluate AppGallery/Galaxy Store and any requested stores for account eligibility, native/no-GMS compatibility, signing and metadata differences. Google Play stays out of scope.
 
 ## Sources checked 2026-10-25
