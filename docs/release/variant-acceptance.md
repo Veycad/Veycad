@@ -30,3 +30,13 @@ points, exact feature flags, imports, preview, export, save/share, lifecycle and
 update preservation. Recheck screenshots and listing against that candidate.
 Launching an Activity directly from instrumentation does not prove a normal
 user can reach it. UI-test success is supporting evidence, not the release gate.
+
+
+Implementation: [PR #92](https://github.com/Veycad/Veycad/pull/92),
+commit `96f00e499b8f669a2505fc641c51bcce37494ef7`, explicitly sets
+`LIVE_PREVIEW_ENABLED=true` for release. Generated release BuildConfig was
+checked; `assembleRelease` and `verifySecurityContract` passed (2m 09s).
+The unsigned arm64 APK SHA-256 is
+`4e26f747c05029aad8c8409f92f374997a1515592beef68f761e230dd0ec80ac`.
+This is an isolated draft change, not yet merged or verified as a signed
+release on a physical device. The acceptance requirements above remain open.
