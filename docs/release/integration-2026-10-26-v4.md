@@ -162,11 +162,12 @@ not establish TalkBack acceptance or change the V4 source revision above.
 MediaWorkSessionDeviceTest.realTextExportRejectsConcurrentCleanupAndFinishes
 failed in the full emulator run because Back was outside Espresso's visible
 click area. V4 plus a test-only scrollTo before that click passed on the phone:
-1/1 in 10.568s. It checks native text export, rejection of concurrent cleanup,
+1/1 in 10.568s, then 1/1 in 10.826s on a repeat. It checks native text export, rejection of concurrent cleanup,
 audio/video tracks, duration, decoded first/last frames and preserved output.
-Evidence: `D:/CodexWork/veycad-phone-text-scroll-check.log` and `.xml`.
+Evidence: `D:/CodexWork/veycad-phone-text-scroll-check.log` and `.xml` contain
+the latest repeat. The test-only change is published in draft PR #95.
 An earlier physical attempt timed out opening the source; its cause remains
-unresolved and one successful retry does not establish reliability.
+unresolved and two successful retries do not establish reliability.
 
 The performance folder was restored after this test. The first post-test
 verification script incorrectly compared an adb shell directory listing;
