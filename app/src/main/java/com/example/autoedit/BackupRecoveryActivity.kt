@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
@@ -77,12 +78,16 @@ class BackupRecoveryActivity : AppCompatActivity() {
         }.apply { visibility = View.GONE }
         button(R.string.backup_done, "backup-done") { leave() }
         val scroll = ScrollView(this).apply { addView(column); setBackgroundColor(getColor(R.color.background)) }
-        setContentView(scroll)
-        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+        // Insets outside the scroller keep its requested rectangles above system bars.
+        val viewport = FrameLayout(this).apply {
+            addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        }
+        setContentView(viewport)
+        ViewCompat.setOnApplyWindowInsetsListener(viewport) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom); insets
         }
-        ViewCompat.requestApplyInsets(scroll)
+        ViewCompat.requestApplyInsets(viewport)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = leave()
         })
