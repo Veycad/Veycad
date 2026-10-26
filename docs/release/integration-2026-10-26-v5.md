@@ -128,8 +128,10 @@ The isolated PR heads have not all passed CI:
   failed before tests because Maven Central returned HTTP 429 while resolving
   dependencies. The requested single-job retry was not started: GitHub rejected
   it because the containing workflow was still running. After that run terminated,
-  a single-job retry was accepted (HTTP 201) for the unchanged head; result pending.
-  Do not count the dependency-download failure as a device-test failure or a pass.
+  a single-job retry was accepted (HTTP 201) for the unchanged head. The
+  [retry job](https://github.com/Veycad/Veycad/actions/runs/40301181546/job/121526270698)
+  completed successfully. Baseline and legacy-save are now green for this head;
+  the UI result remains cancelled. This does not establish complete PR acceptance.
 
 On the exact installed V5 Samsung build, two additional selected regressions
 passed in 61.299s, with XML confirming two cases and zero failures/errors/skips:
