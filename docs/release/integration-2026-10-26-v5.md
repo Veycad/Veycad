@@ -59,13 +59,21 @@ The original failed V4 full-run evidence was copied before cleaning the build:
 
 Started `tools/run_ui_tests.ps1 -Serial emulator-5556 -AvdName AutoEditUi_API36`
 with explicit Python/SDK/JDK, using the current SwiftShader emulator. Log:
-`D:/CodexWork/veycad-integration-v5-full-ui.log`. Result pending; no full-run
-PASS claim. The prior V4 individual checks do not establish V5 completion.
+`D:/CodexWork/veycad-integration-v5-full-ui.log`. Run `20261026-100125-685`
+completed: permissions 2/2 PASS; screens 267 executed, 266 PASS and one failure,
+zero errors/skips/duplicates/missing/unexpected cases. XML totals match the
+instrumentation report. Screens took 3671.332s (61m11s), excluding build and
+permission setup. No full-run PASS claim: the runner exited 1. Its restart
+phases were not run after the screen failure; separate follow-up results appear below.
+
+All run evidence, including preview captures, logcat, XML and native AAC,
+was copied to `D:/CodexWork/veycad-v5-full-ui-archive/20261026-100125-685/`;
+the summary is `D:/CodexWork/veycad-v5-full-ui-archive/ui-tests.json`.
 
 The active AOSP API36 emulator has no installed or uninstalled package entries
 for Google Play Services, Play Store or any com.google package. Inventory:
 `D:/CodexWork/veycad-v5-emulator-service-inventory.json`. The current full run
-therefore exercises a no-GMS emulator environment; this is not physical Huawei
+therefore exercised a no-GMS emulator environment; this is not physical Huawei
 or other vendor-device acceptance.
 
 ## Exact V5 physical regression
@@ -107,7 +115,19 @@ Detailed result: `D:/CodexWork/veycad-v4-full-ui-archive/20261026-080232-613/scr
 
 This is V4 host AAC evidence only. It does not establish V5 acceptance,
 Android float decoding (the recorded Android PCM encoding was 2), or human
-listening. Repeat on the completed V5 run's own archive.
+listening. The completed V5 archive was independently checked below.
+
+## Independent AAC check of V5
+
+The same existing host oracle passed against the V5 run's own archived evidence.
+All five files matched their device-recorded hashes; decoded mixed audio has
+48,000 stereo sample frames, unclamped float peak 0.8921767473220825 and longest
+full-scale run 0. All four boundary files have exact markers at samples 1600,
+24000 and 46400. Mixed AAC SHA-256:
+`18e9dbf882c62d2ecc263929d3aa3086b2ef80f7d024b0b928c29f9ec8b94b75`.
+Report and decoded PCM:
+`D:/CodexWork/veycad-v5-full-ui-archive/20261026-100125-685/screens/source-audio-host-oracle/`.
+This confirms the host AAC checks for V5, not Android float decoding or human listening.
 
 ## CI follow-up and additional physical checks
 
@@ -141,9 +161,9 @@ Evidence: `D:/CodexWork/veycad-phone-v5-ci-regression.log` / `.xml`.
 The first exercised actual preview release/retry followed by native export;
 the second exercised rejection of a corrupted physical cache entry. All 39
 previous performance files were restored and hash-verified. Camera was not used.
-These physical passes do not replace the isolated PR CI or the ongoing full V5 run.
+These physical passes do not replace isolated PR CI or resolve the full V5 failure.
 
-## In-progress full-run failure and viewport comparison
+## Full-run failure and viewport comparison
 
 The full V5 run `20261026-100125-685` reported a failure in
 `ManualMvpScreenTest.importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision`:
@@ -153,8 +173,8 @@ condition failed. The preceding click was recorded at 10:29:17 and the
 assertion at 10:29:39 in the device log. Other MotionEvents oversleep warnings exist in the
 log, but none was shown at that click, so do not attribute this failure to a
 long press without a reproduction. Snapshot log:
-`D:/CodexWork/veycad-v5-manual-selection-logcat.txt`. The suite continues;
-its final total and restart phases are not yet known.
+`D:/CodexWork/veycad-v5-manual-selection-logcat.txt`. This was the only failure
+in the completed 267-case screen phase; restart phases were not run.
 
 The same unchanged V5 test passed on Samsung with the display temporarily set
 to 320x480 dp, in 51.740s. The scenario covers selection of B, trim, reorder/undo,
@@ -163,6 +183,45 @@ with no failures/errors/skips. Evidence: `D:/CodexWork/veycad-phone-v5-narrow-ma
 / `.xml` and `-display-before.txt`. The original display size/density and all
 39 performance-file hashes were restored. Thus a small viewport alone has not
 reproduced the failure; the emulator failure remains open.
+
+### Isolated emulator follow-up
+
+The unchanged V5 case failed again in isolation (120.524s), but at a different
+step: `Timed out: trim persisted`, line 82. Selection of B passed in this run.
+Evidence: `D:/CodexWork/veycad-v5-manual-isolated.log` and `.xml`.
+Both wait predicates also require preview readiness; neither timeout by itself
+proves a failed selection or failed save.
+
+The failed project's files were archived before further tests in
+`D:/CodexWork/veycad-v5-manual-selection-observation/failed-project.tar`
+(478,720 B; SHA-256
+`07fe1a1bba5efaf7aa6869be7c4a94b303f7f68bde04707c05c47b3029a57a37`).
+Targeted binary field inspection against the v9 writer found B spans [60,120)
+in revisions 1–5 and [60,119) in revision 6; all six revision blob SHA-256 values
+match their filenames. This establishes a stored trimmed revision, not a full
+production-code decode or a live preview-state diagnosis. The root cause remains
+open. Observer preferences recorded B selected; the screenshot was taken before
+the timeout and cannot establish final state. The observer's subsequent
+UI hierarchy dump exited 137 and provides no usable evidence.
+
+### Separate process-restart checks
+
+Atomic import restart PASS on unchanged V5: run
+`fd4f5db7-1653-4b5b-9769-14fd62abe0a6`, both FILES_PREPARED and
+MANIFEST_COMMITTED phases, each with a fresh process, two exact byte checks
+and UI checks.
+
+Project recovery run `6113be8b-ac61-4fe5-805f-afde1f2b8c55` FAIL at native
+editor readiness. The process changed from PID 25126 to 25475 and six retained
+project files matched exactly. The probe launches ManualMvpActivity with literal
+`projectId`, whereas that Activity consumes `EXTRA_PROJECT_ID` =
+`editable_project_id`. The captured UI shows the project list, not the requested
+editor. The test-only fix uses the shared constant in draft [PR #99](https://github.com/Veycad/Veycad/pull/99),
+commit `d4b1b92`; `compileUiTestKotlin` (x86_64) passed. No corrected
+runtime PASS is claimed yet. This defect is separate from the manual trim timeout.
+
+Both reports and their full evidence archives were copied with SHA-256 comparison
+to `D:/CodexWork/veycad-v5-full-ui-archive/separate-restarts/`.
 
 ## Store-screen draft inspection
 
