@@ -30,6 +30,7 @@ import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import kotlin.math.roundToInt
 
 /** Real Activity -> production import/store -> real decoder/Surface; no preview renderer substitute. */
 class ManualMvpScreenTest {
@@ -179,10 +180,14 @@ class ManualMvpScreenTest {
         val bytes = source.readBytes()
         source.writeBytes(byteArrayOf(0))
         val previousScale = shell("settings get system font_scale").trim()
+        val previousSize = shell("wm size").trim()
+        val previousOverride = Regex("(?m)^Override size: ([0-9]+x[0-9]+)$")
+            .find(previousSize)?.groupValues?.get(1)
         try {
             shell("settings put system font_scale 2.0")
-            // This CI device uses density=1: 720 physical pixels would be a tablet width.
-            shell("wm size 320x640")
+            // Keep the same narrow dp viewport on both emulators and physical phones.
+            val density = fixture.context.resources.displayMetrics.density
+            shell("wm size ${(320 * density).roundToInt()}x${(640 * density).roundToInt()}")
             fixture.waitUntil("narrow large-font Main recreation and splash settled", 30_000) {
                 val main = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
                     .filterIsInstance<MainActivity>().singleOrNull() ?: return@waitUntil false
@@ -212,7 +217,8 @@ class ManualMvpScreenTest {
             try { finishEditor() }
             finally {
                 shell("settings put system font_scale ${previousScale.toFloatOrNull() ?: 1f}")
-                shell("wm size reset")
+                shell("wm size ${previousOverride ?: "reset"}")
+                assertEquals("Restore the runner display size", previousSize, shell("wm size").trim())
             }
         }
     }
