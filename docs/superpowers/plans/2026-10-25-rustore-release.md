@@ -32,7 +32,7 @@ remaining effort. No release date is currently supported by evidence.
 | --- | --- | --- |
 | 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V5 finished 266/267; its failing scenario passes with #100; combined V6 rerun in progress |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | Samsung import/edit/export/lifecycle checks passed; release flag in draft #92; final candidate acceptance open |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | Clean V6 build/full regression in progress; exact final device acceptance and merge approval remain open |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | Clean V6 baseline/build PASS (1392 JVM + 338 Python); full UI running; final device acceptance and merge approval open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Samsung arm64 checks recorded; no-GMS, rear camera, human output review and signed updates remain open |
 | 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Draft materials exist; final screenshots and public policy still pending |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |
