@@ -168,9 +168,10 @@ class SmartFramingDeviceTest {
         val project = EditableMontageImporter.create("cached-smart", graph, MontageStyleCatalog.Recipe.HEARTBEAT,
             ProjectExportSettings(720, 1280, 30, 2_000_000, 128_000), listOf(video), music, null,
             listOf(selection)).shared.let { imported ->
-            imported.copy(current = imported.current.copy(visualSettings = ProjectVisualSettings(
+            val revision = imported.current.copy(visualSettings = ProjectVisualSettings(
                 ProjectAspect.PORTRAIT_9_16, true, mapOf(FramingKey(selection.id, ProjectAspect.PORTRAIT_9_16) to
-                    SourceFramingSettings(mode = FramingMode.SMART_PERSON)))))
+                    SourceFramingSettings(mode = FramingMode.SMART_PERSON))))
+            imported.copy(original = revision, current = revision)
         }
         assertEquals("The production preparation path must consume the exact cached compact track",
             track.points, SmartFramingPreparation.prepare(context, project, assets).getValue(selection.id).points)
