@@ -252,3 +252,28 @@ and `veycad-phone-live-camera-four-v4.tar` containing the subsequent recordings.
 Still open: rear-camera/physical-orientation acceptance, complete capture-to-
 montage export and human visual/audio review. These four passes do not close
 all physical-camera/media release gates.
+
+### Small-screen backup viewport fix
+
+Draft PR #97 (f2c824f) moves system-bar/cutout insets outside the backup page's
+ScrollView, following the existing text-editor viewport pattern. No backup
+format, storage or navigation logic changed.
+
+On Samsung at a temporary 320x480 dp viewport, original V4 reproduced the
+backup-done ScrollToAction failure (30.766s). V4 plus this patch passed the same
+unmodified export/share/restore/playable-project test in 28.102s; the original
+phone viewport also passed in 28.518s. Both display size and density were
+restored after each narrow test and all 39 performance files were hash-checked.
+Camera recordings had already been archived locally before fixture cleanup.
+Evidence: `D:/CodexWork/veycad-phone-narrow-backup-{red,green}.log` / `.xml`,
+their `-display-before.txt` receipts, and `veycad-phone-backup-viewport-green.log`.
+The main-based PR passed clean baselineVerify in 5m43s (1,392 JVM tests with
+zero failures/errors/skips; Python/lint/security tasks passed).
+
+The targeted emulator attempt failed earlier at manualMvpButton, so it did not
+validate the viewport fix. A separate cold-reboot check still reproduced three
+text UI failures; it was deliberately stopped during the fifth case once that
+diagnostic question was answered. It is an interrupted diagnostic, not a full
+test result. Logs: `veycad-emulator-backup-viewport-green.log` and
+`veycad-emulator-text-v4-after-reboot.log`. CI and complete integrated rerun
+remain open; the original 267-test V4 result above is unchanged.
