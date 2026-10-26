@@ -109,6 +109,37 @@ This is V4 host AAC evidence only. It does not establish V5 acceptance,
 Android float decoding (the recorded Android PCM encoding was 2), or human
 listening. Repeat on the completed V5 run's own archive.
 
+## CI follow-up and additional physical checks
+
+The isolated PR heads have not all passed CI:
+
+- PR #94, `ca78edb2b6fd1fe17a16bc58ebefa825a4de43a0`: baseline and legacy-save
+  passed. [UI job](https://github.com/Veycad/Veycad/actions/runs/40293241625/job/121473450219)
+  exceeded the one-hour limit; before cancellation it reported a recovery-export
+  timeout and the old SmartFraming fixture invariant failure.
+- PR #95, `4fb794dbf2b9904f3c42fd0324f987ffe7f8a5e7`: baseline and legacy-save
+  passed. [UI job](https://github.com/Veycad/Veycad/actions/runs/40294766547/job/121478015529)
+  was cancelled; retained output includes the old held-consumer lifecycle timeout
+  and SmartFraming fixture invariant failure. No full UI pass is claimed.
+- PR #96, `0100245e9cf240bea2c767520492849f0b0c4146`: baseline and legacy-save
+  passed; UI was still running when inspected.
+- PR #97, `f2c824f5db1065650cadd4bcd4aee9bcc7563a7c`: baseline passed.
+  [Legacy-save job](https://github.com/Veycad/Veycad/actions/runs/40301181546/job/121499175822)
+  failed before tests because Maven Central returned HTTP 429 while resolving
+  dependencies. The requested single-job retry was not started: GitHub rejected
+  it because the containing workflow was still running. Retry after that run
+  terminates; do not count this as a device-test failure or a pass.
+
+On the exact installed V5 Samsung build, two additional selected regressions
+passed in 61.299s, with XML confirming two cases and zero failures/errors/skips:
+`ProjectRecoveryDeviceTest.explicitPressureReleasesActualPreviewAndRetryPreservesProjectAndClock`
+and `SmartFramingDeviceTest.compactCacheUsesExactPhysicalIdentityAndCorruptionDoesNotReachReady`.
+Evidence: `D:/CodexWork/veycad-phone-v5-ci-regression.log` / `.xml`.
+The first exercised actual preview release/retry followed by native export;
+the second exercised rejection of a corrupted physical cache entry. All 39
+previous performance files were restored and hash-verified. Camera was not used.
+These physical passes do not replace the isolated PR CI or the ongoing full V5 run.
+
 ## Open acceptance
 
 Complete V5 UI/native/restart regression, signed updates, no-GMS,
