@@ -140,6 +140,36 @@ the second exercised rejection of a corrupted physical cache entry. All 39
 previous performance files were restored and hash-verified. Camera was not used.
 These physical passes do not replace the isolated PR CI or the ongoing full V5 run.
 
+## In-progress full-run failure and viewport comparison
+
+The full V5 run `20261026-100125-685` reported a failure in
+`ManualMvpScreenTest.importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision`:
+`Timed out: selected B` at line 80. That predicate requires both the selected
+clip label and a ready paused preview; the log alone does not distinguish which
+condition failed. The preceding click was recorded at 10:29:17 and the
+assertion at 10:29:39 in the device log. Other MotionEvents oversleep warnings exist in the
+log, but none was shown at that click, so do not attribute this failure to a
+long press without a reproduction. Snapshot log:
+`D:/CodexWork/veycad-v5-manual-selection-logcat.txt`. The suite continues;
+its final total and restart phases are not yet known.
+
+The same unchanged V5 test passed on Samsung with the display temporarily set
+to 320x480 dp, in 51.740s. The scenario covers selection of B, trim, reorder/undo,
+reopening, landscape export and exact shared-file bytes. XML confirms one case
+with no failures/errors/skips. Evidence: `D:/CodexWork/veycad-phone-v5-narrow-manual.log`
+/ `.xml` and `-display-before.txt`. The original display size/density and all
+39 performance-file hashes were restored. Thus a small viewport alone has not
+reproduced the failure; the emulator failure remains open.
+
+## Store-screen draft inspection
+
+Three local captures and their dimensions/hashes are inventoried in
+`D:/CodexWork/veycad-v5-store-screen-drafts/manifest.json` (1080x2340).
+Main-screen and style-selector views are draft candidates. The empty text-editor
+view is rejected as a final marketing screenshot until it shows permitted demo
+material. These are UI-test APK captures, not signed-release store assets;
+retake on the final APK. No screenshots or personal media were published.
+
 ## Open acceptance
 
 Complete V5 UI/native/restart regression, signed updates, no-GMS,
