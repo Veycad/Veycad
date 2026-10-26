@@ -151,3 +151,31 @@ SmartFraming: начальные original/current получают один со
 Проверки повреждения кэша и production-валидация не ослаблены. После исправления
 целевой тест API 26 прошёл 1/1 (0,552 секунды), сборка UI APK и clean baselineVerify
 успешны (6 минут 17 секунд). Проверка в общей сборке и API 36 остаётся открытой.
+
+
+### V3: изолированные повторы API 36
+
+После подтверждения отсутствия работающего эмулятора запущен тот же AVD
+AutoEditUi_API36 с host GPU, без загрузки/сохранения snapshot. Повторно установлены
+те же APK с SHA-256, указанными выше; код и assertions не менялись.
+
+- Два GLES-сценария: 1 PASS / 1 FAIL, 2,024 секунды. Сравнение manual-window
+  display/encoder прошло; metadata-rotation снова упало на байте 0.
+- Ещё три отдельных запуска metadata-rotation: FAIL, PASS, FAIL. Следовательно,
+  воспроизведение нестабильно даже без полного набора тестов. Причина пока не
+  установлена; это не доказательство ошибки только драйвера или только fixture.
+- RenderProgress + StylePicker: 2/2 PASS, 7,653 секунды.
+- ManualMvp import/trim/undo/reopen/landscape/export: 1/1 PASS, 42,968 секунды.
+
+Логи и XML сохранены локально с префиксами `veycad-v3-gles-api36-isolated`,
+`veycad-v3-rotation-isolated-{1,2,3}`, `veycad-v3-progress-picker-isolated`,
+`veycad-v3-manual-landscape-isolated` в `D:/CodexWork`.
+Эти результаты не отменяют ошибки полного прогона.
+
+При чтении ManualMvpScreenTest.landscapeLargeFontMissingSourceShowsRecoverableErrorAndSelectedFormat
+найдена утечка конфигурации: тест устанавливает `wm size 320x640`, а в finally
+вызывает `wm size reset`, теряя предыдущее override 320x480 полного runner.
+Это подтверждённая ошибка восстановления fixture; причинная связь с поздним
+RenderProgress failure ещё требует проверки последовательности. Следующий шаг:
+восстанавливать исходный override, затем проверить размер до/после и следующий
+сценарий прогресса. Production-поведение ради устранения этого эффекта не менять.
