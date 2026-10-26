@@ -203,3 +203,52 @@ Evidence: `D:/CodexWork/veycad-phone-text-entry-before-idle.log`,
 `veycad-emulator-text-idle-class.log`, `veycad-emulator-text-idle-v2-class.log`,
 and `veycad-text-idle{,-v2}.patch`. These experiments do not close the four
 text-editor failures in the full V4 run.
+
+### Cursor fixture and physical portable-backup follow-ups
+
+The cursor-origin failure occurs before decoder assertions: a single-track
+MediaMuxer fixture rebased its authored 2,000,000us video origin to zero.
+An explicit MediaExtractor assertion reproduced expected 2000000 / actual 0.
+Adding an AAC track at zero anchors the shared timeline, while retaining the
+later-sync-sample guard and exact decoded-PTS assertion. V4 plus this test-only
+change passed on API36 emulator (2.641s) and Samsung (2.231s).
+Evidence: `D:/CodexWork/veycad-cursor-offset-red.log`,
+`veycad-cursor-offset-green.log`, `veycad-phone-cursor-offset-green.log` / `.xml`.
+Production decoder code is unchanged; full integration rerun remains open.
+The fixture change is published as draft PR #96, head 0100245. Its main-based
+clean baselineVerify passed in 5m47s (1,392 JVM tests, zero failures/errors/skips;
+Python/lint/security tasks passed).
+
+On the unchanged V4 Samsung app,
+ProjectRecoveryDeviceTest.portableBackupSharesVerifiedArchiveAndRestoresSeparatePlayableProject
+passed 1/1 in 28.068s. The test checks ZIP manifest entries and hashes, sharing
+bytes/permissions, a separately restored project, playable restored output and
+original file preservation. System document/chooser results are stubbed; real
+DocumentsUI acceptance remains open, as does the emulator's narrow-viewport
+backup-done failure. Evidence: `D:/CodexWork/veycad-phone-portable-backup-v4.log`
+and `.xml`. Both phone runs restored and hash-verified the 39 performance files.
+
+### Physical live camera (user-prepared scene)
+
+Same V4 Samsung app, actual CameraX/encoder, default front camera:
+- countdownCanCancelAndShortRecordingProducesReadableSilentVideo and
+  backgroundingStopsRecordingButRetainsFinalizedSource: 2/2 PASS, 26.874s.
+- cameraLossDuringCountdownCreatesNoDraftAndRetryRecordsWithPreview and
+  cameraLossWhilePreparingTerminatesWithReasonAndRetryRecords: 2/2 PASS, 29.808s.
+
+The tests check preview streaming, real recorded files with exactly one video
+track and no audio track, native frame decoding, cancellation/retry and retained
+source on backgrounding. All 39 performance files were restored and hash-checked.
+The captured recording screen was inspected: the default front camera shows a
+desk scene. This is not rear-camera acceptance of the room scene the user aimed
+at. No private footage is included in Git or store materials.
+
+Evidence: `D:/CodexWork/veycad-phone-live-camera-short-v4.log` / `.xml`,
+`veycad-phone-live-camera-retry-v4.log` / `.xml`,
+`veycad-phone-live-camera-short-v4-evidence/`,
+`veycad-phone-live-camera-short-v4.tar` (13,275,648 bytes; SHA256
+`e2bad5c6627918e8db2f72cdcd8e459292f8e17466fd67dcc7c2005c9b453604`),
+and `veycad-phone-live-camera-four-v4.tar` containing the subsequent recordings.
+Still open: rear-camera/physical-orientation acceptance, complete capture-to-
+montage export and human visual/audio review. These four passes do not close
+all physical-camera/media release gates.
