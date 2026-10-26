@@ -127,8 +127,9 @@ The isolated PR heads have not all passed CI:
   [Legacy-save job](https://github.com/Veycad/Veycad/actions/runs/40301181546/job/121499175822)
   failed before tests because Maven Central returned HTTP 429 while resolving
   dependencies. The requested single-job retry was not started: GitHub rejected
-  it because the containing workflow was still running. Retry after that run
-  terminates; do not count this as a device-test failure or a pass.
+  it because the containing workflow was still running. After that run terminated,
+  a single-job retry was accepted (HTTP 201) for the unchanged head; result pending.
+  Do not count the dependency-download failure as a device-test failure or a pass.
 
 On the exact installed V5 Samsung build, two additional selected regressions
 passed in 61.299s, with XML confirming two cases and zero failures/errors/skips:
@@ -163,12 +164,28 @@ reproduced the failure; the emulator failure remains open.
 
 ## Store-screen draft inspection
 
-Three local captures and their dimensions/hashes are inventoried in
+Local captures and their dimensions/hashes are inventoried in
 `D:/CodexWork/veycad-v5-store-screen-drafts/manifest.json` (1080x2340).
 Main-screen and style-selector views are draft candidates. The empty text-editor
 view is rejected as a final marketing screenshot until it shows permitted demo
 material. These are UI-test APK captures, not signed-release store assets;
 retake on the final APK. No screenshots or personal media were published.
+
+A populated text-editor draft is now available as `06-text-demo.png` in that
+folder. The bundled silent Heartbeat preview was imported through the system
+picker, the title `Dance demo` entered through the title form, and MP4 exported
+through the normal UI. Preview provenance: `docs/design/style-previews.md`,
+Pexels 8853811 / Los Muertos Crew; [Pexels terms](https://www.pexels.com/license/)
+rechecked 2026-10-26. This does not imply endorsement by the depicted person.
+
+The actual output (`text-demo-export.mp4`) decoded to 90 H.264 frames,
+320x568, 3.000s; AAC stream duration 3.008s. A frame extracted at 0.8s was
+visually inspected and contains the title over the demo video. Size 471,502 B,
+SHA-256 `3c56b1c71265e36632ef2a3fa8dd413bebf9f300894850fd45c8f1196f754fbd`.
+Metadata, extracted frame and provenance/hashes remain beside the draft captures.
+The temporary named demo copy in Downloads was removed after import/export;
+personal files were not selected. This verifies a manual title workflow on V5,
+not speech recognition, a signed release, final store graphics or human audio acceptance.
 
 ## Open acceptance
 
