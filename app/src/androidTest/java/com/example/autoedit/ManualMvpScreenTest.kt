@@ -30,6 +30,7 @@ import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import kotlin.math.roundToInt
 
 /** Real Activity -> production import/store -> real decoder/Surface; no preview renderer substitute. */
 class ManualMvpScreenTest {
@@ -184,8 +185,9 @@ class ManualMvpScreenTest {
             .find(previousSize)?.groupValues?.get(1)
         try {
             shell("settings put system font_scale 2.0")
-            // This CI device uses density=1: 720 physical pixels would be a tablet width.
-            shell("wm size 320x640")
+            // Keep the same narrow dp viewport on both emulators and physical phones.
+            val density = fixture.context.resources.displayMetrics.density
+            shell("wm size ${(320 * density).roundToInt()}x${(640 * density).roundToInt()}")
             fixture.waitUntil("narrow large-font Main recreation and splash settled", 30_000) {
                 val main = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
                     .filterIsInstance<MainActivity>().singleOrNull() ?: return@waitUntil false
