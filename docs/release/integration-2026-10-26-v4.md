@@ -135,3 +135,18 @@ not store marketing imagery or human acceptance of a real montage.
 
 Still open: 60fps/background route, large-font/TalkBack on the physical device,
 live camera/audio/real footage, no-GMS and signed-release update acceptance.
+
+
+Physical 60fps/lifecycle follow-up on the same APK:
+ManualMvpScreenTest.saved60FpsScrubPlayPauseBackgroundAndRecreateRemainPaused
+passed 1/1 in 28.836s (XML failures/errors/skipped zero). Covered exact scrub
+frame 61, play/pause, recreation with held consumers/export, close/reopen,
+Home/background release and paused return. This is functional 60fps-project
+acceptance, not a sustained 60fps performance measurement. The performance
+folder was again protected outside fixture cleanup and restored in finally.
+Evidence: `D:/CodexWork/veycad-v4-phone-manual60.log`, `-results.xml`,
+`veycad-v4-phone-manual60-evidence/` (32 accumulated PNG/text captures).
+
+Large-font fixture currently assumes density=1 when setting 320 physical pixels;
+it must be adapted or its device configuration explicitly controlled before
+claiming the corresponding physical accessibility check. TalkBack remains open.
