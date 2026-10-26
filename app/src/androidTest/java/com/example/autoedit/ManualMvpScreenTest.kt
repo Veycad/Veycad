@@ -179,6 +179,9 @@ class ManualMvpScreenTest {
         val bytes = source.readBytes()
         source.writeBytes(byteArrayOf(0))
         val previousScale = shell("settings get system font_scale").trim()
+        val previousSize = shell("wm size").trim()
+        val previousOverride = Regex("(?m)^Override size: ([0-9]+x[0-9]+)$")
+            .find(previousSize)?.groupValues?.get(1)
         try {
             shell("settings put system font_scale 2.0")
             // This CI device uses density=1: 720 physical pixels would be a tablet width.
@@ -212,7 +215,8 @@ class ManualMvpScreenTest {
             try { finishEditor() }
             finally {
                 shell("settings put system font_scale ${previousScale.toFloatOrNull() ?: 1f}")
-                shell("wm size reset")
+                shell("wm size ${previousOverride ?: "reset"}")
+                assertEquals("Restore the runner display size", previousSize, shell("wm size").trim())
             }
         }
     }
