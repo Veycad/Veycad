@@ -109,3 +109,29 @@ The parallel API 36 emulator run still reports pixel differences. The physical
 result establishes these compositor tests on this phone; it does not prove the
 cause of emulator failures or complete UI, camera, audio, performance, lifecycle,
 visual/human or signed-release acceptance. Those remain open.
+
+
+### Physical preview and manual editor route
+
+Same Samsung/API 36/arm64 UI APK:
+- DraftPreviewControllerDeviceTest: 4/4 PASS, 34.108s.
+- ManualMvpScreenTest.importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision:
+  1/1 PASS, 54.703s. Enters from the main UI, changes all four aspects,
+  trims/reorders/undoes, exports 1920x1080, verifies source hashes and shared-file
+  bytes, recreates the editor and checks landscape formats.
+
+Before the UI fixture ran, a MediaStore query found no videos owned by the test
+package. The 39 previous performance files were temporarily moved outside its
+files-directory cleanup scope, restored in finally and independently hash-checked
+against the pre-update archive. No existing gallery videos were removed.
+
+Evidence: `D:/CodexWork/veycad-v4-phone-preview{,-results.xml}` (log uses `.log`),
+`veycad-v4-phone-manual.log`, `veycad-v4-phone-manual-results.xml`,
+`veycad-v4-phone-manual-evidence/` (24 PNG/text files),
+`veycad-v4-phone-manual-export.tar` (MP4 and properties, SHA256
+`2b6ff6a77864552df75c773491b655d672f5d24b3c260412b917a3a505f7f97d`).
+Two captured editor screens were visually inspected; these use synthetic bars,
+not store marketing imagery or human acceptance of a real montage.
+
+Still open: 60fps/background route, large-font/TalkBack on the physical device,
+live camera/audio/real footage, no-GMS and signed-release update acceptance.
