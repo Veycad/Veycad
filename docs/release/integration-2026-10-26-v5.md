@@ -217,8 +217,19 @@ project files matched exactly. The probe launches ManualMvpActivity with literal
 `projectId`, whereas that Activity consumes `EXTRA_PROJECT_ID` =
 `editable_project_id`. The captured UI shows the project list, not the requested
 editor. The test-only fix uses the shared constant in draft [PR #99](https://github.com/Veycad/Veycad/pull/99),
-commit `d4b1b92`; `compileUiTestKotlin` (x86_64) passed. No corrected
-runtime PASS is claimed yet. This defect is separate from the manual trim timeout.
+commit `d4b1b92`; `compileUiTestKotlin` and `assembleUiTest` (x86_64) passed.
+This defect is separate from the manual trim timeout.
+
+The corrected isolated-main APK (not combined V5), SHA-256
+`6ca9069a32606e3caa85c97995f2f783798b31310063f07200f8ef8f50f82dd5`,
+opened the requested editor. Its compact 320x480 run still failed the host UI
+readiness check: the captured visible hierarchy excluded the preview status.
+At 320x960, run `10e6233f-06a0-47d9-a0a7-5b76f846e83d` PASS: PID 27247
+changed to 27596, six exact file checks, retired scratch removal and native
+paused preview. The emulator override was restored to 320x480. Evidence for
+both runs is archived at `D:/CodexWork/veycad-recovery-intent-evidence/`.
+Compact-viewport gate support and combined V5 rerun remain open; do not count
+this isolated-main result as a complete V5 PASS.
 
 Both reports and their full evidence archives were copied with SHA-256 comparison
 to `D:/CodexWork/veycad-v5-full-ui-archive/separate-restarts/`.
