@@ -108,11 +108,25 @@ try {
     }
     $deadline=[DateTime]::UtcNow.AddSeconds(90)
     $ready=$false
+    $previewSwipes=0
     do {
         Invoke-RecoveryAdb @('shell','uiautomator','dump',"/data/local/tmp/project-$recoveryRunId.xml") | Out-Null
         $ui=Invoke-RecoveryAdb @('exec-out','cat',"/data/local/tmp/project-$recoveryRunId.xml")
         [xml]$tree=$ui
         $ready=$null -ne $tree.SelectSingleNode("//*[@text='Черновик · пауза']")
+        # As in the import restart gate, reveal controls below a compact viewport.
+        $previewStatus=$tree.SelectSingleNode("//*[@text='Черновик · пауза' or @text='Подготавливаю просмотр…' or starts-with(@text,'Не удалось показать кадр.')]")
+        if($null -eq $previewStatus -and $previewSwipes -lt 8){
+            $viewport=$tree.SelectSingleNode("//*[@class='android.widget.ScrollView' and @scrollable='true']")
+            if($null -ne $viewport -and $viewport.GetAttribute('bounds') -match '^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$'){
+                $x=[int](([int]$Matches[1]+[int]$Matches[3])/2)
+                $top=[int]$Matches[2]; $height=[int]$Matches[4]-$top
+                $y1=$top+[int]($height*0.8); $y2=$top+[int]($height*0.2)
+                $ui | Set-Content -LiteralPath (Join-Path $recoveryArchive "before-preview-scroll-$previewSwipes.xml") -Encoding utf8
+                Invoke-RecoveryAdb @('shell','input','swipe',"$x","$y1","$x","$y2",'300') | Out-Null
+                $previewSwipes++
+            }
+        }
         if(-not $ready){Start-Sleep -Milliseconds 250}
     }while(-not $ready -and [DateTime]::UtcNow -lt $deadline)
     $ui | Set-Content -LiteralPath (Join-Path $recoveryArchive 'recovered-editor.xml') -Encoding utf8

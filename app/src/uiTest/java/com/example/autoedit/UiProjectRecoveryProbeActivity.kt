@@ -97,7 +97,7 @@ internal class UiProjectRecoveryProbeActivity : AppCompatActivity() {
         check(inventory(store.directory(id)).toString() == before.toString())
         report("verdict.json", JSONObject().put("projectId", id).put("projectFiles", before)
             .put("scratchRemoved", scratch.length()).put("sourcesVerified", project.assets.size).put("projectUnchanged", true))
-        runOnUiThread { startActivity(Intent(this, ManualMvpActivity::class.java).putExtra("projectId", id)) }
+        runOnUiThread { startActivity(Intent(this, ManualMvpActivity::class.java).putExtra(ManualMvpActivity.EXTRA_PROJECT_ID, id)) }
     }
     private fun inventory(root: File) = JSONArray().apply {
         root.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(root).invariantSeparatorsPath }.forEach {
