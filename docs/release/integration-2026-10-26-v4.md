@@ -133,8 +133,9 @@ Evidence: `D:/CodexWork/veycad-v4-phone-preview{,-results.xml}` (log uses `.log`
 Two captured editor screens were visually inspected; these use synthetic bars,
 not store marketing imagery or human acceptance of a real montage.
 
-Still open: 60fps/background route, large-font/TalkBack on the physical device,
-live camera/audio/real footage, no-GMS and signed-release update acceptance.
+The subsequent 60fps/background and large-font checks are recorded below.
+TalkBack, live camera/audio/real footage, no-GMS and signed-release update
+acceptance remain open.
 
 
 Physical 60fps/lifecycle follow-up on the same APK:
@@ -147,6 +148,27 @@ folder was again protected outside fixture cleanup and restored in finally.
 Evidence: `D:/CodexWork/veycad-v4-phone-manual60.log`, `-results.xml`,
 `veycad-v4-phone-manual60-evidence/` (32 accumulated PNG/text captures).
 
-Large-font fixture currently assumes density=1 when setting 320 physical pixels;
-it must be adapted or its device configuration explicitly controlled before
-claiming the corresponding physical accessibility check. TalkBack remains open.
+### Physical large-font and text-cleanup follow-ups
+
+PR #94 head ca78edb2b6fd1fe17a16bc58ebefa825a4de43a0 converts the large-font
+fixture's 320x640 dp viewport to physical pixels using the device density.
+The old fixture timed out on this phone (420 dpi override); V4 plus the test-only
+patch passed 1/1 in 18.350s at 200% font. Original display size, density and font
+scale were restored. Evidence: `D:/CodexWork/veycad-phone-font-density-green.log`,
+`-results.xml`, and `veycad-v4-phone-font-evidence/`. The captured narrow error
+screen was visually inspected for wrapping and reachable controls. This does
+not establish TalkBack acceptance or change the V4 source revision above.
+
+MediaWorkSessionDeviceTest.realTextExportRejectsConcurrentCleanupAndFinishes
+failed in the full emulator run because Back was outside Espresso's visible
+click area. V4 plus a test-only scrollTo before that click passed on the phone:
+1/1 in 10.568s. It checks native text export, rejection of concurrent cleanup,
+audio/video tracks, duration, decoded first/last frames and preserved output.
+Evidence: `D:/CodexWork/veycad-phone-text-scroll-check.log` and `.xml`.
+An earlier physical attempt timed out opening the source; its cause remains
+unresolved and one successful retry does not establish reliability.
+
+The performance folder was restored after this test. The first post-test
+verification script incorrectly compared an adb shell directory listing;
+a separate binary tar comparison against the pre-update archive confirmed all
+39 original performance files have identical SHA-256 hashes.
