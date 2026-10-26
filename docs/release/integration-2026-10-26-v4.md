@@ -68,3 +68,19 @@ cause or permanent absence of the previous encoding timeout.
 
 The runner is live; final XML, media collection and restart phases are still
 pending. This partial observation is not a full-run acceptance result.
+
+
+## Packaged manifest and signature inspection
+
+Inspected the exact arm64 release APK identified above with Build-Tools 36.0.0
+aapt and apksigner. Package `com.veycad.app`, versionName `0.1.16`, versionCode
+17, minSdk 26, targetSdk 36, label `Veycad`, native ABI arm64-v8a.
+No debuggable declaration; allowBackup=false. Requested permissions are CAMERA,
+POST_NOTIFICATIONS, WAKE_LOCK, RECEIVE_BOOT_COMPLETED, FOREGROUND_SERVICE and
+the application-specific DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION.
+No INTERNET/ACCESS_NETWORK_STATE, RECORD_AUDIO or broad media/storage permission
+is present in this APK. This inspection is not a complete privacy/security audit.
+
+apksigner reports `DOES NOT VERIFY: Missing META-INF/MANIFEST.MF`, consistent
+with this unsigned package. It is not install/update/publication acceptance.
+Logs: `D:/CodexWork/veycad-v4-release-{badging,permissions,manifest,signature}.txt`.
