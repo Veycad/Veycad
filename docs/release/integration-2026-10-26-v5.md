@@ -204,6 +204,41 @@ open. Observer preferences recorded B selected; the screenshot was taken before
 the timeout and cannot establish final state. The observer's subsequent
 UI hierarchy dump exited 137 and provides no usable evidence.
 
+### Manual preview readiness diagnosis
+
+A test-only diagnostic on unchanged V5 production code confirmed B selected,
+a valid TextureView, and buffering with no exact frame while preview was outside
+the viewport. The source diagnostic is retained outside the repository at
+`D:/CodexWork/ManualMvpScreenTest-readiness-diagnostic.kt`; temporary logging was
+removed from the worktree afterwards.
+
+A separate diagnostic allowed up to 60s only for selection and trim. Selection
+became ready after 14.030s; after trim the same real preview became ready after
+15.873s (11:34:48.029 to 11:35:03.902, PID 29676), beyond the ordinary 15s
+fixture default. The frame was ready while still offscreen, so an offscreen
+surface is not by itself the blocker. Sampled GL-worker stacks were in native
+MediaCodec/OpenGL calls. This supports slow native preparation on SwiftShader,
+not a proof of a shader-compiler defect or a production deadlock. The diagnostic
+then failed at the unchanged 15s reorder wait; it is not an acceptance PASS.
+Evidence: `D:/CodexWork/veycad-v5-readiness-long-diagnostic.log`,
+`-state.log`, and `D:/CodexWork/veycad-v5-readiness-timing.json`.
+
+Draft [PR #100](https://github.com/Veycad/Veycad/pull/100), `95340e6`, aligns
+only the four edit/selection waits with the existing 30s aspect-change waits.
+Saved-state predicates and native paused-frame readiness remain unchanged.
+The complete scenario passed on V5 plus this patch at 320x480: one case,
+zero failures/errors/skips, 358.117s. Includes trim, reorder/undo, real landscape
+export, exact shared-file bytes, reopening and rotated-aspect checks. Log/XML:
+`D:/CodexWork/veycad-v5-preview-budget-validation.log` / `.xml`; evidence and
+tested APK hash archived at `D:/CodexWork/veycad-preview-budget-evidence/`.
+The patch is committed locally atop V5 as `5ab52d0`; no diagnostic logging or
+experimental 60s waits remain. This is a synchronization fix, not a production
+performance improvement. The full combined suite still needs a fresh run.
+
+At the latest check, exact-head baseline and legacy-save CI were successful for
+PR #99 (`b219e23`) and PR #98 (`427ce9f`); their UI jobs were still running.
+PR #100's baseline, legacy-save and UI jobs were running. No full CI PASS claim.
+
 ### Separate process-restart checks
 
 Atomic import restart PASS on unchanged V5: run
