@@ -62,6 +62,34 @@ with explicit Python/SDK/JDK, using the current SwiftShader emulator. Log:
 `D:/CodexWork/veycad-integration-v5-full-ui.log`. Result pending; no full-run
 PASS claim. The prior V4 individual checks do not establish V5 completion.
 
+The active AOSP API36 emulator has no installed or uninstalled package entries
+for Google Play Services, Play Store or any com.google package. Inventory:
+`D:/CodexWork/veycad-v5-emulator-service-inventory.json`. The current full run
+therefore exercises a no-GMS emulator environment; this is not physical Huawei
+or other vendor-device acceptance.
+
+## Exact V5 physical regression
+
+Samsung SM-A256E / Android16 passed 28/28 selected tests in 266.969s, with zero
+failures/errors/skips in the collected XML:
+- GLES compositor: 12.
+- Native draft preview: 4.
+- Manual editor import/edit/export, 60fps lifecycle and large-font recovery: 3.
+- Text editor: 6.
+- Portable project backup/restore: 1.
+- Native text export with concurrent-cleanup rejection: 1.
+- Looping style-video preview/cancel: 1.
+
+The installed base APK was hash-compared directly with the V5 arm64 UI artifact:
+SHA-256 `8bd8cdb13e9c68fccd25a0d4f7e2d43783f1cf44512836c4e16ca099038efad4`,
+224,705,927 bytes. Evidence: `D:/CodexWork/veycad-phone-v5-installed-apk.json`,
+`veycad-phone-v5-regression.log` / `.xml`, and `veycad-phone-v5-preview-evidence/`.
+All 39 previous performance files were restored and hash-verified. After the
+run: original physical size 1080x2340 with no size override, density450 with
+the original override420, font_scale1.0. No new camera recording was performed.
+These are selected native/device regressions, not the full 267-case suite or
+human visual/audio acceptance of final exported content.
+
 ## Open acceptance
 
 Complete V5 UI/native/restart regression, signed updates, no-GMS,
