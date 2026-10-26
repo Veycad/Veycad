@@ -90,6 +90,25 @@ the original override420, font_scale1.0. No new camera recording was performed.
 These are selected native/device regressions, not the full 267-case suite or
 human visual/audio acceptance of final exported content.
 
+## Independent AAC check of preserved V4 evidence
+
+The existing `tools/verify_source_aac.py` passed against the preserved V4
+`20261026-080232-613/screens/source-audio-native-evidence.tar`. All five
+artifacts matched their device-recorded hashes before decoding. Native AAC
+float decoding yielded 48,000 stereo sample frames; unclamped peak
+0.8921767473220825 and longest full-scale run 0. All four 30/60fps boundary
+files placed the markers exactly at samples 1600, 24000 and 46400.
+
+Host tool: FFmpeg 9.0.2 essentials from the [Gyan Windows builds page](https://www.gyan.dev/ffmpeg/builds/),
+kept outside the repository/application. Download archive SHA-256 matched the
+provider checksum: `60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba`.
+Tool version and execution log: `D:/CodexWork/ffmpeg-oracle-20261026/`.
+Detailed result: `D:/CodexWork/veycad-v4-full-ui-archive/20261026-080232-613/screens/source-audio-host-oracle/result.json`.
+
+This is V4 host AAC evidence only. It does not establish V5 acceptance,
+Android float decoding (the recorded Android PCM encoding was 2), or human
+listening. Repeat on the completed V5 run's own archive.
+
 ## Open acceptance
 
 Complete V5 UI/native/restart regression, signed updates, no-GMS,
