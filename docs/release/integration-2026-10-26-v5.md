@@ -228,8 +228,14 @@ At 320x960, run `10e6233f-06a0-47d9-a0a7-5b76f846e83d` PASS: PID 27247
 changed to 27596, six exact file checks, retired scratch removal and native
 paused preview. The emulator override was restored to 320x480. Evidence for
 both runs is archived at `D:/CodexWork/veycad-recovery-intent-evidence/`.
-Compact-viewport gate support and combined V5 rerun remain open; do not count
-this isolated-main result as a complete V5 PASS.
+The bounded viewport-scroll follow-up in PR #99 (`b219e23`) passed at 320x480:
+run `1493e2b7-2c7b-48dd-8364-19a0ac086c55`, fresh PID 27835 to 28184,
+six exact file checks, retired scratch removal and native paused preview.
+It reuses the import-restart gate's scrolling pattern and stops scrolling when
+preview status is visible, without changing the paused-state requirement or
+timeout. PowerShell parse and diff checks passed. Before-scroll XML and the
+host report are archived in the same evidence folder under that run ID.
+Combined V5 rerun remains open; this isolated-main result is not a full V5 PASS.
 
 Both reports and their full evidence archives were copied with SHA-256 comparison
 to `D:/CodexWork/veycad-v5-full-ui-archive/separate-restarts/`.
