@@ -1,6 +1,7 @@
 # V6 combined release validation
 
-Status: running, not release-ready. No PR merged and no store submission approved.
+Status: running with at least one observed screen failure; not release-ready.
+No PR merged and no store submission approved.
 
 Source: `6ce47f5d4fa278c19488a2c8c0d778638095f9a8`, local branch
 `codex/release-integration-v6-local` in `D:/CodexWork/VeycadRuStore-20261025`.
@@ -46,6 +47,27 @@ Before cleaning, 545 previous report/artifact files (804,460,595 bytes) were
 preserved under `D:/CodexWork/veycad-v5-before-v6-build/`, with a SHA-256 manifest.
 Earlier full V5 evidence and standalone diagnostic/fix runs remain in the
 [previous receipt](integration-2026-10-26-v5.md).
+
+## Failure observed during the running suite
+
+Run `20261026-115601-245`, case 75:
+`DraftPreviewControllerDeviceTest.directSurfaceFirstReverseAndSourceChangePreserveInputsWithoutPreviewFile`
+failed at its initial `awaitFrame(0, ...)`: no exact ready frame before the
+15-second deadline. Captured states had no reported controller error; the worker
+stack was in `GLES20.glGetAttribLocation`, through `EglRenderTarget.preparePresentation`
+and native frame composition. This is a different test from PR #100's manual UI
+scenario, and its root cause is not established by this stack alone.
+
+The same case passed in the previous full V5 XML (whole-case time 29.388s).
+That result does not override the V6 failure. A focused repeat must wait until
+the currently running suite releases the emulator; no concurrent instrumentation
+or timeout change has been applied to this running candidate.
+
+An immutable excerpt, logcat snapshot and hashes are saved at
+`D:/CodexWork/veycad-v6-first-frame-failure/`. The suite continued beyond case 97;
+final totals and subsequent phases remain unknown. This snapshot is not a
+completed full-run receipt. The owner deferred reconnecting the Samsung, so
+physical V6 follow-up is pending device availability.
 
 ## Prior supporting evidence
 
