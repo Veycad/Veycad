@@ -1,0 +1,71 @@
+# V5 release-candidate integration evidence — 2026-10-26
+
+Not release-ready. Source `8916a4c15ed7fea111c521c640ac74760fd3debc`, local
+validation branch `codex/release-integration-v5-local` in
+`D:/CodexWork/VeycadRuStore-20261025`. V4 plus PR #94's density follow-up
+ca78edb and PRs #95 (scroll to Back), #96 (nonzero-origin fixture), #97
+(backup viewport). No unreviewed timer experiments are included; no PR merged.
+
+## Build and package checks
+
+`clean baselineVerify assembleUiTest assembleUiTestAndroidTest assembleRelease`
+passed in 8m20s. JVM: 1,392 tests, zero failures/errors/skips. Python: 338 passed.
+Lint/security tasks passed. Log: `D:/CodexWork/veycad-integration-v5-build.log`.
+
+All four release APKs contain exactly the 30 production license files with
+bytes identical to source. Inventory and SHA-256 hashes:
+`D:/CodexWork/veycad-v5-build-artifacts.json`.
+Arm64 unsigned release: 220,746,254 bytes, SHA-256
+`3e70ef47124afefa50af03ba10304c967500f9fa91cd996dc1ece73ae411d869`.
+Package com.veycad.app, version 0.1.16/code 17, minSdk 26;
+release LIVE_PREVIEW_ENABLED=true, GALLERY_MVP=false.
+Signing and signed-update acceptance remain open.
+
+## Additional V4 evidence informing V5 validation
+
+These are V4-based device results, not a complete V5 device acceptance:
+- Samsung at 320x480 dp: all six TextEditActivityDeviceTest cases passed in
+  35.215s with unchanged text-editor code. Original display size/density restored.
+  Log/XML: `D:/CodexWork/veycad-phone-narrow-text-v4.log` / `.xml`.
+- Samsung style-video loop/cancel test passed in 8.092s. Log/XML:
+  `D:/CodexWork/veycad-phone-style-loop-v4.log` / `.xml`.
+  Both runs restored and hash-verified the 39 performance files.
+- Same original V4 x86_64 APK (SHA-256
+  `4dedf5235208f48a848aaec6d4b97727d7cb9fc0aafca656c0547f477cd1f262`)
+  passed all six text-editor tests in 53.926s after restarting the dedicated
+  API36 emulator with SwiftShader, at 320x480/density160/font1 and animations0.
+  Log/XML: `D:/CodexWork/veycad-emulator-swiftshader-text-v4.log` / `.xml`.
+  The restart also reset temporary read-only emulator state, so this is not
+  proof that the GPU backend alone caused the earlier failures.
+
+The 13-case SwiftShader graphics/style diagnostic was deliberately interrupted:
+nine GLES cases completed PASS, the tenth was interrupted and three were not
+started. Two captured stacks showed emulator graphics-pipe waits, first in
+glGetUniformLocation and later glReadPixels; do not call that a proven deadlock.
+The four unfinished cases then passed in a separate run on the same V4 APK
+(4/4 in 150.798s, XML failures/errors/skips zero). Thus all 12 GLES cases and
+the style-loop case have individual PASS evidence across two runs, not an
+uninterrupted 13-case run. The interrupted first log remains preserved.
+Evidence: `veycad-emulator-swiftshader-gles-style-v4.log`,
+`veycad-swiftshader-gles-trace{,-second}.txt`, and
+`veycad-emulator-swiftshader-gles-style-remaining-v4.log` under D:/CodexWork.
+
+The original failed V4 full-run evidence was copied before cleaning the build:
+`D:/CodexWork/veycad-v4-full-ui-archive/20261026-080232-613/` and its
+`ui-tests.json`; exact V4 APKs/hashes are in
+`D:/CodexWork/veycad-integration-v4-apks/`.
+
+## Full V5 run
+
+Started `tools/run_ui_tests.ps1 -Serial emulator-5556 -AvdName AutoEditUi_API36`
+with explicit Python/SDK/JDK, using the current SwiftShader emulator. Log:
+`D:/CodexWork/veycad-integration-v5-full-ui.log`. Result pending; no full-run
+PASS claim. The prior V4 individual checks do not establish V5 completion.
+
+## Open acceptance
+
+Complete V5 UI/native/restart regression, signed updates, no-GMS,
+TalkBack, rear-camera/orientation, capture-to-montage export and human
+visual/audio review remain open. Account/key, public privacy-policy URL,
+final store screenshots and unresolved third-party media provenance remain
+release prerequisites in the release plan. A build pass is not submission approval.

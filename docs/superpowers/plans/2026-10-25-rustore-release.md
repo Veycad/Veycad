@@ -30,10 +30,10 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | GLES partial-frame issue and interrupted full run remain open |
-| 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | Owner requires editor in first release; release flag implemented in draft #92 |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | Local V4 combines latest draft changes; no merge approval implied |
-| 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Requires actual devices and final signed candidate |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V4 failures tracked; targeted fixes/checks passed; complete V5 rerun pending |
+| 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | Samsung import/edit/export/lifecycle checks passed; release flag in draft #92; final candidate acceptance open |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | Local V5 builds; device/regression acceptance remains open; no merge approval implied |
+| 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Samsung arm64 checks recorded; no-GMS, rear camera, human output review and signed updates remain open |
 | 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Draft materials exist; final screenshots and public policy still pending |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |
 
