@@ -77,8 +77,8 @@ physical V6 follow-up is pending device availability.
 - Isolated-main PR #99: process recovery PASS at both 320x960 and 320x480;
   fresh process, six unchanged files, retired scratch and native paused preview.
 - PR #98 (`427ce9f`), #99 (`b219e23`) and #100 (`95340e6`) exact-head
-  baseline/legacy-save CI passed. PR #99/#100 UI jobs remained running at the
-  latest check. The earlier snapshot is `D:/CodexWork/veycad-v6-ci-checkpoint.json`.
+  baseline/legacy-save CI passed. The earlier running-state snapshot is
+  `D:/CodexWork/veycad-v6-ci-checkpoint.json`; terminal UI results follow below.
 - PR #98 UI job [121531142216](https://github.com/Veycad/Veycad/actions/runs/40310783117/job/121531142216)
   subsequently finished FAIL: all 261 cases executed, eight failures, zero errors/
   skips, 3623.291s instrumentation time. It was no longer cut off at one hour.
@@ -89,6 +89,18 @@ physical V6 follow-up is pending device availability.
   not an assertion that PR #98 or V6 is green. Saved comparison and CI excerpt:
   `D:/CodexWork/veycad-ci98-v5-comparison.json` and
   `D:/CodexWork/veycad-ci98-ui-log-excerpt.txt`.
+- PR #99 UI job [121546060821](https://github.com/Veycad/Veycad/actions/runs/40315102167/job/121546060821)
+  finished FAIL: 261/261 cases, eight failures, zero errors/skips. This is the
+  isolated recovery-probe branch, not the combined V6 candidate.
+- PR #100 UI job [121551923950](https://github.com/Veycad/Veycad/actions/runs/40316979169/job/121551923950)
+  finished FAIL after a process crash during case 133,
+  `saved60FpsScrubPlayPauseBackgroundAndRecreateRemainPaused`.
+  `PreviewAudioClock.release` returned to an already terminated GL executor in
+  `DraftPreviewController.stopAndRelease` (`RejectedExecutionException`).
+  The run is incomplete, not a 261-case result. V6 contains the pending-stop
+  accounting fix absent from this isolated branch; its acceptance still depends
+  on the combined run. Truncated CI excerpts and exact job/head identities are
+  preserved in `D:/CodexWork/veycad-ci99-ci100-terminal.json`.
 
 These are scoped results, not a replacement for the combined V6 run.
 
