@@ -50,3 +50,21 @@ DocumentsUI, physical storage and accessibility acceptance remain open.
 This verifies notice preservation/export, not completeness of legal clearance.
 No permanent key has been created, no release signed or submitted, no PR merged.
 Full UI/GLES and physical-device/media acceptance are still open.
+
+
+## Full UI run — partial, still running
+
+Run ID `20261026-080232-613`; same V4 source above.
+Command: `tools/run_ui_tests.ps1 -Serial emulator-5556 -AvdName AutoEditUi_API36`,
+with explicit working PYTHON and SDK/JDK paths. Log:
+`D:/CodexWork/veycad-integration-v4-full-ui.log`.
+
+At the start of screens scenario 52/267, no terminal failures were recorded.
+Scenario 36, CaptureReviewScreenTest.automaticChoiceSurvivesRecreationAfterOpeningSpecificResultTake,
+completed PASS. Unlike V3, its long synthetic AVC source finished within the
+unchanged 20-second limit and the review/recreation assertions executed.
+No change to SyntheticVideo was made. This one pass does not establish the
+cause or permanent absence of the previous encoding timeout.
+
+The runner is live; final XML, media collection and restart phases are still
+pending. This partial observation is not a full-run acceptance result.
