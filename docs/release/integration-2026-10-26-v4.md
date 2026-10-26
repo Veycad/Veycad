@@ -185,3 +185,21 @@ The performance folder was restored after this test. The first post-test
 verification script incorrectly compared an adb shell directory listing;
 a separate binary tar comparison against the pre-update archive confirmed all
 39 original performance files have identical SHA-256 hashes.
+
+### Text-editor timeout investigation (not a release fix)
+
+The unmodified V4 entry-route test passed on Samsung in 7.337s but failed in
+isolation on the emulator. An experiment avoiding redraws at unchanged preview
+positions passed all six TextEditActivityDeviceTest cases on Samsung in 33.506s;
+the emulator still failed four of six. A second experiment also stopped the
+preview timer while paused; it did not eliminate emulator UI failures either.
+Neither experiment is accepted as a fix or included in a PR. Source changes
+were reverted; patches and logs remain outside the repository for diagnosis.
+The phone is restored to the V4 app identified above.
+
+Evidence: `D:/CodexWork/veycad-phone-text-entry-before-idle.log`,
+`veycad-phone-text-idle-class.log` / `.xml`,
+`veycad-emulator-text-entry-before-idle.log`,
+`veycad-emulator-text-idle-class.log`, `veycad-emulator-text-idle-v2-class.log`,
+and `veycad-text-idle{,-v2}.patch`. These experiments do not close the four
+text-editor failures in the full V4 run.
