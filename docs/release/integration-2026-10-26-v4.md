@@ -84,3 +84,28 @@ is present in this APK. This inspection is not a complete privacy/security audit
 apksigner reports `DOES NOT VERIFY: Missing META-INF/MANIFEST.MF`, consistent
 with this unsigned package. It is not install/update/publication acceptance.
 Logs: `D:/CodexWork/veycad-v4-release-{badging,permissions,manifest,signature}.txt`.
+
+
+## First physical arm64 check
+
+Owner connected Samsung SM-A256E, Android 16/API 36, arm64-v8a, Google services
+present. This does not cover no-GMS devices. Existing test app was idle; only
+`.uitest` and its instrumentation package were updated with `adb install -r`.
+No uninstall, production package installation or permanent signing was performed.
+Before update, the existing app/test APKs and files directory were backed up
+locally under `D:/CodexWork/veycad-phone-before-v4-20261026` with SHA256 inventory.
+All 39 existing performance-evidence files remain byte-identical afterward;
+only `files/profileInstalled` changed among the 40 original files.
+
+Tested arm64 UI APK SHA256:
+`36473d1f8f725866fed3236aec0ed67a0accd6cb6b12160cafc0f78afbd07217`.
+- Two previously failing emulator GLES scenarios: 2/2 PASS, 14.331s.
+- Entire GlesFrameCompositorDeviceTest: 12/12 PASS, 59.43s,
+  XML failures/errors/skipped all zero.
+- Evidence: `D:/CodexWork/veycad-v4-phone-gles{,-class}.log`, corresponding
+  `-results.xml`, and `veycad-v4-phone-preserved-files.json`.
+
+The parallel API 36 emulator run still reports pixel differences. The physical
+result establishes these compositor tests on this phone; it does not prove the
+cause of emulator failures or complete UI, camera, audio, performance, lifecycle,
+visual/human or signed-release acceptance. Those remain open.
