@@ -21,20 +21,30 @@
 - Owner confirmed no permanent signing key or RuStore account exists yet. Follow [account/signing preparation](../../release/account-and-signing.md). Never place secrets in source, logs or chat. No replacement signing identity without explicit agreement.
 - Each coherent implementation gets its own commit/PR. Merge only after owner approval and applicable checks; store submission is a separate approval.
 
-## Realistic schedule
+## Remaining work and sequencing
 
-Planning estimate, not a release date: 10–18 working days of engineering and review if the current renderer has no major regression, plus account/signing/media-rights dependencies and external moderation. Native crashes or unacceptable output reopen the estimate. Agent coding speed does not eliminate device and human review time.
+On 2026-10-26 the owner challenged the remaining-time estimate. The conversational
+5–10 day estimate was withdrawn as unsupported. The earlier 10–18 day planning
+range is also superseded: it was a rough initial allocation, not measured
+remaining effort. No release date is currently supported by evidence.
 
-| Stage | Effort estimate | Exit condition |
+| Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Intake and reproducible release baseline | 1–2 days | Exact source/build identity; known build failures; signing route documented |
-| 2. Usability and naming | 2–3 days | Clear next action at import, processing, error and result; no inconsistent brand |
-| 3. Processing/storage reliability | 2–4 days | Bounded inputs/work; safe cancellation and recovery; storage failures covered |
-| 4. Exact-build acceptance | 3–5 days | Native exports, audio/visual review and device scenarios recorded |
-| 5. Store/GitHub materials | 1–2 days | Accurate listing, current screenshots, policy and rights inventory |
-| 6. Release handoff | 1–2 days | Signed verified package and update test; owner-approved submission |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | GLES partial-frame issue and interrupted full run remain open |
+| 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | Owner requires editor in first release; release flag implemented in draft #92 |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | Local V4 combines latest draft changes; no merge approval implied |
+| 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Requires actual devices and final signed candidate |
+| 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Draft materials exist; final screenshots and public policy still pending |
+| 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |
 
-Stages 2 and 5 can overlap. Other stores are evaluated after the RuStore candidate is accepted; their account eligibility and policies need a separate current check. See the [AppGallery/Galaxy Store sequence and gates](../../release/other-android-stores.md); account verification and moderation are outside engineering estimates.
+Record completed checks against exact source/APK identities in release receipts.
+Estimate remaining effort only after the unresolved failures have concrete fixes
+and device access is established; separate engineering work from waiting on owner
+setup and store moderation. Do not turn passing-test counts into release readiness.
+
+Materials can progress alongside engineering. Other stores follow the RuStore
+candidate acceptance; account eligibility and policies need a current check.
+See the [AppGallery/Galaxy Store sequence and gates](../../release/other-android-stores.md).
 
 ## Review focus
 
