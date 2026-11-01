@@ -70,13 +70,45 @@ and native frame composition. This is a different test from PR #100's manual UI
 scenario, and its root cause is not established by this stack alone.
 
 The same case passed in the previous full V5 XML (whole-case time 29.388s).
-That result does not override the V6 failure. A focused repeat on the unchanged
-V6 APK is the next diagnostic step; no timeout change has been applied.
+That result does not override the V6 failure. Two focused repeats on the unchanged
+V6 app and original test APK reproduced the initial-frame failure on 2026-11-01.
+Logs: `D:/CodexWork/veycad-v6-first-frame-focused-20261101.log` and
+`D:/CodexWork/veycad-v6-first-frame-focused-warm-20261101.log`.
+
+A temporary diagnostic test APK raised only `awaitFrame` from 15 to 60 seconds
+and logged elapsed time, leaving the app binary unchanged. The scenario completed
+in 44.588s: first frame 21.530s, seeks 0.430/0.520/1.146s, and return to zero
+after cancellation 18.331s. Thus this run demonstrates delayed completion, not
+an indefinite hang. It does not establish the underlying cause or satisfy the
+original 15-second acceptance limit. The temporary source change was reverted;
+the diagnostic APK must not be mistaken for the original acceptance test APK.
+Log and timing evidence: `D:/CodexWork/veycad-v6-first-frame-60s-diagnostic-20261101.log`
+and `D:/CodexWork/veycad-v6-first-frame-60s-timings-20261101.log`.
 
 An immutable excerpt, logcat snapshot and hashes are saved at
 `D:/CodexWork/veycad-v6-first-frame-failure/`. The final full-run XML confirms
 this was its only screen failure. The owner deferred reconnecting the Samsung, so
 physical V6 follow-up is pending device availability.
+
+## Separate V6 restart checks
+
+Atomic import restart passed on 2026-11-01, run
+`60290b43-e872-4082-8983-314145d06982`. Both `FILES_PREPARED` and
+`MANIFEST_COMMITTED` phases restarted into a different process, retained the
+selected batch, passed the UI checks and verified two source files byte-for-byte
+each. Archive: `D:/CodexWork/veycad-v6-atomic-restart-archive-20261101/`;
+host log: `D:/CodexWork/veycad-v6-atomic-restart-20261101.log`.
+This separate result does not change the failed full-suite status.
+
+Saved project recovery also passed separately on 2026-11-01, run
+`2582861b-536a-4007-9126-6012eb527644`: process 5560 was replaced by 5920,
+six project files matched exactly, retired scratch was removed and the native
+editor became ready. Archive:
+`D:/CodexWork/veycad-v6-project-recovery-archive-20261101/`; log:
+`D:/CodexWork/veycad-v6-project-recovery-20261101.log`.
+Scope is controlled force-stop, not an OEM low-memory kill, signed update or
+physical-device recovery. Neither restart runner uses the modified frame-wait
+instrumentation test; both exercise probes in the unchanged V6 app APK.
 
 ## Prior supporting evidence
 
