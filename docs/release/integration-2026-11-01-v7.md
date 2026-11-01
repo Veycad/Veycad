@@ -112,3 +112,24 @@ names/checkable states and independent durable-switch test passed locally
 (6.554s). Receipt: `D:/CodexWork/veycad-switch-label-receipt-20261102.json`.
 It is not included in V7. Its baseline/UI jobs were still running at this
 follow-up snapshot; full TalkBack speech/focus and physical acceptance remain open.
+
+## V8 documentation/accessibility follow-up, 2026-11-02
+
+Local branch `codex/release-integration-v8-local`, source
+`4ebff1d27f49a3ffba41562c106e29e6d77dd4fc`, combines V7 with PR #103 as
+`2e9f17d` and the existing PR #75 contact follow-up `ddb421b` as `4ebff1d`.
+The latter was already present in its owning PR but missing from V7. Both applied
+without conflicts. Delta: two switch descriptions in the main layout and the
+confirmed developer/support contact in `docs/release/privacy-draft.md`.
+
+UI app/instrumentation assembly passed in 8s. The independent durable-switch
+test passed on the installed V8 APK in 6.313s. Logs:
+`D:/CodexWork/veycad-v8-build-20261102.log` and
+`D:/CodexWork/veycad-v8-switches-20261102.log`.
+Source, APK and policy hashes: `D:/CodexWork/veycad-v8-identities-20261102.json`.
+
+This is a local integration checkpoint, not a newly accepted release. V7 audio
+results remain scoped to V7, and broad V6/V7 results do not become V8 executions.
+No signed APK, store submission, policy publication or owner approval occurred.
+Policy effective date/public URL, exact signed-build review, TalkBack and device/
+media acceptance remain open.
