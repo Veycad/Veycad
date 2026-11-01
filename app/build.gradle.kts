@@ -164,6 +164,9 @@ android {
         }
     }
 
+    // Dependencies ship x86 JNI, but the app's Whisper library is built only for the three ABIs above.
+    packaging.jniLibs.excludes += "lib/x86/**"
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
