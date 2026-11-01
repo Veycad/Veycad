@@ -555,13 +555,13 @@
 
                 <LinearLayout android:layout_width="match_parent" android:layout_height="76dp" android:gravity="center_vertical" android:orientation="horizontal">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Сохранять автоматически\nДобавлять готовые эдиты в галерею" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
-                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/autoSaveSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/autoSaveSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:contentDescription="Сохранять автоматически" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
                 </LinearLayout>
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
 
                 <LinearLayout android:layout_width="match_parent" android:layout_height="76dp" android:gravity="center_vertical" android:orientation="horizontal">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Уведомлять о готовности\nКогда монтаж можно открыть" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
-                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/notificationSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/notificationSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:contentDescription="Уведомлять о готовности" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
                 </LinearLayout>
             </LinearLayout>
 
