@@ -85,6 +85,31 @@ the diagnostic APK must not be mistaken for the original acceptance test APK.
 Log and timing evidence: `D:/CodexWork/veycad-v6-first-frame-60s-diagnostic-20261101.log`
 and `D:/CodexWork/veycad-v6-first-frame-60s-timings-20261101.log`.
 
+A second diagnostic app inserted `glFinish` before presentation to distinguish
+queued rendering from the attribute lookup where the original stack was sampled.
+The first render wait took 22.868s, then presentation preparation added 5ms and
+buffer swap approximately 223ms. After cancellation the render wait took 16.685s;
+ordinary subsequent render waits took 16-21ms. The scenario completed in 51.14s
+with the diagnostic 60-second test APK. This localizes the delay to queued GPU
+work before presentation; it does not prove that `glGetAttribLocation` itself
+needs optimization. The added synchronization changes execution and is diagnostic
+only, not a production fix or acceptance pass. Evidence and exact patches/hashes:
+`D:/CodexWork/veycad-v6-stage-diagnostic-{run,timings,apks}-20261101.*` and
+`D:/CodexWork/veycad-v6-stage-diagnostic-20261101.patch`.
+
+A third diagnostic synchronized immediately before and after the source draw.
+The pre-draw wait was 0ms; the first source draw plus completion took 17.307s,
+and 16.831s after cancellation recreated the rendering resources. Warm source
+draws took 15-22ms. Presentation then completed within 168ms. The whole scenario
+completed in 40.666s with the diagnostic test APK. SurfaceFlinger identifies the
+emulator renderer as Google SwiftShader 4.0.0.1. This localizes the cost to the
+first source draw in a new rendering context; driver preparation/compilation is
+a hypothesis, not yet a proven cause. No shader behavior or cancellation safety
+was changed. Evidence uses the corresponding
+`D:/CodexWork/veycad-v6-draw-diagnostic-*20261101.*` files. Both production-source
+diagnostics were reverted and the original V6 app APK was reinstalled; the
+installed test APK still has the explicitly diagnostic 60-second wait.
+
 An immutable excerpt, logcat snapshot and hashes are saved at
 `D:/CodexWork/veycad-v6-first-frame-failure/`. The final full-run XML confirms
 this was its only screen failure. The owner deferred reconnecting the Samsung, so
