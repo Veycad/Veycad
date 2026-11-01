@@ -530,36 +530,40 @@
                 <LinearLayout
                     android:id="@+id/defaultStyleSetting"
                     android:layout_width="match_parent"
-                    android:layout_height="76dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="76dp"
+                    android:paddingVertical="12dp"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center_vertical"
-                    android:orientation="horizontal">
-                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Стиль по умолчанию\nИспользуется для нового монтажа" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
-                    <TextView android:id="@+id/settingsStyleValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Heartbeat  ›" android:textColor="@color/text_secondary" android:textSize="13sp" />
+                    android:orientation="vertical">
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Стиль по умолчанию\nИспользуется для нового монтажа" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
+                    <TextView android:id="@+id/settingsStyleValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Heartbeat  ›" android:textColor="@color/text_secondary" android:textSize="13sp" />
                 </LinearLayout>
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
 
                 <LinearLayout
                     android:id="@+id/qualitySetting"
                     android:layout_width="match_parent"
-                    android:layout_height="76dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="76dp"
+                    android:paddingVertical="12dp"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center_vertical"
-                    android:orientation="horizontal">
-                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Качество видео\nВлияет на размер и время рендера" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
-                    <TextView android:id="@+id/settingsQualityValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="720p  ›" android:textColor="@color/text_secondary" android:textSize="13sp" />
+                    android:orientation="vertical">
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Качество видео\nВлияет на размер и время рендера" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
+                    <TextView android:id="@+id/settingsQualityValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="720p  ›" android:textColor="@color/text_secondary" android:textSize="13sp" />
                 </LinearLayout>
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
 
-                <LinearLayout android:layout_width="match_parent" android:layout_height="76dp" android:gravity="center_vertical" android:orientation="horizontal">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="76dp" android:paddingVertical="12dp" android:gravity="center_vertical" android:orientation="horizontal">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Сохранять автоматически\nДобавлять готовые эдиты в галерею" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
                     <androidx.appcompat.widget.SwitchCompat android:id="@+id/autoSaveSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
                 </LinearLayout>
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
 
-                <LinearLayout android:layout_width="match_parent" android:layout_height="76dp" android:gravity="center_vertical" android:orientation="horizontal">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="76dp" android:paddingVertical="12dp" android:gravity="center_vertical" android:orientation="horizontal">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Уведомлять о готовности\nКогда монтаж можно открыть" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
                     <androidx.appcompat.widget.SwitchCompat android:id="@+id/notificationSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
                 </LinearLayout>
