@@ -69,8 +69,21 @@ Their full UI jobs finished cancelled, with the explicit annotation
 [101](https://github.com/Veycad/Veycad/actions/runs/41291211330) and
 [102](https://github.com/Veycad/Veycad/actions/runs/41291515869).
 Neither is a completed UI pass; these annotations alone do not establish the
-absence of earlier test failures. PR #102 also records a failed retained-AAC
-verification step; its cause was not investigated in this snapshot.
+absence of earlier test failures.
+
+The PR #102 job log was inspected separately. Its retained-AAC check failed with
+`ValueError: Expected one exact-run AAC evidence archive, got 0`. This is missing
+evidence, not an observed audio corruption result; the check remains incomplete.
+The log also contains ten distinct failing/error test records before termination.
+All ten names were matched against the archived completed V6 XML: nine passed
+there; the direct first/reverse/source-change frame case failed there as already
+documented. PR #102 is based on main rather than combined V6, so this comparison
+does not establish a new layout regression or override either run's failures.
+No fresh media acceptance is inferred from the comparison.
+
+Local evidence: `D:/CodexWork/veycad-pr102-ui-job-20261102.log`,
+`veycad-pr102-ui-failed-cases-20261102.json` and
+`veycad-pr102-v6-comparison-20261102.json` in the same directory.
 
 The isolated branches still use main's 60-minute UI job budget. The existing
 [PR #98](https://github.com/Veycad/Veycad/pull/98) changes it to 120 minutes,
