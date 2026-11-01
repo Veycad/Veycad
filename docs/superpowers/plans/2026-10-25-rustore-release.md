@@ -21,12 +21,17 @@
 - Owner confirmed no permanent signing key or RuStore account exists yet. Follow [account/signing preparation](../../release/account-and-signing.md). Never place secrets in source, logs or chat. No replacement signing identity without explicit agreement.
 - Each coherent implementation gets its own commit/PR. Merge only after owner approval and applicable checks; store submission is a separate approval.
 
-## Текущее состояние — 1 ноября 2026
+## Текущее состояние — 2 ноября 2026
 
 Приложение ещё не готово к публикации. Сборка и большинство проверок пройдены;
 это не означает готовность подписанного релиза на телефоне.
 
-Последняя локальная сборка — V8 (в конце [отчёта V7/V8](../../release/integration-2026-11-01-v7.md)):
+Последняя локальная релизная сборка — [V9](../../release/integration-2026-11-02-v9.md):
+V8 плюс исправление упаковки неподдерживаемой архитектуры x86 (PR #104).
+Неподписанные APK собраны, их содержимое и контракт безопасности проверены;
+установка и работа V9 на устройстве ещё не проверены.
+
+Предыдущая V8 (в конце [отчёта V7/V8](../../release/integration-2026-11-01-v7.md)):
 V7 плюс названия переключателей для озвучивания (PR #103) и ранее внесённые
 в PR #75 контакты в черновике политики. Сборка и проверка сохранения переключателей
 пройдены. На V7 отдельно пройдены общая проверка, семь сценариев настроек и два
