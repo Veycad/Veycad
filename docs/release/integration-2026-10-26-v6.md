@@ -108,7 +108,30 @@ a hypothesis, not yet a proven cause. No shader behavior or cancellation safety
 was changed. Evidence uses the corresponding
 `D:/CodexWork/veycad-v6-draw-diagnostic-*20261101.*` files. Both production-source
 diagnostics were reverted and the original V6 app APK was reinstalled; the
-installed test APK still has the explicitly diagnostic 60-second wait.
+test APK at that checkpoint still had the explicitly diagnostic 60-second wait.
+
+### Unmodified GPU-backend comparison, 2026-11-01
+
+The ordinary 15-second test was rebuilt from the clean V6 source and installed
+on both API36 emulators. Installed app and test SHA-256 identities matched on
+both devices: app `1ef029276544d16e301916611b55daa083c9b77778f9b841c329d461fdde86c2`,
+test `1b59936cc169d9f3df7c33e6245e787f1dff7af19fada3235f34d11cc0f2e933`.
+Both used the same AVD definition, 320x480 override and density 160.
+
+- NVIDIA RTX 3060 host GPU, new read-only emulator-5558: original scenario PASS,
+  whole-case time 10.590s, unchanged pixel/source/cancellation assertions.
+- SwiftShader 4.0.0.1, emulator-5556: control FAIL at the original initial-frame
+  deadline. The extended diagnostic test is no longer installed on either.
+
+This establishes a backend-dependent result on these emulator instances. It
+does not isolate driver compilation from every other backend difference, and
+the instances have different run histories. No production optimization or test
+deadline change is justified solely by this comparison. Physical-device first
+frame/cancellation timing remains open, as does the original full-suite failure.
+Logs: `D:/CodexWork/veycad-v6-host-gpu-first-frame-20261101.log` and
+`D:/CodexWork/veycad-v6-swiftshader-control-first-frame-20261101.log`.
+Installed identities and actual renderers:
+`D:/CodexWork/veycad-v6-gpu-comparison-identities-20261101.json`.
 
 An immutable excerpt, logcat snapshot and hashes are saved at
 `D:/CodexWork/veycad-v6-first-frame-failure/`. The final full-run XML confirms
