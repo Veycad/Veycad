@@ -58,3 +58,30 @@ remain open. No V7 signed or unsigned release APK was produced in this check.
 At the GitHub snapshot during this run, both PRs were drafts and their baseline/UI
 jobs were running. Local checks are not a statement of final CI status. Store
 account, permanent key, rights, final store images and public policy remain open.
+
+## CI follow-up, 2026-11-02
+
+Exact-head baseline checks subsequently passed for both PRs:
+[101](https://github.com/Veycad/Veycad/actions/runs/41291211349) and
+[102](https://github.com/Veycad/Veycad/actions/runs/41291515808).
+Their full UI jobs finished cancelled, with the explicit annotation
+“The job has exceeded the maximum execution time of 1h0m0s”:
+[101](https://github.com/Veycad/Veycad/actions/runs/41291211330) and
+[102](https://github.com/Veycad/Veycad/actions/runs/41291515869).
+Neither is a completed UI pass; these annotations alone do not establish the
+absence of earlier test failures. PR #102 also records a failed retained-AAC
+verification step; its cause was not investigated in this snapshot.
+
+The isolated branches still use main's 60-minute UI job budget. The existing
+[PR #98](https://github.com/Veycad/Veycad/pull/98) changes it to 120 minutes,
+and the V7 integration branch was checked to contain that value. No duplicate
+timeout fix, rerun, merge or acceptance waiver was introduced here.
+Evidence: `D:/CodexWork/veycad-settings-ci-20261102.json` and the corresponding
+`veycad-settings-ci-*-jobs.json` / `*-reason.json` snapshots.
+
+[PR #103](https://github.com/Veycad/Veycad/pull/103), source `4c3961d`, separately
+adds accessible names to the two settings switches. Its build, installed node
+names/checkable states and independent durable-switch test passed locally
+(6.554s). Receipt: `D:/CodexWork/veycad-switch-label-receipt-20261102.json`.
+It is not included in V7. Its baseline/UI jobs were still running at this
+follow-up snapshot; full TalkBack speech/focus and physical acceptance remain open.
