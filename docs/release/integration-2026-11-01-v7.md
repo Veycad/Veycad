@@ -61,6 +61,20 @@ account, permanent key, rights, final store images and public policy remain open
 
 ## CI follow-up, 2026-11-02
 
+A separate fresh V7 AAC run on 2026-11-02 completed both native tests:
+`actual_aac_markers_match_authored_video_frames_and_duration_at_30_and_60` and
+`overlapping_fullscale_source_music_retains_float_aac_evidence_and_premusic_speech`.
+Result: 2/2 PASS in 7.185s on API36 emulator-5556. UI/test APK rebuild passed
+in 1m42s; source remains `d224c0c`. Fresh APK/archive hashes are in
+`D:/CodexWork/veycad-v7-audio-focused-20261102/receipt.json`.
+The independent host oracle passed on the retained archive: 48,000 stereo sample
+frames, peak 0.8921767473, no full-scale run, exact markers 1600/24000/46400
+in prepared/exported 30/60 fps artifacts. Archive and oracle result are retained
+under that directory. Test log: `D:/CodexWork/veycad-v7-audio-tests-20261102.log`.
+This closes these two controlled V7 audio checks only; Android float decoding,
+human listening and real-source media acceptance remain open. The earlier CI
+run's missing evidence is not retroactively repaired by this separate run.
+
 Exact-head baseline checks subsequently passed for both PRs:
 [101](https://github.com/Veycad/Veycad/actions/runs/41291211349) and
 [102](https://github.com/Veycad/Veycad/actions/runs/41291515808).
