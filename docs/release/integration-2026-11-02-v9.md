@@ -50,6 +50,29 @@ Package hashes/sizes and inspection receipt:
 Universal SHA-256:
 `be4f8986c706d46ebbcdfd72114de8ad9386182d7c72dcc58af8a2def57e8711`.
 
+## Native payload and 16 KB static follow-up
+
+The four artifact hashes above were revalidated before inspection. No rebuild
+or source change occurred for these checks.
+
+- `zipalign -c -P 16 -v 4` passed for all four APKs using Build-Tools 36.0.0.
+- All 14 arm64-v8a/x86_64 shared libraries in the universal APK have every
+  LOAD segment aligned to at least 16384 bytes (`llvm-readelf -lW`, NDK28.2).
+- All 14 RELRO layouts passed inspection: five have a 16 KB aligned end;
+  nine occupy their own complete LOAD segment, with no other writable LOAD
+  overlapping the protection range rounded to 16 KB pages. A nonzero end
+  remainder alone is not a failure in that isolated layout, as explained in
+  [Android's RELRO guidance](https://developer.android.com/guide/practices/page-sizes#relro).
+- The universal contains seven native libraries for each of its three ABIs.
+  Every native library in each separate ABI APK matches the corresponding
+  universal entry byte-for-byte (21 SHA-256 comparisons).
+
+Evidence: `D:/CodexWork/veycad-v9-alignment-20261102/receipt.json`, with per-library
+headers and per-APK zipalign output in the same directory. These are static
+package/ELF results. They do not prove startup, allocation behavior, inference
+or export on a system actually running with 16 KB pages. No 32-bit ELF 16 KB
+claim is made.
+
 ## Still open
 
 No V9 installation, runtime, output review, signed update, TalkBack or physical
