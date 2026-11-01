@@ -1,6 +1,6 @@
 # V6 combined release validation
 
-Status: running with at least one observed screen failure; not release-ready.
+Status: full UI run completed with one screen failure; not release-ready.
 No PR merged and no store submission approved.
 
 Source: `6ce47f5d4fa278c19488a2c8c0d778638095f9a8`, local branch
@@ -13,7 +13,7 @@ The four-file diff contains tests, the recovery host script and CI configuration
 `app/src/main` and `app/build.gradle.kts` are unchanged from V5. This does not
 transfer exact-binary acceptance to a newly built artifact.
 
-## Clean build PASS; full UI run in progress
+## Clean build PASS; full UI run FAIL
 
 Clean `baselineVerify`, UI APK/instrumentation and unsigned release assembly
 passed in 8m43s (196 tasks). All 1,392 JVM tests passed with zero failures/errors/
@@ -38,17 +38,28 @@ Hashes and UI APK identities: `D:/CodexWork/veycad-v6-build-artifacts.json`.
 | app-universal-release-unsigned.apk | 318,213,150 | `e4c491876f8b63ee62816d85c9cba0bfb7ee566bba95db90758304a09c791fa5` |
 | app-x86_64-release-unsigned.apk | 225,953,265 | `88123ee7692c588bde3cc53fc518255ea7e2ec1405c7fd9adee64ee621752951` |
 
-The full `run_ui_tests.ps1` has started on dedicated API36 AOSP emulator
+The full `run_ui_tests.ps1` completed on dedicated API36 AOSP emulator
 `emulator-5556` / `AutoEditUi_API36`, using explicit JDK/SDK/Python paths.
-Live log: `D:/CodexWork/veycad-integration-v6-full-ui.log`. Its terminal result
-is still pending; the clean build is not a full UI/native/restart PASS.
+Log: `D:/CodexWork/veycad-integration-v6-full-ui.log`. Permissions passed 2/2;
+screens executed all 267 cases, with 266 passing and one failure, zero errors,
+skips, duplicates, missing or unexpected cases. Screen instrumentation took
+4597.49 seconds. Restart phases were not run because the screen phase failed.
+
+On 2026-11-01 the completed run was preserved under
+`D:/CodexWork/veycad-v6-full-ui-archive/20261026-115601-245/`, including the
+summary, XML, logs, native audio and preview evidence. Every copied run file
+was checked against its original SHA-256 and recorded in `manifest.json`.
+The independent host AAC oracle passed: 48,000 stereo frames, peak 0.8921767473,
+no full-scale run and exact boundary markers at samples 1600/24000/46400 in
+all four prepared/exported 30/60 fps artifacts. This does not establish Android
+float decoding or human listening acceptance.
 
 Before cleaning, 545 previous report/artifact files (804,460,595 bytes) were
 preserved under `D:/CodexWork/veycad-v5-before-v6-build/`, with a SHA-256 manifest.
 Earlier full V5 evidence and standalone diagnostic/fix runs remain in the
 [previous receipt](integration-2026-10-26-v5.md).
 
-## Failure observed during the running suite
+## Remaining failure
 
 Run `20261026-115601-245`, case 75:
 `DraftPreviewControllerDeviceTest.directSurfaceFirstReverseAndSourceChangePreserveInputsWithoutPreviewFile`
@@ -59,14 +70,12 @@ and native frame composition. This is a different test from PR #100's manual UI
 scenario, and its root cause is not established by this stack alone.
 
 The same case passed in the previous full V5 XML (whole-case time 29.388s).
-That result does not override the V6 failure. A focused repeat must wait until
-the currently running suite releases the emulator; no concurrent instrumentation
-or timeout change has been applied to this running candidate.
+That result does not override the V6 failure. A focused repeat on the unchanged
+V6 APK is the next diagnostic step; no timeout change has been applied.
 
 An immutable excerpt, logcat snapshot and hashes are saved at
-`D:/CodexWork/veycad-v6-first-frame-failure/`. The suite continued beyond case 97;
-final totals and subsequent phases remain unknown. This snapshot is not a
-completed full-run receipt. The owner deferred reconnecting the Samsung, so
+`D:/CodexWork/veycad-v6-first-frame-failure/`. The final full-run XML confirms
+this was its only screen failure. The owner deferred reconnecting the Samsung, so
 physical V6 follow-up is pending device availability.
 
 ## Prior supporting evidence
