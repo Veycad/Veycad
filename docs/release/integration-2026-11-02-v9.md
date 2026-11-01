@@ -73,9 +73,38 @@ package/ELF results. They do not prove startup, allocation behavior, inference
 or export on a system actually running with 16 KB pages. No 32-bit ELF 16 KB
 claim is made.
 
+## Fresh V9 API36 runtime follow-up
+
+The same source was built as the debug-signed isolated `uiTest` application and
+instrumentation APKs (15s; 21 tasks executed, 56 up-to-date). Both installed on
+`emulator-5556`, API36/x86_64, with `getconf PAGE_SIZE` confirmed as 4096.
+The release APKs inspected above remain unsigned and were not installed.
+
+Three tests passed in 78.258s:
+
+- `NativeExportSmokeTest.nativeMontageExportsDecodableAvcAndAac`: synthetic
+  96x144, one-second AVC/AAC export; actual samples, frame timestamps, decoded
+  frame colors and audio tone are checked. This is not a 1080p quality review.
+- `WhisperDeviceTest.actualBundledMultilingualModelRecognizesEnglishAndSilenceStaysEmpty`:
+  bundled model recognizes the expected English speech word, with valid cue
+  bounds; silence produces no subtitles.
+- `WhisperDeviceTest.automaticLanguageRecognizesRussianSpeech`: expected Russian
+  speech word, cue bounds and backend evidence, including an attenuated fixture.
+  Expected-word assertions do not establish general transcription accuracy.
+
+Evidence: `D:/CodexWork/veycad-v9-native-api36-20261102.json` binds source,
+application/test APKs, runner log and emulator identity. Build and test logs:
+`veycad-v9-16kb-build-20261102.log` and `veycad-v9-native-api36-20261102.log`
+in `D:/CodexWork`. The build-log name reflects the intended next environment;
+this actual execution used 4 KB pages.
+
+A separate SDK Manager operation is downloading the official API35 Google APIs
+16 KB x86_64 image. At this checkpoint it is incomplete; no 16 KB emulator was
+created, booted or tested. Do not infer a runtime pass from package availability.
+
 ## Still open
 
-No V9 installation, runtime, output review, signed update, TalkBack or physical
-device acceptance was performed. Permanent signing, account setup, media rights,
+No signed-release installation, human output review, signed update, TalkBack,
+16 KB runtime or physical device acceptance was performed. Permanent signing, account setup, media rights,
 final store images and public policy remain publication dependencies. Passing
 package inspection does not settle codec, camera or subtitle inference behavior.
