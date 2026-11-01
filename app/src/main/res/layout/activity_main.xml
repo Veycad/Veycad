@@ -43,8 +43,8 @@
 
                 <TextView
                     android:id="@+id/settingsButton"
-                    android:layout_width="42dp"
-                    android:layout_height="42dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="@drawable/soft_surface"
                     android:clickable="true"
                     android:contentDescription="Настройки"
@@ -464,8 +464,8 @@
 
                 <TextView
                     android:id="@+id/backFromSettingsButton"
-                    android:layout_width="42dp"
-                    android:layout_height="42dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="@drawable/soft_surface"
                     android:clickable="true"
                     android:contentDescription="Назад"
@@ -486,7 +486,7 @@
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
-                <Space android:layout_width="42dp" android:layout_height="42dp" />
+                <Space android:layout_width="48dp" android:layout_height="48dp" />
             </LinearLayout>
 
             <TextView
