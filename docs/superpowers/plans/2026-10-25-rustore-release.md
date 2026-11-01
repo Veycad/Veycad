@@ -21,6 +21,31 @@
 - Owner confirmed no permanent signing key or RuStore account exists yet. Follow [account/signing preparation](../../release/account-and-signing.md). Never place secrets in source, logs or chat. No replacement signing identity without explicit agreement.
 - Each coherent implementation gets its own commit/PR. Merge only after owner approval and applicable checks; store submission is a separate approval.
 
+## Текущее состояние — 1 ноября 2026
+
+Приложение ещё не готово к публикации. Сборка и большинство проверок пройдены;
+это не означает готовность подписанного релиза на телефоне.
+
+- **Сделано:** доработаны объяснения ошибок и требований к видео, название приложения,
+  крупные шрифты в выборе стиля и настройка подписи. Ручной редактор включён в
+  release-конфигурации. Изменения подготовлены через отдельные PR, без слияния.
+- **Проверено на V6:** сборка, 266 из 267 экранных сценариев, восстановление импорта
+  и сохранённого проекта после принудительного закрытия. Подробности и ограничения —
+  в [отчёте V6](../../release/integration-2026-10-26-v6.md).
+- **Оставшийся сбой прогона:** первый кадр не успевает появиться на SwiftShader.
+  Тот же тест с теми же APK проходит на NVIDIA. Общий прогон остаётся с ошибкой;
+  быстродействие на телефоне и причина различия полностью не подтверждены.
+- **Пока не сделано:** приёмка итогового подписанного APK, проверка обновления без
+  потери проектов, TalkBack, просмотр и прослушивание реальных результатов,
+  оставшиеся проверки камеры и устройства без Google-сервисов.
+- **Для публикации нужны:** аккаунт RuStore, постоянный ключ с резервной копией,
+  подтверждённые права на музыку, финальные изображения карточки, публичная политика
+  и одобрение владельца. Телефон владелец подключит позже; повторно не запрашиваем.
+
+Список ниже — план работ с критериями приёмки. Старые незакрытые пункты нельзя
+использовать как счётчик сделанного: один пункт может объединять готовую реализацию
+и ещё не выполненную проверку подписанного приложения.
+
 ## Remaining work and sequencing
 
 On 2026-10-26 the owner challenged the remaining-time estimate. The conversational
@@ -30,11 +55,11 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V5 finished 266/267; its failing scenario passes with #100; combined V6 rerun in progress |
-| 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | Samsung import/edit/export/lifecycle checks passed; release flag in draft #92; final candidate acceptance open |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | Clean V6 baseline/build PASS (1392 JVM + 338 Python); full UI running; final device acceptance and merge approval open |
-| 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Samsung arm64 checks recorded; no-GMS, rear camera, human output review and signed updates remain open |
-| 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Draft materials exist; final screenshots and public policy still pending |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V6 completed 266/267; remaining first-frame failure reproduced on SwiftShader, same APK/test PASS on NVIDIA; phone timing open |
+| 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | V6 emulator manual scenarios and separate restart checks PASS; earlier Samsung evidence is V5; signed final candidate acceptance open |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | Clean V6 baseline/build PASS (1392 JVM + 338 Python); full UI finished with one failure; exact signed candidate, device acceptance and merge approval open |
+| 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
+| 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Listing draft and current public GitHub About checked; final images and public policy pending; see material inventory in listing |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |
 
 Record completed checks against exact source/APK identities in release receipts.
@@ -46,7 +71,7 @@ Materials can progress alongside engineering. Other stores follow the RuStore
 candidate acceptance; account eligibility and policies need a current check.
 See the [AppGallery/Galaxy Store sequence and gates](../../release/other-android-stores.md).
 
-Current combined run: [V6 receipt](../../release/integration-2026-10-26-v6.md).
+Completed combined run and subsequent diagnostics: [V6 receipt](../../release/integration-2026-10-26-v6.md).
 Previous completed run and diagnosis: [V5 receipt](../../release/integration-2026-10-26-v5.md).
 
 ## Review focus
