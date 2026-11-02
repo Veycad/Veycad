@@ -154,7 +154,7 @@ Consumes: verified current features and accepted build. Produces: honest listing
 
 - [x] Move full rights block lower in README unchanged, retain prominent license link; lead with benefit and current availability.
 - [x] Draft RuStore name (≤30 chars), short text (≤80), full text (≤4000), support contact, what's new and moderator instructions. [Draft](../../release/rustore-listing.md), text limits rechecked 2026-11-02: 26/77/1800 chars. Final signed-build review and console entry remain open.
-- [ ] Inventory data/permissions and third-party terms including music distribution rights; owner confirms any rights not documented in repository.
+- [ ] Inventory data/permissions and third-party terms including music distribution rights; owner confirms any rights not documented in repository. [V10 data/permission worksheet](../../release/rustore-data-safety.md) prepared; final APK/console review and music rights remain open.
 - [ ] Prepare privacy text and an accessible policy URL consistent with actual SDK behavior; do not equate local inference with a completed SDK privacy audit.
 - [ ] Capture at least three current app screenshots from the accepted build and prepare 512×512 opaque icon. Check current RuStore limits immediately before upload.
 - [ ] Use only authorized demo media; do not publish user footage as promotional material without explicit authorization.
