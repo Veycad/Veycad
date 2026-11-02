@@ -154,6 +154,40 @@ Receipt and exact run logs: `D:/CodexWork/veycad-v11-source-transfer-receipt-202
 The raw producer/stage captures and verified compressed archives are retained;
 their SHA-256 values are in `D:/CodexWork/veycad-v11-compacted-probe-evidence-20261102.json`.
 
+## Graphics-backend comparison
+
+A full-frame draw of the same four marker colors also failed; replacing the
+clear-based producer is insufficient. Keeping the producer alive until texture
+acquisition, or until the entire draw/readback finished, also failed.
+
+The next comparison used the same V11 app and the same diagnostic APK
+(`67dd7dd017fa70f2f19bba6e16a2a3d4672e2dd436e8377638ba947d38a92551`),
+with two cycles of the original rotation and parity checks, retaining every
+assertion and enabling no producer/readback overrides:
+
+- SwiftShader: both cycles passed, 16 render readbacks, 198.270s.
+- NVIDIA host graphics after a cold, snapshot-free boot: failed in cycle zero,
+  3.029s, with ten differing red/alpha pixels in the glow case, maximum byte
+  difference 255. Restarting alone therefore does not reliably clear this fault.
+
+Both launches used Emulator 37.1.11.0, the same API36/default x86_64 AVD,
+320x480/density160/font1.0, disabled animations and 4096-byte pages. The bounded
+SwiftShader check followed an intentionally cancelled warm-up. The earlier
+cold-start SwiftShader trial had already reached iteration two with unchanged
+assertions before cancellation; its final `Process crashed` status came from
+the deliberate force-stop and is not a spontaneous app crash or suite verdict.
+
+This supports a graphics-mode dependency in this environment; it does not
+identify the exact native cause, prove app correctness or clear full-run/device
+acceptance. The original instrumentation APK has been restored. Receipt:
+`D:/CodexWork/veycad-v11-backend-comparison-receipt-20261102.json`.
+
+The [official Emulator notes](https://developer.android.com/studio/releases/emulator)
+list a host graphics-resource leak fix in 37.2.13. An isolated Windows copy is
+being downloaded from Google's repository for comparison; it has not been run.
+The installed SDK and the separate 16 KB system-image download remain in place.
+The documented leak fix is a lead, not proof that it fixes Veycad's failure.
+
 ## Previously interrupted classes passed separately
 
 The original V11 app and original instrumentation APKs then passed all 29 cases
