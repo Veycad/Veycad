@@ -141,10 +141,28 @@ matched the preserved originals. The new paused-redraw case and editor closure
 also completed successfully in this selection.
 
 This is separate verification after the emulator restart, not a completed full
-suite or a fix for the earlier graphics/system failures. Recovery follow-up
-phases still need their own runs.
+suite or a fix for the earlier graphics/system failures.
 Receipt: `D:/CodexWork/veycad-v11-unfinished-classes-receipt-20261102.json`.
 Log: `D:/CodexWork/veycad-v11-original-unfinished-classes-20261102.log`.
+
+## Separate process-restart and project recovery gates passed
+
+With the same installed original V11 app, both existing host gates passed:
+
+- Import restart: force-stop at FILES_PREPARED and MANIFEST_COMMITTED, with a
+  different process after each restart; four exact source-file byte/hash checks
+  and restored selection/order/ready controls verified.
+- Project recovery: a different process reopened the same project; six retained
+  project files matched their exact byte counts and hashes, retired scratch was
+  removed, and the real editor reached paused native preview.
+
+These are controlled force-stops in the dedicated API36 emulator. They do not
+prove OEM low-memory killing, signed updates, phone behavior or recovery from
+the earlier Android system crash.
+Retained reports: `D:/CodexWork/veycad-v11-atomic-import-restart-20261102.json`
+and `D:/CodexWork/veycad-v11-project-recovery-20261102.json`.
+Run archives: `build/reports/ui-tests/restart/55a8534d-2512-418d-9a93-9707ecfd84e4`
+and `build/reports/ui-tests/project-recovery/dd1874a1-f955-401d-9cdd-497d1ed9c252`.
 
 ## Still open
 
@@ -155,7 +173,7 @@ resolve it. The V11 text class passed separately after the restart, but its
 earlier interruption by the graphics/system crash still prevents full-run
 acceptance.
 
-No V11 recovery, physical-device, 16 KB runtime, human media, signed update or
+No physical-device, 16 KB runtime, human media, signed update or
 store acceptance is inferred from the build. Account, permanent key, media
 rights, final store images, public policy and owner approval remain publication
 dependencies. No PR merge or store submission occurred.
