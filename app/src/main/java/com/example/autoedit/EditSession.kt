@@ -391,8 +391,8 @@ internal class EditSession internal constructor(
                     }
                     val sources = resolveSources(checkCancelled)
                     if (captureSessionId == null && sources.items.any { it.file.parentFile?.canonicalFile == sourceStore.root.canonicalFile }) {
-                        require(sourceSelectionConfirmed && confirmedDraft?.files == sources.items.map { it.file }) {
-                            "Выбор исходников не подтверждён. Выберите видео заново."
+                        if (!(sourceSelectionConfirmed && confirmedDraft?.files == sources.items.map { it.file })) {
+                            throw UserMessageException("Выбор исходников не подтверждён. Выберите видео заново.")
                         }
                     }
                     val edit = renderEngine.render(VeycadAutomaticEditor.Request(

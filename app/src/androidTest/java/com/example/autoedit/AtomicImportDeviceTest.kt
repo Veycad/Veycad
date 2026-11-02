@@ -149,7 +149,8 @@ class AtomicImportDeviceTest {
             main(request); ui.awaitIdle()
             assertFalse(app.editSession.state.value!!.busy)
             assertFalse(app.editSession.state.value!!.sourceSelectionConfirmed)
-            assertTrue(app.editSession.state.value!!.error.orEmpty().contains("Выбор исходников не подтверждён"))
+            assertEquals("Выбор исходников не подтверждён. Выберите видео заново.",
+                app.editSession.state.value!!.error)
             assertEquals(requestCount, ui.renderer.requestCount)
             assertNull(ui.renderer.currentRequest)
             assertArrayEquals(oldBytes, old.readBytes())
