@@ -160,7 +160,7 @@ Consumes: existing session states and typed failures. Produces: clearer copy and
 - [ ] Replace codec/candidate jargon with actionable Russian; retain technical errors in diagnostics. Never describe a limited failed search as proof that the entire source is unsuitable.
 - [ ] Explain source count/duration and style suitability before render; make DUALITY input order clear.
 - [x] Correct the final `VERIFYING` producer event to report N/N rather than N+1/N: [PR #72](https://github.com/Veycad/Veycad/pull/72), included in V12. The actual source event is corrected; UI formatting is not used to hide overflow.
-- [ ] Add a direct native regression for the final-selection producer event. Existing controlled UI progress tests do not execute that producer and do not close this coverage gap.
+- [x] Add a direct native regression for the final-selection producer event: [PR #72 follow-up](../../release/native-progress-regression-2026-11-02.md), same-instrumentation old-arithmetic FAIL and fixed PASS, clean baseline and read-only review. Scope: owning main-based PR, one-candidate fixture; not integrated V12, multi-candidate or media-quality acceptance.
 - [ ] Unify visible Veykad → Veycad without renaming storage keys, package IDs or historical evidence.
 - [ ] Check and fix recovery from error, save/share states, navigation, touch targets, font scaling and accessibility labels using current UI.
 - [x] Fix invisible 30/60 fps selection in the manual editor: [PR #108](https://github.com/Veycad/Veycad/pull/108), identical-instrumentation red/green check, 100%/200% text and recreated-screen restoration passed. Integrated into V12: all six manual cases and two large-text cases passed; signed and spoken TalkBack acceptance remain open.
