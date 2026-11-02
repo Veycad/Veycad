@@ -1,6 +1,7 @@
 # GLES resource ownership
 
-`effects-lab` contains shader source assets, not a separate screen renderer.
+Active shader sources are defined in `GlesFrameShaders`; unused `effects-lab`
+prototype assets and raw shader files have been removed from the APK.
 The GLES export backend lives in `MediaCodecSpeedRampRenderer.GlSession`;
 analysis uses `SequentialBitmapDecoder.GlOutput`.
 
