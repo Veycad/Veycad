@@ -109,13 +109,51 @@ ZIP SHA-256: `6763658685a6e9308871e5da117b002ca9fb5f89f47714d566750c5c33281958`.
 Receipt: `D:/CodexWork/veycad-v11-exported-license-check-20261102.json`.
 UI log: `D:/CodexWork/veycad-v11-original-license-export-20261102.log`.
 
+## Shorter graphics reproduction retained
+
+On the same V11 app, a diagnostic instrumentation APK ran the compositor and
+style-preview classes (15 cases, 20.693s). It retained the original strict
+assertions and failed rotation consistency and display/encoder parity. Saved
+RGBA arrays show identical pixels without the glow pipeline, then ten different
+pixels with it: red and alpha differ near x90..92/y160..164, with a maximum
+unsigned byte difference of 255. Both targets report RGBA8 and enabled dithering;
+this does not identify dithering as the cause.
+
+Restoring the original instrumentation APK also reproduced the rotation failure
+in the same 15-case selection (20.467s). Five isolated repetitions of that
+rotation case subsequently passed. A second diagnostic APK, which additionally
+saves rotation pairs, passed three 15-case selections. These intermittent
+results do not establish a fix or a synchronization conclusion. No production
+code or comparison tolerance changed. The original instrumentation APK was
+restored before checking the classes interrupted by the full-run crash.
+
+Receipt: `D:/CodexWork/veycad-v11-frame-parity-investigation-20261102.json`.
+Raw captures: `D:/CodexWork/veycad-v11-frame-parity-probe-captures-20261102`.
+
+## Previously interrupted classes passed separately
+
+The original V11 app and original instrumentation APKs then passed all 29 cases
+in `TextEditActivityDeviceTest` (7), `TextExportDeviceTest` (4),
+`TextLayoutDeviceTest` (3), `VideoDecoderCursorDeviceTest` (10) and
+`WhisperDeviceTest` (5), in 273.195s. The 27 cases that never started in the full
+run are all included. Installed APK hashes were read from the emulator and
+matched the preserved originals. The new paused-redraw case and editor closure
+also completed successfully in this selection.
+
+This is separate verification after the emulator restart, not a completed full
+suite or a fix for the earlier graphics/system failures. Recovery follow-up
+phases still need their own runs.
+Receipt: `D:/CodexWork/veycad-v11-unfinished-classes-receipt-20261102.json`.
+Log: `D:/CodexWork/veycad-v11-original-unfinished-classes-20261102.log`.
+
 ## Still open
 
 The [V10 preview freeze investigation](integration-2026-11-02-v10.md) remains
 open: the original APKs passed after restarting the emulator in both graphics
 modes. The freeze recurred in the full V11 run. A short fresh-start pass does not
-resolve it. PR #107's isolated text passes also do not close combined acceptance:
-the V11 text class was interrupted by the graphics/system crash.
+resolve it. The V11 text class passed separately after the restart, but its
+earlier interruption by the graphics/system crash still prevents full-run
+acceptance.
 
 No V11 recovery, physical-device, 16 KB runtime, human media, signed update or
 store acceptance is inferred from the build. Account, permanent key, media
