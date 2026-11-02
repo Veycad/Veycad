@@ -376,10 +376,16 @@ class ManualMvpActivity : AppCompatActivity() {
         }
         content.addView(label(getString(R.string.manual_new), 20))
         content.addView(label(getString(R.string.manual_supported), 14))
-        content.addView(row(
-            button("30 кадр/с") { chooseFps(30) }.apply { isSelected = newProjectFps == 30 },
-            button("60 кадр/с") { chooseFps(60) }.apply { isSelected = newProjectFps == 60 }
-        ))
+        content.addView(row(*listOf(30, 60).map { fps ->
+            button("$fps кадр/с") { chooseFps(fps) }.apply {
+                isSelected = newProjectFps == fps
+                backgroundTintList = enabledColors(if (isSelected) R.color.accent_soft else R.color.surface_high, R.color.stroke)
+                ViewCompat.setStateDescription(this, getString(if (isSelected) R.string.manual_selected else R.string.manual_not_selected))
+                iconSize = dp(16); iconPadding = dp(2); iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+                iconTint = enabledColors(R.color.text_primary, R.color.text_muted)
+                if (isSelected) setIconResource(R.drawable.manual_check)
+            }
+        }.toTypedArray()))
         content.addView(button(getString(R.string.manual_import)) { videoPicker.launch(arrayOf("video/*")) }.apply { tag = "import" })
         content.addView(label(getString(R.string.manual_saved), 20))
         content.addView(button("Восстановить копию") {
