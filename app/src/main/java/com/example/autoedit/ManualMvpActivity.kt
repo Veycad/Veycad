@@ -361,7 +361,8 @@ class ManualMvpActivity : AppCompatActivity() {
             setOnClickListener { leaveAfterCleanup() }
         })
         content.addView(label(getString(R.string.manual_title), 28))
-        status = label(message ?: getString(R.string.manual_intro), 14).also(content::addView)
+        status = label(message ?: getString(if (selected == null) R.string.manual_start else R.string.manual_intro), 14)
+            .also(content::addView)
         status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         if (selected != null && analysisRecoveryRequired) {
             val recoverId = selected.id

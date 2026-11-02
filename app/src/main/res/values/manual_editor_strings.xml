@@ -3,6 +3,7 @@
     <string name="manual_title">Довести монтаж</string>
     <string name="manual_back">Назад</string>
     <string name="manual_intro">Черновик сохранён. Поправь кадры, выбери формат и сохрани свою версию.</string>
+    <string name="manual_start">Добавь видео, чтобы начать ручной монтаж.</string>
     <string name="manual_opening">Открываю сохранённый монтаж…</string>
     <string name="manual_stopping">Завершаю текущую операцию…</string>
     <string name="manual_open_failed">Не удалось открыть проекты. Повтори попытку.</string>
