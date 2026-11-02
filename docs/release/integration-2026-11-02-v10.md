@@ -90,7 +90,36 @@ PCM encoding 2; no Android float-output or human listening acceptance is inferre
 Result: `build/reports/ui-tests/runs/20261102-001132-799/screens/source-audio-host-oracle/result.json`.
 Log: `D:/CodexWork/veycad-v10-aac-host-oracle-20261102.log`.
 
-## Acceptance boundaries
+## Follow-up fixes and preview diagnosis
+
+The text idle failures have an isolated fix in draft
+[PR #107](https://github.com/Veycad/Veycad/pull/107), commit
+`f7f38f08149ef8b42d18a44293e69cc25f0a92c1`: paused playback no longer redraws
+unchanged text time. With identical instrumentation, the original app failed
+the new paused-draw regression (10 draws in one second); the fixed app passed
+while retaining seek and playback updates. All seven text device cases passed,
+including both cases that failed on V10. `baselineVerify` also passed.
+Receipt: `D:/CodexWork/veycad-text-paused-receipt-20261102.json`.
+These are owning-branch results, not a successful combined V10 rerun.
+
+Draft [PR #106](https://github.com/Veycad/Veycad/pull/106), commit
+`0083768dd4f20cd5334d89be740acf8be52fd984`, preserves two missing dependency
+notice texts and their provenance. Its four unsigned release APKs contain the
+original bytes. This does not establish complete license compliance or resolve
+third-party music rights. Receipt:
+`D:/CodexWork/veycad-runtime-notices-package-check-20261102.json`.
+
+The style preview failure reproduced separately on the original V10 app.
+Test-only probes showed a fixed SurfaceTexture timestamp and identical pixels
+while the player position advanced. Early samples showed the same freeze before
+the first loop; the failure is not established as an automatic-loop defect.
+Replacing automatic looping with a completion restart did not help and was
+reverted. Window/frame delivery on the host emulator remains under investigation;
+no preview production fix or physical-device verdict is claimed.
+Logs: `D:/CodexWork/veycad-style-early-frame-clock-20261102.log` and
+`D:/CodexWork/veycad-style-explicit-loop-test-20261102.log`.
+
+## Remaining acceptance boundaries
 
 The empty-editor prompt's focused 200% font check belongs to isolated PR #105
 (2.603s); that exact check was not repeated on V10. V9 native export/speech

@@ -45,8 +45,13 @@ APK собраны, их содержимое и контракт безопас
 - **Проверено на V6:** сборка, 266 из 267 экранных сценариев, восстановление импорта
   и сохранённого проекта после принудительного закрытия. Подробности и ограничения —
   в [отчёте V6](../../release/integration-2026-10-26-v6.md).
-- **Оставшиеся сбои V10:** пример стиля и два сценария текста. Для текста проверяется
-  устранение лишних перерисовок на паузе. Прежний сбой первого кадра на SwiftShader
+- **Исправлено отдельно от V10:** лишние перерисовки текста на паузе —
+  [PR #107](https://github.com/Veycad/Veycad/pull/107). Все семь сценариев текста,
+  включая два ранее падавших, и базовые проверки прошли. Добавлены недостающие
+  уведомления о лицензиях зависимостей — [PR #106](https://github.com/Veycad/Veycad/pull/106).
+  Оба изменения ещё нужно проверить в общей сборке.
+- **Оставшийся сбой V10:** изображение примера стиля застывает уже до первого повтора;
+  причина исследуется на эмуляторе. Прежний сбой первого кадра на SwiftShader
   не повторился в полном прогоне на NVIDIA; быстродействие на телефоне остаётся открытым.
 - **Пока не сделано:** приёмка итогового подписанного APK, проверка обновления без
   потери проектов, TalkBack, просмотр и прослушивание реальных результатов,
@@ -68,7 +73,7 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V10 completed 266/269 screen cases; style-loop and two text-idle failures open. Earlier SwiftShader first-frame failure did not repeat on host GPU; phone timing open |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V10 completed 266/269 screen cases; preview freeze open. PR #107 fixed text-idle cases on its owning branch; combined verification pending. Earlier SwiftShader first-frame failure did not repeat on host GPU; phone timing open |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | V6 emulator manual scenarios and separate restart checks PASS; earlier Samsung evidence is V5; signed final candidate acceptance open |
 | 3. Integrated candidate | Combined changes build and pass applicable checks | V10 release/security build passed; full UI finished with three failures; pending fixes, exact signed candidate, device acceptance and merge approval open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
