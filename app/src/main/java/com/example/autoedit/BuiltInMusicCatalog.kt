@@ -58,6 +58,7 @@ object BuiltInMusicCatalog {
     private val galleryTrack = Track("neon_drift", "Neon Drift", 156, 55.00, intArrayOf(0, 3, 5, 7), .03)
     val tracks: List<Track> = listOf(sigmaTrack, heartbeatTrack, fearTrack, dualityTrack, galleryTrack)
 
+    @Synchronized
     fun select(context: Context, styleId: String): Selection {
         val track = trackForStyle(styleId)
         val directory = File(context.filesDir, "built-in-music").apply { mkdirs() }
