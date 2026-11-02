@@ -36,13 +36,16 @@ V11 плюс выделение выбранных 30/60 кадров/с (PR #10
 на свежей NVIDIA среде одиночный тест прошёл, но в группе снова упал.
 На изолированном эмуляторе 37.2.13 та же группа с NVIDIA тоже прошла целиком.
 Это сужает поиск до зависимости от среды и нагрузки, а не закрывает длительные сбои.
-Полный V12-прогон запущен на новой среде; итог ещё не получен.
+Полный V12-прогон на новой среде снова прервался аварией Android: зависла
+системная служба окон при создании снимка окна. Запустились 243 из 271 экранных
+сценариев; 242 сообщили об успешном завершении, один прервался и 28 не запустились.
+Это не пройденный полный прогон; причина в приложении или эмуляции ещё не доказана.
 
 Тот же проверенный исходный код опубликован в черновике
 [PR #109](https://github.com/Veycad/Veycad/pull/109) для независимой проверки
 в GitHub. Слияния и отправки в магазин не было; результат CI ещё не получен.
 
-Последний полный прогон — [V11](../../release/integration-2026-11-02-v11.md) — не пройден: он прервался
+Предыдущий полный прогон — [V11](../../release/integration-2026-11-02-v11.md) — не пройден: он прервался
 аварией системного процесса Android в эмуляторе. Запустились 243 из 270 экранных
 сценариев; в журнале 239 успешных завершений и четыре сообщения об ошибке,
 включая аварию. Оставшиеся 27 не запускались; корректного итогового XML нет.
@@ -109,9 +112,9 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | Original V12 group passes 15/15 on old SwiftShader and new37.2.13 NVIDIA, fails1/15 on old37.1.11 NVIDIA after matched warm-up. Full V12 run on new environment active; old long-run crash/freeze and cause remain open |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | Short V12 graphics group passes15/15 on new37.2.13 NVIDIA; full attempt still aborts in Android WindowManager task snapshot after243/271 screen starts. No preceding assertion failures; OS/app cause remains open |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | V12 manual class 6/6, large-text follow-up 2/2 and controlled import/project restarts PASS on emulator; signed arm64/physical acceptance open |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | V12 build, baseline, unsigned package inspection and static alignment passed; short graphics group passes on new emulator, full UI active with no verdict. Signed/device acceptance and merge approval open |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | V12 build, baseline, unsigned package inspection and static alignment passed; full UI failed/incomplete on new emulator despite short-group success. Signed/device acceptance and merge approval open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
 | 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Listing draft and current public GitHub About checked; final images and public policy pending; see material inventory in listing |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |

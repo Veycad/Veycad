@@ -96,12 +96,33 @@ New receipts: `veycad-v12-host-parity-emulator37213-20261102.json` and
 `veycad-v12-emulator37213-host-graphics-style-20261102.json`; launcher/renderer
 identity: `veycad-v12-emulator37213-host-20261102.stdout.log`.
 
-A complete V12 UI run was started on this new host environment:
-`20261102-051535-541`, original app/instrumentation hashes unchanged after the
-runner's build. It expects two permission and 271 screen cases, followed by
-restart checks. Permission phase passed; screen phase was still running when
-this note was written. This is not a completed or passing full-suite verdict.
+The complete V12 UI attempt on this new host environment,
+`20261102-051535-541`, ended **FAIL / incomplete after an Android system crash**.
+Original app/instrumentation hashes remained unchanged after the runner's build.
+Two permission cases passed with valid XML. Of 271 screen cases, 243 started;
+242 emitted success statuses, one was interrupted and 28 never started.
+No assertion-failure status preceded the abort. These stream statuses do not
+replace the missing completed screen XML or establish a passing screen suite.
+
+The interrupted method was `TextEditActivityDeviceTest.mainAndCompletedVideoOpenSameEditor`.
+At 05:46:54 UTC the Android watchdog killed system_server after WindowManager,
+display and animation threads were blocked for62s. The animation stack is inside
+`ScreenCapture.nativeCaptureLayers` via task-snapshot creation. Instrumentation
+reported `INSTRUMENTATION_ABORTED: System has crashed.`; the runner then rejected
+the invalid screen XML and could not restore two settings while system services
+were unavailable. Preview retention also failed with an I/O error.
+
+The crash occurred before any deliberate emulator stop. The emulator was
+restarted only after terminal failure and log retention for subsequent separate
+work. The newer emulator improves the short parity result but does not resolve
+the long-run system failure. Application-versus-emulation cause remains unproven;
+restart probes did not run in this full attempt, and signed/device/media gates
+remain open. No comparison, test or acceptance criterion was weakened.
+
 Outer log: `D:/CodexWork/veycad-v12-emulator37213-full-ui-20261102.log`.
+Receipt: `D:/CodexWork/veycad-v12-emulator37213-full-ui-receipt-20261102.json`.
+Full watchdog log: `build/reports/ui-tests/runs/20261102-051535-541/screens/logcat.txt`
+under the integration checkout, starting at line201475.
 
 ## Unsigned APK identities
 
