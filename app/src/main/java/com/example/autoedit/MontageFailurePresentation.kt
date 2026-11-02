@@ -1,7 +1,11 @@
 package com.veycad.app
 
+import java.util.concurrent.CancellationException
+
 /** User-facing copy only: search outcomes keep their diagnostic types and evidence scope. */
 internal object MontageFailurePresentation {
+    private const val UNKNOWN_FAILURE = "Не удалось завершить операцию. Попробуй ещё раз. " +
+        "Если ошибка повторится, выбери другое видео или стиль."
     fun message(error: Throwable, sourceCount: Int): String = when {
         // This subtype describes only the finite measured candidate family, not the whole video.
         error is HeartbeatCandidateDomainExhaustedException ->
@@ -24,10 +28,9 @@ internal object MontageFailurePresentation {
             "Не подтверждена непрерывная сцена с заметным движением для FEAR"
         error is MaterialRejectedException && error.code == "insufficient_motion_evidence" ->
             "Не удалось надёжно измерить движение для FEAR. Это не означает, что герой неподвижен"
-        error.message.orEmpty().contains("at least 15000") ->
-            "Нужно видео длительностью не менее 15 секунд"
-        error.message.orEmpty().contains("at least 6000") ->
-            "Для DUALITY каждое видео должно быть не короче 6 секунд"
-        else -> error.message?.takeIf { it.isNotBlank() } ?: "Не удалось завершить операцию"
+        error is CancellationException -> error.message?.takeIf { it.isNotBlank() } ?: "Операция отменена"
+        error is UserMessageException || error is MaterialRejectedException ->
+            error.message?.takeIf { it.isNotBlank() } ?: UNKNOWN_FAILURE
+        else -> UNKNOWN_FAILURE
     }
 }

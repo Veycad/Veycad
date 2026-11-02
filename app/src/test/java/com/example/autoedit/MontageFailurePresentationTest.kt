@@ -67,18 +67,23 @@ class MontageFailurePresentationTest {
             MontageFailurePresentation.message(MaterialRejectedException("insufficient_motion_evidence", "unknown"), 1))
     }
 
-    @Test fun legacy_duration_fallbacks_keep_their_text_and_precedence() {
-        assertEquals("Нужно видео длительностью не менее 15 секунд",
+    @Test fun untyped_duration_text_does_not_classify_an_execution_failure() {
+        assertEquals(fallback,
             MontageFailurePresentation.message(IllegalArgumentException("at least 15000 ms"), 2))
-        assertEquals("Для DUALITY каждое видео должно быть не короче 6 секунд",
+        assertEquals(fallback,
             MontageFailurePresentation.message(IllegalArgumentException("at least 6000 ms"), 1))
-        assertEquals("Нужно видео длительностью не менее 15 секунд",
+        assertEquals(fallback,
             MontageFailurePresentation.message(IllegalArgumentException("at least 6000 and at least 15000"), 2))
     }
 
     @Test fun untyped_codec_or_execution_failure_does_not_become_a_material_shortfall() {
-        val message = "Codec failed: insufficient_distinct_moments / insufficient_motion_evidence"
-        assertEquals(message, MontageFailurePresentation.message(IllegalStateException(message), 1))
+        val failures = listOf(
+            IllegalStateException("Codec failed: insufficient_distinct_moments / insufficient_motion_evidence"),
+            IllegalStateException("Codec needs at least 15000 bytes"),
+            IllegalArgumentException("configure returned 0xffffffed"),
+            IllegalArgumentException("Codec needs at least 15000 bytes"),
+            java.io.IOException("/private/source-marker.mp4: EGL_BAD_ALLOC"))
+        for (failure in failures) assertEquals(fallback, MontageFailurePresentation.message(failure, 1))
     }
 
     @Test fun unknown_material_code_retains_its_original_message() {
@@ -89,16 +94,34 @@ class MontageFailurePresentationTest {
     @Test fun cancellation_retains_its_existing_message_without_becoming_a_negative_case() {
         assertEquals("Операция отменена",
             MontageFailurePresentation.message(CancellationException("Операция отменена"), 1))
+        assertEquals("Операция отменена", MontageFailurePresentation.message(CancellationException(), 1))
     }
 
     @Test fun empty_or_blank_exception_message_keeps_generic_fallback() {
         for (message in listOf(null, "", " \t\n")) {
-            assertEquals("Не удалось завершить операцию",
+            assertEquals(fallback,
                 MontageFailurePresentation.message(IllegalStateException(message), 1))
         }
-        assertEquals("  original message  ",
+        assertEquals(fallback,
             MontageFailurePresentation.message(IllegalStateException("  original message  "), 1))
     }
+
+    @Test fun owned_budget_refusals_keep_their_specific_actionable_text() {
+        val actions = listOf<() -> Unit>(
+            { SourceAnalysisBudget.preflight(0, 250_000, Long.MAX_VALUE) },
+            { SourceAnalysisBudget.preflight(60_000_001, 250_000, Long.MAX_VALUE) },
+            { SourceAnalysisBudget.preflight(24_050_001, 100_000, Long.MAX_VALUE) },
+            { SourceAnalysisBudget.preflight(60_000_000, 250_000, 0) },
+            { SourceAnalysisBudget.preflight(1_000_000, 250_000, -1) })
+        for (action in actions) {
+            val error = assertThrows(IllegalArgumentException::class.java) { action() }
+            assertFalse("A budget refusal must not become a source-quality rejection", error is MaterialRejectedException)
+            assertEquals(error.message, MontageFailurePresentation.message(error, 1))
+        }
+    }
+
+    private val fallback = "Не удалось завершить операцию. Попробуй ещё раз. " +
+        "Если ошибка повторится, выбери другое видео или стиль."
 
     private fun trace(exhausted: Boolean) = HeartbeatSourcePool.SelectionTrace(
         method = "measured-pair-fallback", generatedCandidates = 9, candidateCount = 12,

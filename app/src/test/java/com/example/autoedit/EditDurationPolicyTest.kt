@@ -11,8 +11,9 @@ class EditDurationPolicyTest {
         try {
             EditDurationPolicy.choose(14_999L, map(beatsMs = emptyList()))
             fail("Expected minimum-duration rejection")
-        } catch (_: IllegalArgumentException) {
-            // Expected.
+        } catch (error: IllegalArgumentException) {
+            assertEquals("Нужно видео длительностью не менее 15 секунд",
+                MontageFailurePresentation.message(error, 2))
         }
     }
 

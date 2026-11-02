@@ -1100,6 +1100,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFailure(error: Throwable) {
+        android.util.Log.e("Veycad", "Style music preparation failed", error)
+        LocalDiagnostics.record(this, "style_music_failed", CaptureDiagnostics.failureFields(error))
         toast(MontageFailurePresentation.message(error, montageStyle.sourceCount))
     }
 
