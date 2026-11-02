@@ -1,0 +1,530 @@
+{
+  "snapshot": {
+    "snapshot": "b9615682de40e256c521a3f9d1035bd9e4cac1a0",
+    "tree": "bb7f0c0a16d89523da2a7df589da4950f8756e9a",
+    "main": "beca0960fbac96837e39a92ed751909eb9e83715",
+    "heads": [
+      {
+        "pr": 70,
+        "head": "0554b7dfbe4acb1dee94310b40bde394df54bb52"
+      },
+      {
+        "pr": 71,
+        "head": "a2a1e4ab89a08f652294894c846735e74c66ea69"
+      },
+      {
+        "pr": 72,
+        "head": "b9f28e8ac7709708f2806cd36812659fccb6871f"
+      },
+      {
+        "pr": 73,
+        "head": "c6e4b7d35f1954962b242a527f740fda4b8ccbc2"
+      },
+      {
+        "pr": 74,
+        "head": "5daf9c4adda15dfb3947c634fc4affe92b93bfc3"
+      },
+      {
+        "pr": 75,
+        "head": "57829c38f5ba3a883e5d73c9099d0aac636735ab"
+      },
+      {
+        "pr": 76,
+        "head": "c4dd73e1fca13c3af01ad540e683b13cdb3d30a3"
+      },
+      {
+        "pr": 77,
+        "head": "f27c6b2a909a4f1575725866b5212a655587372a"
+      },
+      {
+        "pr": 78,
+        "head": "87ebb65054d441d5715a1e5ab4b8dd85bc6ef54f"
+      },
+      {
+        "pr": 79,
+        "head": "8c2394af349b18eaf51a71a89f09a3dcd7b78c9b"
+      },
+      {
+        "pr": 80,
+        "head": "83881fd97c32c6d22cd2b3540539ca85ecf38882"
+      },
+      {
+        "pr": 81,
+        "head": "dd5490cd521b655057ffce5790f11d3a2d0951c0"
+      }
+    ],
+    "published": false
+  },
+  "ciObservedAtUtc": "2026-10-25T18:47:34Z",
+  "ci": [
+    {
+      "number": 70,
+      "head": "0554b7dfbe4acb1dee94310b40bde394df54bb52",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "ui",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219798865/job/121249159238",
+          "id": 121249159238
+        },
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219798865/job/121249159066",
+          "id": 121249159066
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219798855/job/121248753878",
+          "id": 121248753878
+        }
+      ]
+    },
+    {
+      "number": 71,
+      "head": "a2a1e4ab89a08f652294894c846735e74c66ea69",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217002353/job/121240632014",
+          "id": 121240632014
+        },
+        {
+          "name": "ui",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217002353/job/121240631789",
+          "id": 121240631789
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217002293/job/121240273079",
+          "id": 121240273079
+        }
+      ]
+    },
+    {
+      "number": 72,
+      "head": "b9f28e8ac7709708f2806cd36812659fccb6871f",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217065172/job/121240395672",
+          "id": 121240395672
+        },
+        {
+          "name": "ui",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217065172/job/121240395487",
+          "id": 121240395487
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217065097/job/121240395420",
+          "id": 121240395420
+        }
+      ]
+    },
+    {
+      "number": 73,
+      "head": "c6e4b7d35f1954962b242a527f740fda4b8ccbc2",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217502515/job/121241735061",
+          "id": 121241735061
+        },
+        {
+          "name": "ui",
+          "status": "completed",
+          "conclusion": "failure",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217502370/job/121241735037",
+          "id": 121241735037
+        },
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217502370/job/121241734849",
+          "id": 121241734849
+        }
+      ]
+    },
+    {
+      "number": 74,
+      "head": "5daf9c4adda15dfb3947c634fc4affe92b93bfc3",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217621710/job/121242093202",
+          "id": 121242093202
+        },
+        {
+          "name": "ui",
+          "status": "completed",
+          "conclusion": "failure",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217621710/job/121242092939",
+          "id": 121242092939
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40217621789/job/121242092892",
+          "id": 121242092892
+        }
+      ]
+    },
+    {
+      "number": 75,
+      "head": "57829c38f5ba3a883e5d73c9099d0aac636735ab",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40218092705/job/121243508496",
+          "id": 121243508496
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40218092718/job/121243508276",
+          "id": 121243508276
+        },
+        {
+          "name": "ui",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40218092705/job/121243508188",
+          "id": 121243508188
+        }
+      ]
+    },
+    {
+      "number": 76,
+      "head": "c4dd73e1fca13c3af01ad540e683b13cdb3d30a3",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40218451441/job/121244586080",
+          "id": 121244586080
+        },
+        {
+          "name": "ui",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40218451441/job/121244585881",
+          "id": 121244585881
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40218451467/job/121244585770",
+          "id": 121244585770
+        }
+      ]
+    },
+    {
+      "number": 77,
+      "head": "f27c6b2a909a4f1575725866b5212a655587372a",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "ui",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219306678/job/121247195193",
+          "id": 121247195193
+        },
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219306678/job/121247195021",
+          "id": 121247195021
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219306647/job/121247194716",
+          "id": 121247194716
+        }
+      ]
+    },
+    {
+      "number": 78,
+      "head": "87ebb65054d441d5715a1e5ab4b8dd85bc6ef54f",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219611325/job/121248109303",
+          "id": 121248109303
+        },
+        {
+          "name": "ui",
+          "status": "completed",
+          "conclusion": "failure",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219611325/job/121248109265",
+          "id": 121248109265
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40219611238/job/121248108619",
+          "id": 121248108619
+        }
+      ]
+    },
+    {
+      "number": 79,
+      "head": "8c2394af349b18eaf51a71a89f09a3dcd7b78c9b",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40220750851/job/121251604890",
+          "id": 121251604890
+        },
+        {
+          "name": "ui",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40220750851/job/121251604602",
+          "id": 121251604602
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40220750838/job/121251604254",
+          "id": 121251604254
+        }
+      ]
+    },
+    {
+      "number": 80,
+      "head": "83881fd97c32c6d22cd2b3540539ca85ecf38882",
+      "base": "main",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "legacy-save",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40221890392/job/121255041838",
+          "id": 121255041838
+        },
+        {
+          "name": "baseline",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40221890430/job/121255041713",
+          "id": 121255041713
+        },
+        {
+          "name": "ui",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40221890392/job/121255041614",
+          "id": 121255041614
+        }
+      ]
+    },
+    {
+      "number": 81,
+      "head": "dd5490cd521b655057ffce5790f11d3a2d0951c0",
+      "base": "codex/preview-stop-race",
+      "state": "open",
+      "draft": true,
+      "checks": [
+        {
+          "name": "ui",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40222834663/job/121257922023",
+          "id": 121257922023
+        },
+        {
+          "name": "legacy-save",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40222834663/job/121257921843",
+          "id": 121257921843
+        },
+        {
+          "name": "baseline",
+          "status": "in_progress",
+          "conclusion": null,
+          "html_url": "https://github.com/Veycad/Veycad/actions/runs/40222834624/job/121257921546",
+          "id": 121257921546
+        }
+      ]
+    }
+  ],
+  "baseline": {
+    "pythonTests": 338,
+    "jvmTests": 1392,
+    "passed": true,
+    "clean": false
+  },
+  "android": {
+    "results": [
+      {
+        "class": "com.veycad.app.StylePickerScreenTest",
+        "name": "system_back_discards_a_pending_choice_and_keeps_the_imported_source",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.StylePickerScreenTest",
+        "name": "apply_persists_the_chosen_style_and_recreation_restores_it",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.StylePickerScreenTest",
+        "name": "all_available_styles_apply_their_own_source_and_music_requirements",
+        "result": "FAIL"
+      },
+      {
+        "class": "com.veycad.app.StylePickerScreenTest",
+        "name": "paused_sigma_and_every_upcoming_row_are_visible_but_cannot_be_selected",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.StylePickerScreenTest",
+        "name": "switching_styles_keeps_unrelated_preferences_and_uses_the_final_music_callback",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.StylePickerScreenTest",
+        "name": "scrolling_the_last_choice_keeps_apply_and_cancel_fully_accessible",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.StylePickerScreenTest",
+        "name": "all_styles_opens_the_same_picker_and_cancel_preserves_the_selected_style",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.InformationalDialogsTest",
+        "name": "version_dialog_uses_installed_build_identity_and_can_be_closed_by_button_and_back",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.InformationalDialogsTest",
+        "name": "privacy_dialog_explains_local_processing_and_dismisses_without_leaving_settings",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.InformationalDialogsTest",
+        "name": "help_dialog_explains_creation_results_and_disabled_action_then_returns_to_settings",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.ManualMvpScreenTest",
+        "name": "importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision",
+        "result": "FAIL"
+      },
+      {
+        "class": "com.veycad.app.ManualMvpScreenTest",
+        "name": "saved60FpsScrubPlayPauseBackgroundAndRecreateRemainPaused",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.DraftPreviewControllerDeviceTest",
+        "name": "directSurfaceFirstReverseAndSourceChangePreserveInputsWithoutPreviewFile",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.DraftPreviewControllerDeviceTest",
+        "name": "overlapTemporalEffectsAndSavedTextMatchNativeExportAfterReverseSeeks",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.DraftPreviewControllerDeviceTest",
+        "name": "pausedNormalMinuteDropsProducerAnalysisAndKeepsOnlyBoundedOwnedPages",
+        "result": "FAIL"
+      },
+      {
+        "class": "com.veycad.app.DraftPreviewControllerDeviceTest",
+        "name": "overlappingStopsAndCloseAcknowledgeEveryCallerWithoutLateExecutorWork",
+        "result": "PASS"
+      },
+      {
+        "class": "com.veycad.app.GlesPreviewMemoryDeviceTest",
+        "name": "rich_caption_and_legacy_pixels_share_export_layout_and_reuse_charged_rgba_uploads",
+        "result": "FAIL"
+      },
+      {
+        "class": "com.veycad.app.SourceAudioDeviceTest",
+        "name": "low_rate_wave_large_codec_buffers_preserve_samples_and_bounded_chunks",
+        "result": "PASS"
+      }
+    ],
+    "skipped": 0,
+    "apkSha256": "40f49c8212b58f74b5c3556005d7cbb2e38c9dccd85ef1efaab2b5f92d896a72",
+    "failures": 4,
+    "errors": 0,
+    "api": 36,
+    "tests": 18,
+    "testTimestamp": "2026-10-25T18:59:49",
+    "device": "AutoEditUi_API36"
+  },
+  "releaseAccepted": false
+}

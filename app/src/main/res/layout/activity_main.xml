@@ -36,15 +36,15 @@
                     android:layout_weight="1"
                     android:fontFamily="sans-serif-medium"
                     android:letterSpacing="0.20"
-                    android:text="VEYKAD  •"
+                    android:text="VEYCAD  •"
                     android:textColor="@color/text_primary"
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/settingsButton"
-                    android:layout_width="42dp"
-                    android:layout_height="42dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="@drawable/soft_surface"
                     android:clickable="true"
                     android:contentDescription="Настройки"
@@ -148,7 +148,7 @@
                 android:maxLines="2"
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
-                android:text="1 видео · от 15 секунд"
+                android:text="1 видео · 15–60 секунд"
                 android:textColor="@color/text_muted"
                 android:textSize="12sp" />
 
@@ -399,7 +399,7 @@
         android:fillViewport="true"
         android:visibility="gone">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="22dp" android:paddingTop="22dp" android:paddingEnd="22dp" android:paddingBottom="36dp">
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:letterSpacing="0.18" android:text="VEYKAD  •" android:textColor="@color/text_primary" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:letterSpacing="0.18" android:text="VEYCAD  •" android:textColor="@color/text_primary" android:textSize="12sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:gravity="center" android:letterSpacing="0.12" android:text="МОНТАЖ ГОТОВ" android:textColor="@color/neon" android:textSize="11sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:fontFamily="sans-serif-black" android:gravity="center" android:text="Вот что получилось" android:textColor="@color/text_primary" android:textSize="32sp" />
             <LinearLayout android:id="@+id/resultPanel" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:orientation="vertical">
@@ -430,7 +430,7 @@
         android:fillViewport="true"
         android:visibility="gone">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="22dp" android:paddingTop="22dp" android:paddingEnd="22dp" android:paddingBottom="36dp">
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:letterSpacing="0.18" android:text="VEYKAD  •" android:textColor="@color/text_primary" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:letterSpacing="0.18" android:text="VEYCAD  •" android:textColor="@color/text_primary" android:textSize="12sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:letterSpacing="0.12" android:text="ТВОЯ КОЛЛЕКЦИЯ" android:textColor="@color/neon" android:textSize="11sp" android:textStyle="bold" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:fontFamily="sans-serif-black" android:text="Мои эдиты" android:textColor="@color/text_primary" android:textSize="36sp" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Последний монтаж и сохранённые видео — всё в одном месте." android:textColor="@color/text_secondary" android:textSize="14sp" />
@@ -464,8 +464,8 @@
 
                 <TextView
                     android:id="@+id/backFromSettingsButton"
-                    android:layout_width="42dp"
-                    android:layout_height="42dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="@drawable/soft_surface"
                     android:clickable="true"
                     android:contentDescription="Назад"
@@ -481,12 +481,12 @@
                     android:layout_weight="1"
                     android:gravity="center"
                     android:letterSpacing="0.20"
-                    android:text="VEYKAD  •"
+                    android:text="VEYCAD  •"
                     android:textColor="@color/text_primary"
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
-                <Space android:layout_width="42dp" android:layout_height="42dp" />
+                <Space android:layout_width="48dp" android:layout_height="48dp" />
             </LinearLayout>
 
             <TextView
@@ -530,38 +530,42 @@
                 <LinearLayout
                     android:id="@+id/defaultStyleSetting"
                     android:layout_width="match_parent"
-                    android:layout_height="76dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="76dp"
+                    android:paddingVertical="12dp"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center_vertical"
-                    android:orientation="horizontal">
-                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Стиль по умолчанию\nИспользуется для нового монтажа" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
-                    <TextView android:id="@+id/settingsStyleValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Heartbeat  ›" android:textColor="@color/text_secondary" android:textSize="13sp" />
+                    android:orientation="vertical">
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Стиль по умолчанию\nИспользуется для нового монтажа" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
+                    <TextView android:id="@+id/settingsStyleValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Heartbeat  ›" android:textColor="@color/text_secondary" android:textSize="13sp" />
                 </LinearLayout>
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
 
                 <LinearLayout
                     android:id="@+id/qualitySetting"
                     android:layout_width="match_parent"
-                    android:layout_height="76dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="76dp"
+                    android:paddingVertical="12dp"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center_vertical"
-                    android:orientation="horizontal">
-                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Качество видео\nВлияет на размер и время рендера" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
-                    <TextView android:id="@+id/settingsQualityValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="720p  ›" android:textColor="@color/text_secondary" android:textSize="13sp" />
+                    android:orientation="vertical">
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Качество видео\nВлияет на размер и время рендера" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
+                    <TextView android:id="@+id/settingsQualityValue" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="720p  ›" android:textColor="@color/text_secondary" android:textSize="13sp" />
                 </LinearLayout>
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
 
-                <LinearLayout android:layout_width="match_parent" android:layout_height="76dp" android:gravity="center_vertical" android:orientation="horizontal">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="76dp" android:paddingVertical="12dp" android:gravity="center_vertical" android:orientation="horizontal">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Сохранять автоматически\nДобавлять готовые эдиты в галерею" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
-                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/autoSaveSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/autoSaveSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:contentDescription="Сохранять автоматически" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
                 </LinearLayout>
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
 
-                <LinearLayout android:layout_width="match_parent" android:layout_height="76dp" android:gravity="center_vertical" android:orientation="horizontal">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="76dp" android:paddingVertical="12dp" android:gravity="center_vertical" android:orientation="horizontal">
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Уведомлять о готовности\nКогда монтаж можно открыть" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
-                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/notificationSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/notificationSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:contentDescription="Уведомлять о готовности" app:thumbTint="@color/switch_thumb" app:trackTint="@color/switch_track" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -582,7 +586,7 @@
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
                 <Button android:id="@+id/helpButton" android:layout_width="match_parent" android:layout_height="64dp" android:backgroundTint="@android:color/transparent" android:gravity="start|center_vertical" android:text="Помощь                                                       ›" android:textAllCaps="false" android:textColor="@color/text_primary" android:textStyle="bold" />
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/stroke" />
-                <Button android:id="@+id/versionButton" android:layout_width="match_parent" android:layout_height="64dp" android:backgroundTint="@android:color/transparent" android:gravity="start|center_vertical" android:text="Версия Veykad" android:textAllCaps="false" android:textColor="@color/text_primary" android:textStyle="bold" />
+                <Button android:id="@+id/versionButton" android:layout_width="match_parent" android:layout_height="64dp" android:backgroundTint="@android:color/transparent" android:gravity="start|center_vertical" android:text="Версия Veycad" android:textAllCaps="false" android:textColor="@color/text_primary" android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>
@@ -595,8 +599,8 @@
         android:gravity="center"
         android:orientation="vertical"
         android:padding="32dp">
-        <ImageView android:layout_width="112dp" android:layout_height="112dp" android:background="@drawable/soft_surface" android:contentDescription="Veykad" android:padding="18dp" android:src="@drawable/ic_launcher_foreground" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:fontFamily="sans-serif-black" android:letterSpacing="0.18" android:text="VEYKAD  •" android:textColor="@color/text_primary" android:textSize="25sp" />
+        <ImageView android:layout_width="112dp" android:layout_height="112dp" android:background="@drawable/soft_surface" android:contentDescription="Veycad" android:padding="18dp" android:src="@drawable/ic_launcher_foreground" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:fontFamily="sans-serif-black" android:letterSpacing="0.18" android:text="VEYCAD  •" android:textColor="@color/text_primary" android:textSize="25sp" />
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Montage Engine" android:textColor="@color/text_secondary" android:textSize="14sp" />
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="68dp" android:text="Восстанавливаем проект" android:textColor="@color/text_primary" android:textSize="14sp" android:textStyle="bold" />
     </LinearLayout>

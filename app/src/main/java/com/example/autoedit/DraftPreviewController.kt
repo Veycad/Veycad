@@ -47,6 +47,8 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
     private var state = State()
     private var rawTimeUs = 0L
     private var stopping = false
+    private var pendingStops = 0
+    @Volatile private var stopKeepsPrepared = true
     @Volatile private var closeRequested = false
     @Volatile private var exportCancelled = false
     private var exporting = false
@@ -120,7 +122,7 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
                 main.post {
                     if (closed || closeRequested || stopping || preparationEpoch != epoch) return@post
                     onPrepared(prepared, request)
-                    open(request)
+                    openPrepared(request)
                 }
             } catch (cancelled: CancellationException) {
                 candidate?.let { disposeCandidate(it, cancelled) }
@@ -236,6 +238,12 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
     fun open(request: MediaCodecSpeedRampRenderer.Request) {
         requireMainOpen()
         preparationEpoch++
+        openPrepared(request)
+    }
+
+    private fun openPrepared(request: MediaCodecSpeedRampRenderer.Request) {
+        requireMainOpen()
+        // Owned pages still use this preparation's cancellation epoch when loading a page.
         // No file I/O or full-plan validation on main. Legacy rejection is also reported as state.
         policy.reset(); policy.seeks.invalidateProject(); audio.pause()
         input = input.copy(request = request)
@@ -290,23 +298,33 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
         stoppedCallbacks += onStopped
         if (!stopping) {
             stopping = true
+            stopKeepsPrepared = keepPrepared
             policy.reset(); policy.seeks.invalidateProject(); policy.seeks.invalidateSurface()
             input = Input(); audio.pause()
             stopGeneration = policy.seek(rawTimeUs)
             state = state.copy(generation = stopGeneration, playing = false, exactFrameReady = false, buffering = false)
             onState(state)
         }
+        stopKeepsPrepared = stopKeepsPrepared && keepPrepared
+        pendingStops++
         val generation = requireNotNull(stopGeneration)
+        fun stopFailed(error: Throwable) {
+            main.post { pendingStops-- }
+            fail(generation, error)
+        }
         worker.execute {
             try {
                 releaseGl()
                 admittedRequest = null
                 audio.release { error ->
-                    if (error != null) worker.execute { fail(generation, error) }
+                    if (error != null) worker.execute { stopFailed(error) }
                     else worker.execute {
-                        try { if (!keepPrepared || closeRequested) closeOwnedPrepared() }
-                        catch (error: Throwable) { fail(generation, error); return@execute }
+                        try { if (!stopKeepsPrepared || closeRequested) closeOwnedPrepared() }
+                        catch (error: Throwable) { stopFailed(error); return@execute }
                         main.post {
+                        // Every audio callback must return to GL before its executor can shut down.
+                        pendingStops--
+                        if (pendingStops != 0) return@post
                         if (!stopping || stopGeneration != generation) return@post
                         stopping = false; stopGeneration = null
                         state = State(generation = generation)
@@ -319,7 +337,7 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
                         }
                     }
                 }
-            } catch (error: Throwable) { fail(generation, error) }
+            } catch (error: Throwable) { stopFailed(error) }
         }
     }
 

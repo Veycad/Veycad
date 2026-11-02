@@ -3,6 +3,7 @@ package com.veycad.app
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.camera.video.Recorder
 import androidx.test.platform.app.InstrumentationRegistry
@@ -378,7 +379,7 @@ class MediaWorkSessionDeviceTest {
         try {
             main { session.export() }
             assertTrue("Real renderer reached frame progress", entered.await(15, TimeUnit.SECONDS))
-            onView(withText("‹  Назад")).perform(click())
+            onView(withText("‹  Назад")).perform(scrollTo(), click())
             ui.recreate()
             ui.click(R.id.settingsButton); ui.click(R.id.clearCacheButton)
             assertArrayEquals(original, file.readBytes())
