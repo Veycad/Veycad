@@ -43,6 +43,13 @@ the entire resolved dependency graph or permission to distribute music.
 
 Receipt: `D:/CodexWork/veycad-v10-notice-package-check-20261102.json`.
 
+An offline `:app:dependencies --configuration releaseRuntimeClasspath` run
+also passed. All 19 coordinates recorded in the Google notice inventory match
+the resolved release versions. The graph contains 126 distinct coordinates;
+this comparison does not establish notice/license completeness for that graph.
+Receipt: `D:/CodexWork/veycad-v10-notice-dependency-check-20261102.json`.
+Dependency report: `D:/CodexWork/veycad-v10-release-dependencies-20261102.log`.
+
 ## Full UI run started; no result yet
 
 Run `20261102-001132-799` is executing on the dedicated API36/x86_64 emulator
