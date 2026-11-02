@@ -70,17 +70,26 @@ lists differences; fresh x86_64 speech/preview/GL checks above cover this build.
 
 ## Full CI and remaining gates
 
-At the recorded snapshot, GitHub baseline and both legacy/legacy-save jobs
-passed on this head. The [full UI job](https://github.com/Veycad/Veycad/actions/runs/41409406343/job/125158746689)
-is still running; its final result is required. V12's completed GitHub result
-remains 269/271, and its separate local full run ended in a system_server
-watchdog abort. No local V13 full-suite or watchdog-resolution claim is made.
+The [full UI job](https://github.com/Veycad/Veycad/actions/runs/41409406343/job/125158746689)
+completed with **269/274 PASS, five failures**, zero errors/skips (4149.478s
+instrumentation). This is a completed failing suite, not an interrupted run.
+The five failures are AtomicImport unreadable commit status, direct-surface
+preview first frame, manual landscape export, protected-export recovery, and
+render-failure/retry message expectations. Local focused success above remains
+valid only for its stated scope. The previous V12 music/counter failures did not recur.
 
-Still open: complete UI, actual 16 KB runtime (isolated image download in
-progress), permanent key/signed install and same-key update, user-deferred
-physical phone and spoken TalkBack, human output review, RuStore account,
-third-party music distribution rights, final store artwork/public policy URL,
-and owner merge/publication approval. The listing remains a draft.
+The current candidate is V14 `ca24b887d2346d1cec6894f74792ed4a2c535ac3`
+in [draft PR #116](https://github.com/Veycad/Veycad/pull/116).
+Its API35 x86_64 emulated-16KB focused suite completed **20/21 PASS**;
+manual landscape export timed out. Compatibility remains unproven.
+See the [current handoff and next steps](release-handoff.md).
+
+Still open: resolve the failed scenarios and complete UI acceptance, 16 KB
+runtime acceptance, permanent key/signed install and same-key update,
+user-deferred physical phone and spoken TalkBack, human output review,
+RuStore account, third-party music distribution rights, final store
+artwork/public policy URL, and owner merge/publication approval.
+The listing remains a draft.
 
 ## Retained evidence
 
