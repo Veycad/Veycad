@@ -1,0 +1,19 @@
+{
+  "scope": "Original upstream notice/license files retained for these runtime artifacts; not a complete dependency license inventory",
+  "artifacts": [
+    {
+      "coordinate": "jakarta.inject:jakarta.inject-api:2.0.1",
+      "upstream_entry": "META-INF/NOTICE.md",
+      "archive_sha256": "f7dc98062fccf14126abb751b64fab12c312566e8cbdc8483598bffcea93af7c",
+      "file": "jakarta-inject-NOTICE.md",
+      "sha256": "992ed62dd3ee17d73ce6a4a5e02dd0fed9eb326bf386aa5304e6a512214df540"
+    },
+    {
+      "coordinate": "org.checkerframework:checker-qual:3.43.0",
+      "upstream_entry": "META-INF/LICENSE.txt",
+      "archive_sha256": "3fbc2e98f05854c3df16df9abaa955b91b15b3ecac33623208ed6424640ef0f6",
+      "file": "checker-qual-LICENSE.txt",
+      "sha256": "e90eaa08dea089df10f2bf7f9dba63a5f6237c01562c4741e2e86773e78582d5"
+    }
+  ]
+}
