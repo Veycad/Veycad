@@ -16,6 +16,7 @@ import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
+import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.espresso.matcher.ViewMatchers.*
@@ -52,6 +53,22 @@ class ManualMvpScreenTest {
         }
         assertFalse("Retired editor must remove all preview/export temporary files",
             File(fixture.context.cacheDir, "manual-renders").walkTopDown().any { it.isFile })
+    }
+
+    @Test fun emptyEditorPromptsForVideoWithoutClaimingSavedDraft() {
+        fixture.launch()
+        fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("empty editor import ready", 30_000) { view<Button>("import")?.isEnabled == true }
+        assertTrue(store.list().isEmpty())
+        onView(withText("Добавь видео, чтобы начать ручной монтаж.")).check(matches(isDisplayed()))
+    }
+
+    @Test fun reopenedProjectKeepsSavedDraftPrompt() {
+        openImported()
+        finishEditor()
+        fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("saved project reopened", 30_000) { ready() }
+        onView(withText(fixture.context.getString(R.string.manual_intro))).perform(scrollTo()).check(matches(isDisplayed()))
     }
 
     @Test fun importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision() {
