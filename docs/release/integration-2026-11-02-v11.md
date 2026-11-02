@@ -36,23 +36,72 @@ Build log: `D:/CodexWork/veycad-v11-baseline-build-retry-20261102.log`.
 The first invocation stopped before checks because it named a nonexistent task;
 the corrected invocation above is the successful run.
 
-## Full user-flow verification is running
+## Full user-flow verification failed with an Android system crash
 
 Run `20261102-013300-208` started on the dedicated API36/x86_64 emulator with host
-NVIDIA graphics, 320x480/density160/font1.0 and 4096-byte pages. Permission cases
-passed; the full screen suite is running. There is no full V11 verdict yet.
-The runner receives an explicit working Python executable for AAC collection.
+NVIDIA graphics, 320x480/density160/font1.0 and 4096-byte pages. Both permission
+cases passed. The screen run started 243 of 270 expected cases before aborting;
+27 never started. Raw instrumentation reported 239 success statuses and four
+failure statuses (three assertion failures and a process crash). These are raw
+status counts, not a valid completed JUnit XML suite. The screen XML is invalid
+after the system crash, and the final runner report contains only the valid
+permission phase. The overall verdict is FAIL/incomplete.
+
+- `GlesFrameCompositorDeviceTest.same_scheduled_frame_draws_same_composition_on_display_and_encoder`:
+  pixel arrays first differed at byte 412228 (1 versus 0), before compression.
+- `StyleVideoPreviewScreenTest.a_manual_preview_keeps_moving_after_one_loop_and_releases_the_view_on_cancel`:
+  preview pixels froze again after the longer preceding run.
+- `TextEditActivityDeviceTest.mainAndCompletedVideoOpenSameEditor`:
+  ActivityScenario could not close the activity; its last state was PAUSED.
+- During `pausedPreviewStopsRedrawingButSeekAndPlaybackStillUpdateTextTime`,
+  ReferenceQueueDaemon timed out destroying a HardwareRenderer context. This
+  crash does not establish a failed paused-draw measurement in that case.
+
+The system_server Watchdog then killed Android's system process: window/display
+threads were blocked, with the animation thread inside native layer capture for
+a task snapshot. Android reported `INSTRUMENTATION_ABORTED: System has crashed`;
+the settings service was unavailable. Host emulator logs also record missing
+ColorBuffer handles and a bad window surface handle. These observations do not
+establish whether the root cause belongs to app cleanup, emulator graphics or
+their interaction. No tolerance was added to the pixel comparison.
+
+Restart/recovery follow-up phases were not run because the screen gate failed.
+Preview evidence could not be pulled after the system crash. Original app and
+test APKs were preserved with the recorded hashes before diagnostic work.
 
 Log: `D:/CodexWork/veycad-v11-full-host-ui-20261102.log`.
 Environment: `D:/CodexWork/veycad-v11-full-host-environment-20261102.json`.
 Archive: `build/reports/ui-tests/runs/20261102-013300-208`.
+Terminal receipt: `D:/CodexWork/veycad-v11-full-host-result-20261102.json`.
+Host logs: `D:/CodexWork/veycad-v11-host-at-failure-20261102.stdout.log` and
+`D:/CodexWork/veycad-v11-host-at-failure-20261102.stderr.log`.
+
+After this terminal crash and evidence retention, the dedicated emulator was
+restarted in the same host graphics mode. The original, hash-matched V11 app and
+instrumentation APKs passed the compositor parity case and the moving style
+preview case together (2/2, 10.234s). This fresh-start result does not resolve
+the longer-run failures or validate the 27 cases that never started.
+Log: `D:/CodexWork/veycad-v11-original-focused-postcrash-20261102.log`.
+
+## Retained AAC verification passed
+
+The explicit Python executable allowed collection and archive validation before
+the Android system failure prevented later pulls. Retained tar SHA-256:
+`2eadca5605932659192175d61087bee823d59163f95094660d775f6ceea2389e`.
+Independent FFmpeg float decoding passed: 48000 sample frames; all four authored
+30/60 fps audio/container marker sets were at samples 1600, 24000 and 46400;
+unclamped peak 0.89218 and no full-scale run. Android reported PCM encoding 2.
+This is not Android float-output or human listening acceptance.
+Result: `build/reports/ui-tests/runs/20261102-013300-208/screens/source-audio-host-oracle/result.json`.
+Log: `D:/CodexWork/veycad-v11-aac-host-oracle-20261102.log`.
 
 ## Still open
 
 The [V10 preview freeze investigation](integration-2026-11-02-v10.md) remains
 open: the original APKs passed after restarting the emulator in both graphics
-modes. A short fresh-start pass does not resolve the earlier full-run failure.
-PR #107's isolated text passes must also hold in this combined candidate.
+modes. The freeze recurred in the full V11 run. A short fresh-start pass does not
+resolve it. PR #107's isolated text passes also do not close combined acceptance:
+the V11 text class was interrupted by the graphics/system crash.
 
 No V11 recovery, physical-device, 16 KB runtime, human media, signed update or
 store acceptance is inferred from the build. Account, permanent key, media

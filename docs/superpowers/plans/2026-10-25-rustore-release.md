@@ -29,8 +29,10 @@
 Последняя локальная сборка — [V11](../../release/integration-2026-11-02-v11.md):
 V10 плюс исправление перерисовок текста на паузе (PR #107) и недостающие уведомления
 о лицензиях зависимостей (PR #106). Сборка, базовые проверки и содержимое всех
-четырёх неподписанных APK проверены. Полный прогон пользовательских сценариев V11
-запущен, итогового результата ещё нет.
+четырёх неподписанных APK проверены. Полный прогон V11 не пройден: он прервался
+аварией системного процесса Android в эмуляторе. Запустились 243 из 270 экранных
+сценариев; в журнале 239 успешных завершений и четыре сообщения об ошибке,
+включая аварию. Оставшиеся 27 не запускались; корректного итогового XML нет.
 
 Предыдущий полный прогон V10 завершён: 266 из 269 экранных сценариев пройдены, три с ошибками;
 отдельно пройдены обе проверки разрешений. Ошибки — повтор видео-примера и ожидание
@@ -50,10 +52,12 @@ V10 плюс исправление перерисовок текста на п�
   [PR #107](https://github.com/Veycad/Veycad/pull/107). Все семь сценариев текста,
   включая два ранее падавших, и базовые проверки прошли. Добавлены недостающие
   уведомления о лицензиях зависимостей — [PR #106](https://github.com/Veycad/Veycad/pull/106).
-  Оба изменения вошли в V11; сборка и базовые проверки пройдены, пользовательские
-  сценарии ещё проверяются.
-- **Оставшийся сбой V10:** изображение примера стиля застывает уже до первого повтора;
-  причина исследуется на эмуляторе. Прежний сбой первого кадра на SwiftShader
+  Оба изменения вошли в V11; сборка и базовые проверки пройдены. Общая приёмка
+  текста остаётся открытой: его сценарии прервались при аварии графической подсистемы.
+- **Проблемы V11:** повторное зависание примера стиля, расхождение кадра предпросмотра
+  и экспорта, зависание закрытия экрана и последующая авария Android. После перезапуска
+  два отдельных сценария снова прошли; причина сбоев после длительного прогона ещё
+  не установлена. Прежний сбой первого кадра на SwiftShader
   не повторился в полном прогоне на NVIDIA; быстродействие на телефоне остаётся открытым.
 - **Пока не сделано:** приёмка итогового подписанного APK, проверка обновления без
   потери проектов, TalkBack, просмотр и прослушивание реальных результатов,
@@ -75,9 +79,9 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V10 completed 266/269 screen cases; preview freeze open. PR #107 fixed text-idle cases on its owning branch; combined verification pending. Earlier SwiftShader first-frame failure did not repeat on host GPU; phone timing open |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V11 aborted after 243/270 screen starts: parity mismatch, frozen style, activity-close failure and graphics/system crash. Fresh-start focused cases pass; causes and combined text acceptance remain open |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | V6 emulator manual scenarios and separate restart checks PASS; earlier Samsung evidence is V5; signed final candidate acceptance open |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | V11 build, baseline and unsigned package inspection passed; full UI is running. V10's three failures remain recorded; signed candidate, device acceptance and merge approval open |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | V11 build, baseline, unsigned package inspection and retained AAC oracle passed; full UI failed/incomplete. Signed candidate, device acceptance and merge approval open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
 | 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Listing draft and current public GitHub About checked; final images and public policy pending; see material inventory in listing |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |
