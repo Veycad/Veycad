@@ -147,6 +147,32 @@ class RenderProgressScreenTest {
         assertFalse(ui.context.getSharedPreferences("edit_session", Context.MODE_PRIVATE).getBoolean("running", true))
     }
 
+    @Test fun lease_cancellation_keeps_cancel_copy_when_worker_returns_an_untyped_error() {
+        val previous = ui.seedCompleted("before-worker-cancellation.mp4")
+        val previousBytes = previous.file.readBytes()
+        ui.launch()
+        ui.awaitDisplayed(R.id.resultContent)
+        pressBack()
+        ui.importVideos("worker-cancellation-source.mp4")
+        val source = ui.selectedSources().single()
+        val sourceBytes = source.readBytes()
+        for (error in listOf(IllegalStateException("Монтаж отменён"), java.io.IOException("codec closed"))) {
+            ui.startRender()
+            val entered = ui.renderer.failAfterLeaseCancellation(error)
+            assertTrue("Worker must reach the lease boundary", entered.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            val request = requireNotNull(ui.renderer.currentRequest)
+            ui.click(R.id.cancelRenderButton)
+            assertFalse(requireNotNull(request.jobLease).isFile)
+            ui.awaitIdle()
+            assertEquals("Explicit cancellation must survive worker error types",
+                "Монтаж отменён", EditSession.get(ui.context).state.value?.error)
+            assertFalse(request.outputFile.exists())
+            assertArrayEquals(sourceBytes, source.readBytes())
+            assertArrayEquals(previousBytes, previous.file.readBytes())
+            assertEquals(previous, CompletedRenderStore.latest(ui.context.filesDir))
+        }
+    }
+
     @Test fun render_failure_preserves_the_previous_result_and_readiness_then_a_retry_can_finish() {
         val previous = ui.seedCompleted("before-failure.mp4")
         ui.launch()

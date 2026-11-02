@@ -455,7 +455,7 @@ internal class EditSession internal constructor(
                     publish(State(entry = completed?.first ?: previous, draft = previousDraft,
                         exportOperationId = if (completed != null) exportOperationId else null,
                         error = result.exceptionOrNull()?.let {
-                            MontageFailurePresentation.message(it, style.sourceCount)
+                            if (cancelled) "Монтаж отменён" else MontageFailurePresentation.message(it, style.sourceCount)
                         } ?: completed?.second?.let {
                             "Эдит сохранён. Связь с дублем восстановится при следующем запуске приложения."
                         }))
