@@ -130,6 +130,30 @@ restored before checking the classes interrupted by the full-run crash.
 Receipt: `D:/CodexWork/veycad-v11-frame-parity-investigation-20261102.json`.
 Raw captures: `D:/CodexWork/veycad-v11-frame-parity-probe-captures-20261102`.
 
+## Source-transfer investigation narrowed the failure
+
+A temporary test-only 20-cycle diagnostic repeats the original rotation and
+display/encoder checks without weakening their assertions. The failure now
+reproduces in seconds. Per-pass captures locate one corrupt frame already at
+SOURCE_AND_CHEAP_EFFECTS, before glow processing: 444960 pixels have unexpected
+alpha. Two consecutive reads of each captured framebuffer match, so this run
+does not demonstrate unstable readback from an unchanged framebuffer.
+
+Reading the marker producer before queueing it yielded 160 complete opaque
+frames and 20 successful cycles (75.575s). Disabling that producer readback in
+the same diagnostic APK brought the failure back (2.717s). Waiting for GL
+completion before or after the producer swap did not resolve it. The existing
+raw-texture diagnostic branch also failed; bypassing artistic processing is
+insufficient. These results narrow the next investigation to the synthetic
+producer/source-transfer path but do not prove an emulator-only fault or an app
+fix. Producer readback itself changes synchronization/timing.
+
+All changes remain in temporary instrumentation, with original V11 production
+code unchanged. The original instrumentation APK was restored afterwards.
+Receipt and exact run logs: `D:/CodexWork/veycad-v11-source-transfer-receipt-20261102.json`.
+The raw producer/stage captures and verified compressed archives are retained;
+their SHA-256 values are in `D:/CodexWork/veycad-v11-compacted-probe-evidence-20261102.json`.
+
 ## Previously interrupted classes passed separately
 
 The original V11 app and original instrumentation APKs then passed all 29 cases
