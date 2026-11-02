@@ -1,0 +1,721 @@
+{
+  "source": "fca633adb0eb863562cfe8fe38b18a475fc95c41",
+  "rightsCleared": false,
+  "scope": "Cached runtime-coordinate archives and nested classes.jar notice-name candidates against one V11 unsigned APK; JSON metadata and native/deeper archives do not establish compliance",
+  "archiveIdentityReference": "dependencies-2026-10-26.json",
+  "archiveIdentityReferenceSha256": "25b990499282bad9fe067fc1d3d7c32891f336789803b196e058ee5b4105057e",
+  "archiveCount": 119,
+  "historicalArchiveIdentitiesMatch": true,
+  "releaseApksWithIdenticalLicenseAssets": [
+    {
+      "file": "app-arm64-v8a-release-unsigned.apk",
+      "sha256": "7c10a2e7901d45450ef0a6945e1710f6cede0d33a4fa7e4f935c91d6ffc41e04"
+    },
+    {
+      "file": "app-armeabi-v7a-release-unsigned.apk",
+      "sha256": "6fba32e4aeefb675647b30c75ec0e9f531f4e4cbca747425a0a52d7518f1681e"
+    },
+    {
+      "file": "app-universal-release-unsigned.apk",
+      "sha256": "4c4a8788da0c2d1f5abc89f3ccc8ffe3d0c8ae64d3a0b817db2e7df771826245"
+    },
+    {
+      "file": "app-x86_64-release-unsigned.apk",
+      "sha256": "873fb46b191c942139f549e9b1d11d25e51a66ddfb68906473e7a232e9475515"
+    }
+  ],
+  "candidateCount": 57,
+  "unmatchedNonemptyTexts": 0,
+  "entries": [
+    {
+      "coordinate": "androidx.camera:camera-camera2:1.6.2",
+      "entry": "META-INF/androidx/camera/camera-camera2/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.camera:camera-camera2-pipe:1.6.2",
+      "entry": "META-INF/androidx/camera/camera-camera2-pipe/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.camera:camera-core:1.6.2",
+      "entry": "META-INF/androidx/camera/camera-core/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.camera:camera-lifecycle:1.6.2",
+      "entry": "META-INF/androidx/camera/camera-lifecycle/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.camera:camera-video:1.6.2",
+      "entry": "META-INF/androidx/camera/camera-video/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.camera:camera-view:1.6.2",
+      "entry": "META-INF/androidx/camera/camera-view/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.camera.featurecombinationquery:featurecombinationquery:1.6.2",
+      "entry": "META-INF/androidx/camera/featurecombinationquery/featurecombinationquery/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.camera.viewfinder:viewfinder-core:1.5.1",
+      "entry": "META-INF/androidx/camera/viewfinder/viewfinder-core/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.core:core:1.15.0",
+      "entry": "META-INF/androidx/core/core/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.core:core-backported-fixes:1.0.0",
+      "entry": "META-INF/androidx/core/core-backported-fixes/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.core:core-ktx:1.15.0",
+      "entry": "META-INF/androidx/core/core-ktx/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.exifinterface:exifinterface:1.4.2",
+      "entry": "META-INF/androidx/exifinterface/exifinterface/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.tracing:tracing-android:1.3.0",
+      "entry": "META-INF/androidx/tracing/tracing/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "androidx.tracing:tracing-ktx:1.3.0",
+      "entry": "META-INF/androidx/tracing/tracing-ktx/LICENSE.txt",
+      "bytes": 10175,
+      "sha256": "809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.android.datatransport:transport-api:3.0.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.android.datatransport:transport-api:3.0.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kind": "empty upstream entry"
+    },
+    {
+      "coordinate": "com.google.android.datatransport:transport-backend-cct:3.1.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.android.datatransport:transport-backend-cct:3.1.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kind": "empty upstream entry"
+    },
+    {
+      "coordinate": "com.google.android.datatransport:transport-runtime:3.1.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 38,
+      "sha256": "ca9b2e984212979d947d460c8da1e1ac6adee64961784b513b453dcb634298c6",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.android.datatransport:transport-runtime:3.1.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 11368,
+      "sha256": "00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-base:18.5.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 834,
+      "sha256": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-base:18.5.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 313001,
+      "sha256": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-basement:18.4.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 834,
+      "sha256": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-basement:18.4.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 313001,
+      "sha256": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-mlkit-face-detection:17.1.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 3461,
+      "sha256": "edded192abd860a92203db9118e730341b75bb3aace6e6b986b0f037b83137d2",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-mlkit-face-detection:17.1.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 659640,
+      "sha256": "0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-tasks:18.2.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 834,
+      "sha256": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-tasks:18.2.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 313001,
+      "sha256": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.android.odml:image:1.0.0-beta1",
+      "entry": "third_party_licenses.json",
+      "bytes": 2954,
+      "sha256": "595c1aeca965ae48385ab3ce6f1b5b59fa029d5d18343ca63df936503db0451e",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.android.odml:image:1.0.0-beta1",
+      "entry": "third_party_licenses.txt",
+      "bytes": 461117,
+      "sha256": "bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.firebase:firebase-components:16.1.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.firebase:firebase-components:16.1.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kind": "empty upstream entry"
+    },
+    {
+      "coordinate": "com.google.firebase:firebase-encoders-json:18.0.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.firebase:firebase-encoders-json:18.0.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kind": "empty upstream entry"
+    },
+    {
+      "coordinate": "com.google.mediapipe:tasks-core:1.0.0",
+      "entry": "META-INF/NOTICE",
+      "bytes": 2189100,
+      "sha256": "73ea53606db6ad3bb5acf15c973d55637e5acf6702dca5a113f7cbca70819558",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mediapipe:tasks-vision:1.0.0",
+      "entry": "META-INF/NOTICE",
+      "bytes": 2189100,
+      "sha256": "73ea53606db6ad3bb5acf15c973d55637e5acf6702dca5a113f7cbca70819558",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:acceleration:16.0.0-beta2",
+      "entry": "third_party_licenses.json",
+      "bytes": 4540,
+      "sha256": "2c07b2c5cd87c8ad591489a436069057f38bda7348d1af293eebc98ef462aceb",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:acceleration:16.0.0-beta2",
+      "entry": "third_party_licenses.txt",
+      "bytes": 889852,
+      "sha256": "4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:common:18.11.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 3605,
+      "sha256": "c421e0ab8fb44de3aea1eaae744d7e68a1d8905e1e309368bf0ca82c95ad9d3f",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:common:18.11.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 769067,
+      "sha256": "86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:face-detection:16.1.7",
+      "entry": "third_party_licenses.json",
+      "bytes": 6957,
+      "sha256": "d17bf08f9da566f9ec974daa805f0ac580dd1fbffa32963b107fbe87be1f5c6c",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:face-detection:16.1.7",
+      "entry": "third_party_licenses.txt",
+      "bytes": 1439042,
+      "sha256": "4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:mediapipe-internal:17.0.0-beta10",
+      "entry": "third_party_licenses.json",
+      "bytes": 7535,
+      "sha256": "3de1f868eff1be0836a6a3f07fd70ac218c2afe8eb0010cfad6faed8752c322d",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:mediapipe-internal:17.0.0-beta10",
+      "entry": "third_party_licenses.txt",
+      "bytes": 1770881,
+      "sha256": "cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:pose-detection:18.0.0-beta5",
+      "entry": "third_party_licenses.json",
+      "bytes": 8720,
+      "sha256": "64e8ae795d9fe07dcde6907a63c8cd18cb3de371cc360eee76c7284f1006baa4",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:pose-detection:18.0.0-beta5",
+      "entry": "third_party_licenses.txt",
+      "bytes": 1955275,
+      "sha256": "2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:pose-detection-common:18.0.0-beta5",
+      "entry": "third_party_licenses.json",
+      "bytes": 8720,
+      "sha256": "64e8ae795d9fe07dcde6907a63c8cd18cb3de371cc360eee76c7284f1006baa4",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:pose-detection-common:18.0.0-beta5",
+      "entry": "third_party_licenses.txt",
+      "bytes": 1955275,
+      "sha256": "2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:segmentation-selfie:16.0.0-beta6",
+      "entry": "third_party_licenses.json",
+      "bytes": 7535,
+      "sha256": "3de1f868eff1be0836a6a3f07fd70ac218c2afe8eb0010cfad6faed8752c322d",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:segmentation-selfie:16.0.0-beta6",
+      "entry": "third_party_licenses.txt",
+      "bytes": 1770881,
+      "sha256": "cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:vision-common:17.3.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 3574,
+      "sha256": "970e95c84c518383a7d0a5c861d2407e8ba22b9f7a536140b3d874ea3e68e44b",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:vision-common:17.3.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 682395,
+      "sha256": "33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt"
+      ]
+    },
+    {
+      "coordinate": "com.google.mlkit:vision-interfaces:16.3.0",
+      "entry": "third_party_licenses.json",
+      "bytes": 3383,
+      "sha256": "750f3c7ce8c0f0786436c51a027f093d050b0634b8d097fb80ca3f343306b1da",
+      "kind": "structured-metadata; not treated as a notice text"
+    },
+    {
+      "coordinate": "com.google.mlkit:vision-interfaces:16.3.0",
+      "entry": "third_party_licenses.txt",
+      "bytes": 704596,
+      "sha256": "39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt"
+      ]
+    },
+    {
+      "coordinate": "jakarta.inject:jakarta.inject-api:2.0.1",
+      "entry": "META-INF/LICENSE.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/apache-2.0.txt",
+        "assets/licenses/google/00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+        "assets/licenses/google/0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+        "assets/licenses/google/2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+        "assets/licenses/google/33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+        "assets/licenses/google/39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+        "assets/licenses/google/4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+        "assets/licenses/google/4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+        "assets/licenses/google/653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+        "assets/licenses/google/86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+        "assets/licenses/google/bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+        "assets/licenses/google/cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+        "assets/licenses/mediapipe-notice.txt"
+      ]
+    },
+    {
+      "coordinate": "jakarta.inject:jakarta.inject-api:2.0.1",
+      "entry": "META-INF/NOTICE.md",
+      "bytes": 1074,
+      "sha256": "992ed62dd3ee17d73ce6a4a5e02dd0fed9eb326bf386aa5304e6a512214df540",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/runtime/jakarta-inject-NOTICE.md"
+      ]
+    },
+    {
+      "coordinate": "org.checkerframework:checker-qual:3.43.0",
+      "entry": "META-INF/LICENSE.txt",
+      "bytes": 1126,
+      "sha256": "e90eaa08dea089df10f2bf7f9dba63a5f6237c01562c4741e2e86773e78582d5",
+      "kind": "text",
+      "contained_in": [
+        "assets/licenses/runtime/checker-qual-LICENSE.txt"
+      ]
+    }
+  ]
+}
