@@ -182,10 +182,13 @@ class RenderProgressScreenTest {
         ui.startRender()
         val failedRequest = requireNotNull(ui.renderer.currentRequest)
         ui.renderer.fail("Тестовая ошибка рендера")
-        ui.awaitText(R.id.renderHint, "Тестовая ошибка рендера")
+        val expected = "Не удалось завершить операцию. Попробуй ещё раз. " +
+            "Если ошибка повторится, выбери другое видео или стиль."
+        ui.awaitText(R.id.renderHint, expected)
         onView(withId(R.id.renderHint)).perform(scrollTo()).check(matches(isDisplayed()))
+        onView(withId(R.id.renderHint)).check(matches(not(withSubstring("Тестовая ошибка рендера"))))
         ui.awaitIdle()
-        ui.waitUntil("failure message published") { EditSession.get(ui.context).state.value?.error == "Тестовая ошибка рендера" }
+        ui.waitUntil("failure message published") { EditSession.get(ui.context).state.value?.error == expected }
         onView(withId(R.id.progressPanel)).check(matches(not(isDisplayed())))
         onView(withId(R.id.videoSelection)).check(matches(withText("retry-source.mp4")))
         onView(withId(R.id.renderButton)).check(matches(isEnabled()))
