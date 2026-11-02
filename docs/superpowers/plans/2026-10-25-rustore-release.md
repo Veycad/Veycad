@@ -31,11 +31,13 @@ V9 плюс корректная подсказка пустого ручног�
 APK собраны, их содержимое и контракт безопасности проверены. На тестовой V10
 пройдены сценарии пустого редактора и повторного открытия проекта на эмуляторе.
 
-Проверки экспорта, распознавания речи и выравнивания библиотек относятся к
-[V9](../../release/integration-2026-11-02-v9.md); более ранние проверки настроек
-и звука — к [V7/V8](../../release/integration-2026-11-01-v7.md). Они не становятся
-новыми прогонами V10. Подписанная релизная версия, физическое устройство,
-полная приёмка медиа и запуск с памятью 16 КБ ещё не проверены.
+Полный прогон V10 завершён: 266 из 269 экранных сценариев пройдены, три с ошибками;
+отдельно пройдены обе проверки разрешений. Ошибки — повтор видео-примера и ожидание
+спокойного интерфейса в двух сценариях текста. Независимая проверка сохранённого AAC
+пройдена. Подробности и восстановление архива после ошибки локального Python — в отчёте V10.
+Проверка выравнивания библиотек относится к [V9](../../release/integration-2026-11-02-v9.md).
+Подписанная релизная версия, физическое устройство, полная приёмка медиа и запуск
+с памятью 16 КБ ещё не проверены.
 
 - **Сделано:** доработаны объяснения ошибок и требований к видео, название приложения,
   крупные шрифты в выборе стиля и настройка подписи. Ручной редактор включён в
@@ -43,9 +45,9 @@ APK собраны, их содержимое и контракт безопас
 - **Проверено на V6:** сборка, 266 из 267 экранных сценариев, восстановление импорта
   и сохранённого проекта после принудительного закрытия. Подробности и ограничения —
   в [отчёте V6](../../release/integration-2026-10-26-v6.md).
-- **Оставшийся сбой прогона:** первый кадр не успевает появиться на SwiftShader.
-  Тот же тест с теми же APK проходит на NVIDIA. Общий прогон остаётся с ошибкой;
-  быстродействие на телефоне и причина различия полностью не подтверждены.
+- **Оставшиеся сбои V10:** пример стиля и два сценария текста. Для текста проверяется
+  устранение лишних перерисовок на паузе. Прежний сбой первого кадра на SwiftShader
+  не повторился в полном прогоне на NVIDIA; быстродействие на телефоне остаётся открытым.
 - **Пока не сделано:** приёмка итогового подписанного APK, проверка обновления без
   потери проектов, TalkBack, просмотр и прослушивание реальных результатов,
   оставшиеся проверки камеры и устройства без Google-сервисов.
@@ -66,9 +68,9 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V6 completed 266/267; remaining first-frame failure reproduced on SwiftShader, same APK/test PASS on NVIDIA; phone timing open |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V10 completed 266/269 screen cases; style-loop and two text-idle failures open. Earlier SwiftShader first-frame failure did not repeat on host GPU; phone timing open |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | V6 emulator manual scenarios and separate restart checks PASS; earlier Samsung evidence is V5; signed final candidate acceptance open |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | Clean V6 baseline/build PASS (1392 JVM + 338 Python); full UI finished with one failure; exact signed candidate, device acceptance and merge approval open |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | V10 release/security build passed; full UI finished with three failures; pending fixes, exact signed candidate, device acceptance and merge approval open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
 | 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Listing draft and current public GitHub About checked; final images and public policy pending; see material inventory in listing |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |

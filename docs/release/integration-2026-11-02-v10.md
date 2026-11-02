@@ -50,23 +50,54 @@ this comparison does not establish notice/license completeness for that graph.
 Receipt: `D:/CodexWork/veycad-v10-notice-dependency-check-20261102.json`.
 Dependency report: `D:/CodexWork/veycad-v10-release-dependencies-20261102.log`.
 
-## Full UI run started; no result yet
+## Completed full UI run: three failures
 
-Run `20261102-001132-799` is executing on the dedicated API36/x86_64 emulator
+Run `20261102-001132-799` completed on the dedicated API36/x86_64 emulator
 with NVIDIA RTX3060 host graphics, 320x480/density160/font1.0 and 4096-byte pages.
-The two permission cases passed; the remaining 269 cases were still running at
-this checkpoint. No full-suite verdict is recorded. Source is unchanged.
+The two permission cases passed. All 269 screen cases executed in 2728.025s:
+266 passed, three failed, with no errors or skips. Source was unchanged.
+
+- `StyleVideoPreviewScreenTest.a_manual_preview_keeps_moving_after_one_loop_and_releases_the_view_on_cancel`:
+  two sampled texture signatures matched after the first cycle. Live looping
+  versus sampling/decoder behavior remains under investigation.
+- `TextEditActivityDeviceTest.editStylesCuesRestoreDraftCancelAndPublishNewMp4`:
+  main-loop idle timeout while opening the font choice.
+- `TextEditActivityDeviceTest.richAppearanceUnicodeValidationAndExplicitCaptionReview`:
+  save-click failed with the same main-loop idle timeout.
+
+The earlier direct first/reverse/source-change frame case passed in this run.
+The full result is still FAIL; a pass on host graphics does not close phone
+performance or erase the earlier SwiftShader failure. Restart/recovery follow-up
+phases gated on a successful screen suite were not run.
 
 Environment: `D:/CodexWork/veycad-v10-full-host-environment-20261102.json`.
-Live runner log: `D:/CodexWork/veycad-v10-full-host-ui-20261102.log`.
-This renderer-specific execution does not erase earlier SwiftShader failures.
+Runner log: `D:/CodexWork/veycad-v10-full-host-ui-20261102.log`.
+Summary: `D:/CodexWork/veycad-v10-full-host-result-20261102.json`.
+Authoritative XML: `build/reports/ui-tests/runs/20261102-001132-799/screens/tests.xml`.
+
+## Independent retained AAC check
+
+The collection script could not launch its Python validator because this host's
+`python` command resolves to the Windows Store alias. Its error record was retained.
+Before any subsequent app install/test, the exact-run isolated app evidence was
+recollected as a binary tar and validated with the installed Codex Python.
+The original UI run remains failed; this recovery is not a rerun of its tests.
+
+The independent FFmpeg float decoder passed the retained AAC check: 48000 decoded
+sample frames, all four 30/60 fps audio/container boundary marker sets at their
+authored samples, unclamped peak 0.89218 and no full-scale run. Android reported
+PCM encoding 2; no Android float-output or human listening acceptance is inferred.
+Result: `build/reports/ui-tests/runs/20261102-001132-799/screens/source-audio-host-oracle/result.json`.
+Log: `D:/CodexWork/veycad-v10-aac-host-oracle-20261102.log`.
 
 ## Acceptance boundaries
 
-The 200% font check belongs to isolated PR #105 (2.603s); it was not repeated
-on V10. V9 native export/speech checks and 16 KB static inspection retain their
-original APK/source scope. No completed new full UI run, 16 KB runtime, physical-device,
-human media or signed-update acceptance is inferred. The SDK image download
+The empty-editor prompt's focused 200% font check belongs to isolated PR #105
+(2.603s); that exact check was not repeated on V10. V9 native export/speech
+checks and 16 KB static inspection retain their
+original APK/source scope. The completed V10 screen run failed as described above.
+No 16 KB runtime, physical-device, human media or signed-update acceptance is
+inferred. The SDK image download
 was still active and incomplete at this checkpoint.
 
 V10 remains a local integration branch. No merge, permanent signing, store
