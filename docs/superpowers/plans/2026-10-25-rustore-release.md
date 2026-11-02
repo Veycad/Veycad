@@ -26,12 +26,13 @@
 Приложение ещё не готово к публикации. Сборка и большинство проверок пройдены;
 это не означает готовность подписанного релиза на телефоне.
 
-Последняя локальная сборка — [V10](../../release/integration-2026-11-02-v10.md):
-V9 плюс корректная подсказка пустого ручного редактора (PR #105). Неподписанные
-APK собраны, их содержимое и контракт безопасности проверены. На тестовой V10
-пройдены сценарии пустого редактора и повторного открытия проекта на эмуляторе.
+Последняя локальная сборка — [V11](../../release/integration-2026-11-02-v11.md):
+V10 плюс исправление перерисовок текста на паузе (PR #107) и недостающие уведомления
+о лицензиях зависимостей (PR #106). Сборка, базовые проверки и содержимое всех
+четырёх неподписанных APK проверены. Полный прогон пользовательских сценариев V11
+запущен, итогового результата ещё нет.
 
-Полный прогон V10 завершён: 266 из 269 экранных сценариев пройдены, три с ошибками;
+Предыдущий полный прогон V10 завершён: 266 из 269 экранных сценариев пройдены, три с ошибками;
 отдельно пройдены обе проверки разрешений. Ошибки — повтор видео-примера и ожидание
 спокойного интерфейса в двух сценариях текста. Независимая проверка сохранённого AAC
 пройдена. Подробности и восстановление архива после ошибки локального Python — в отчёте V10.
@@ -49,7 +50,8 @@ APK собраны, их содержимое и контракт безопас
   [PR #107](https://github.com/Veycad/Veycad/pull/107). Все семь сценариев текста,
   включая два ранее падавших, и базовые проверки прошли. Добавлены недостающие
   уведомления о лицензиях зависимостей — [PR #106](https://github.com/Veycad/Veycad/pull/106).
-  Оба изменения ещё нужно проверить в общей сборке.
+  Оба изменения вошли в V11; сборка и базовые проверки пройдены, пользовательские
+  сценарии ещё проверяются.
 - **Оставшийся сбой V10:** изображение примера стиля застывает уже до первого повтора;
   причина исследуется на эмуляторе. Прежний сбой первого кадра на SwiftShader
   не повторился в полном прогоне на NVIDIA; быстродействие на телефоне остаётся открытым.
@@ -75,7 +77,7 @@ remaining effort. No release date is currently supported by evidence.
 | --- | --- | --- |
 | 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V10 completed 266/269 screen cases; preview freeze open. PR #107 fixed text-idle cases on its owning branch; combined verification pending. Earlier SwiftShader first-frame failure did not repeat on host GPU; phone timing open |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | V6 emulator manual scenarios and separate restart checks PASS; earlier Samsung evidence is V5; signed final candidate acceptance open |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | V10 release/security build passed; full UI finished with three failures; pending fixes, exact signed candidate, device acceptance and merge approval open |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | V11 build, baseline and unsigned package inspection passed; full UI is running. V10's three failures remain recorded; signed candidate, device acceptance and merge approval open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
 | 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Listing draft and current public GitHub About checked; final images and public policy pending; see material inventory in listing |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |
