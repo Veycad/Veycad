@@ -157,15 +157,20 @@ Consumes: current main and installed Android/JDK/NDK tools. Produces: exact buil
 Files: `MainActivity.kt`, `MontageFailurePresentation.kt`, `MontageStylePresentation.kt`, `StylePickerDialog.kt` under `app/src/main/java/com/example/autoedit/`; corresponding `app/src/test/...` tests; main layout/resources and existing UI tests.
 Consumes: existing session states and typed failures. Produces: clearer copy and consistent visible branding without changing engine gates.
 
-- [ ] Search every caller and existing copy assertion before editing shared presentation helpers.
-- [ ] Replace codec/candidate jargon with actionable Russian; retain technical errors in diagnostics. Never describe a limited failed search as proof that the entire source is unsuitable.
-- [ ] Explain source count/duration and style suitability before render; make DUALITY input order clear.
+- [x] Audit current shared-presentation callers and existing copy assertions: three failure-message callers and two style-presentation callers checked at V12, with matching exact-source JVM results (13 failure-copy and 17 style-copy cases). Repeat the relevant caller check before further edits.
+- [x] Replace typed Heartbeat search/candidate jargon with actionable Russian in PR #71, included in V12; keep finite-search/incomplete-search scope explicit rather than declaring the entire source unsuitable.
+- [ ] Make untyped codec/execution failures actionable while retaining original diagnostics and meaningful business-validation messages. Current fallback still returns raw exception text; `untyped_codec_or_execution_failure_does_not_become_a_material_shortfall` explicitly preserves that behavior. Typed search-copy improvements do not close this item.
+- [x] Implement count/duration hints and ordered DUALITY source labels: 15–60 seconds for single-source styles, 6–60 seconds per DUALITY source and numbered selections. Current exact-source style-copy tests pass; final visual/device acceptance remains open.
 - [x] Correct the final `VERIFYING` producer event to report N/N rather than N+1/N: [PR #72](https://github.com/Veycad/Veycad/pull/72), included in V12. The actual source event is corrected; UI formatting is not used to hide overflow.
 - [x] Add a direct native regression for the final-selection producer event: [PR #72 follow-up](../../release/native-progress-regression-2026-11-02.md), same-instrumentation old-arithmetic FAIL and fixed PASS, clean baseline and read-only review. Scope: owning main-based PR, one-candidate fixture; not integrated V12, multi-candidate or media-quality acceptance.
-- [ ] Unify visible Veykad → Veycad without renaming storage keys, package IDs or historical evidence.
+- [x] Implement visible Veykad → Veycad branding (PR #74, included in V12). Current XML/build labels/README contain no old brand. Nineteen Kotlin occurrences belong to inspector symbols, persisted format IDs/comment or the existing `Movies/Veykad` save path and are intentionally preserved for compatibility. Final visual/signed-device acceptance remains open.
 - [ ] Check and fix recovery from error, save/share states, navigation, touch targets, font scaling and accessibility labels using current UI.
 - [x] Fix invisible 30/60 fps selection in the manual editor: [PR #108](https://github.com/Veycad/Veycad/pull/108), identical-instrumentation red/green check, 100%/200% text and recreated-screen restoration passed. Integrated into V12: all six manual cases and two large-text cases passed; signed and spoken TalkBack acceptance remain open.
 - [ ] Run affected JVM/UI checks, then capture native screens. Commit and PR with visual acceptance still explicit.
+
+Source audit receipt: `D:/CodexWork/veycad-v12-source-readiness-audit-20261102.json`.
+It verifies committed source blobs and the matching existing V12 JVM XML/debug
+source stamp. It is not a new native run or evidence of final visual acceptance.
 
 ## Task 3 — Bound processing and protect user work
 
@@ -173,7 +178,7 @@ Files: existing import/media validation, `EditSession.kt`, source/cache/workspac
 Consumes: supported-input contract and baseline measurements. Produces: measurable limits and safe interruption behavior.
 
 - [ ] Measure analysis/render duration, peak memory/storage and output size on representative sources before choosing limits.
-- [ ] Validate existing `SourceAnalysisBudget.preflight` limits (60 s/source, 240 observations, cache/storage budgets) and callers in `MediaFrameVisualAnalyzer`, `MulticlassMatteProvider` and `SmartFramingSourceAnalysis`; run `SourceAnalysisBudgetTest`. Change limits only if device measurements justify it; do not reimplement the existing policy.
+- [x] Verify existing `SourceAnalysisBudget.preflight` limits (60 s/source, 240 observations, 256 MiB raw-cache/128 MiB attachment ceilings and 256 MiB storage reserve), all three callers (`MediaFrameVisualAnalyzer`, `MulticlassMatteProvider`, `SmartFramingSourceAnalysis`) and the matching six passing V12 `SourceAnalysisBudgetTest` cases. Limits remain unchanged; this closes static/JVM verification only, not physical performance/memory measurements above.
 - [ ] Exercise corrupt/empty input, rotation, VFR, HDR handling, absent audio, unavailable URI and insufficient storage; add a regression test for each reproduced defect.
 - [ ] Exercise cancel, back, background, lock and process death during import/analysis/render/save. Check temporary cleanup and completed-result recovery.
 - [ ] Check subtitle RU/EN transcription, manual timing/text correction and exported sound, not just UI appearance.
