@@ -9,6 +9,11 @@
   Чистая ветка `codex/rustore-v14-candidate`, HEAD
   `ca24b887d2346d1cec6894f74792ed4a2c535ac3`;
   [draft PR #116](https://github.com/Veycad/Veycad/pull/116).
+  Текущее исправление подсказки импорта: ветка `codex/source-confirmation-message`,
+  HEAD `d2cb3b027ab29156d04009485e6280aeb41a5d1d`,
+  [draft PR #117](https://github.com/Veycad/Veycad/pull/117).
+  14 проверок сообщений и сборка instrumentation прошли; свежий полный baseline
+  запущен, проверка сценария на эмуляторе ещё не выполнена.
 - Документация: `D:/CodexWork/VeycadReleaseDocs-20261026`,
   `codex/rustore-release-preparation`,
   [draft PR #70](https://github.com/Veycad/Veycad/pull/70).
