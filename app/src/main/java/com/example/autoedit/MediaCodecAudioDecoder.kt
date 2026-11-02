@@ -128,12 +128,15 @@ internal object MediaCodecAudioDecoder {
             val frames = Math.subtractExact(Math.subtractExact(Math.multiplyExact(packets, 1024L), delay.toLong()), padding.toLong())
             if (frames <= 0 || !format.containsKey(MediaFormat.KEY_DURATION)) return null
             val durationUs = format.getLong(MediaFormat.KEY_DURATION)
-            // The coded count minus real gapless metadata is authoritative. A fractional
-            // microsecond may be projected down or up by the container/extractor.
-            val durationNumerator = Math.multiplyExact(frames, 1_000_000L)
-            val floorDurationUs = durationNumerator / rate
-            val ceilDurationUs = Math.addExact(floorDurationUs, if (durationNumerator % rate == 0L) 0L else 1L)
-            if (durationUs !in floorDurationUs..ceilDurationUs) return null
+            // Extractors report either the presentation edit or the full coded duration.
+            // Both must agree exactly with counted packets and real gapless metadata.
+            fun matchesDuration(sampleFrames: Long): Boolean {
+                val numerator = Math.multiplyExact(sampleFrames, 1_000_000L)
+                val floorUs = numerator / rate
+                val ceilUs = Math.addExact(floorUs, if (numerator % rate == 0L) 0L else 1L)
+                return durationUs in floorUs..ceilUs
+            }
+            if (!matchesDuration(frames) && !matchesDuration(Math.multiplyExact(packets, 1024L))) return null
             return GaplessAacClock(rate, originUs, padding, frames)
         } finally { proof.release() }
     }
