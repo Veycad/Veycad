@@ -32,7 +32,10 @@ V11 плюс выделение выбранных 30/60 кадров/с (PR #10
 сценариев ручного редактора, две проверки с крупным шрифтом и отдельное
 восстановление импорта/проекта после закрытия процесса. В графической группе
 14 из 15 проверок прошли; сравнение центрированного ручного и прежнего кадра
-падает. Полного прогона V12 пока нет.
+падает. После этого та же группа прошла целиком на программной отрисовке;
+на свежей NVIDIA среде одиночный тест прошёл, но в группе снова упал.
+Это сужает поиск до зависимости от среды и нагрузки, а не закрывает сбой.
+Полного прогона V12 пока нет.
 
 Тот же проверенный исходный код опубликован в черновике
 [PR #109](https://github.com/Veycad/Veycad/pull/109) для независимой проверки
@@ -105,7 +108,7 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V12 graphics/style selection failed 1/15 at centered-manual/legacy display equivalence. V11 full-run crash/freeze remains open; isolated updated emulator pending |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | V12 original compositor/style selection passes 15/15 on SwiftShader but fails 1/15 on fresh NVIDIA host after the same isolated-method warm-up; both isolated runs pass. Backend/workload cause and V11 full-run crash/freeze remain open; isolated updated emulator pending |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | V12 manual class 6/6, large-text follow-up 2/2 and controlled import/project restarts PASS on emulator; signed arm64/physical acceptance open |
 | 3. Integrated candidate | Combined changes build and pass applicable checks | V12 build, baseline, unsigned package inspection and static alignment passed; graphics gate failed and full UI has not run. Signed/device acceptance and merge approval open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |

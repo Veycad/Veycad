@@ -19,8 +19,9 @@ authorize merging or store submission.
 
 GitHub checkpoint: the [legacy-save job](https://github.com/Veycad/Veycad/actions/runs/41390100270/job/125099378370)
 and [legacy job](https://github.com/Veycad/Veycad/actions/runs/41390100133/job/125099376633)
-passed on this exact head. Baseline and UI were still running at 04:52 UTC;
-this is not a completed overall CI verdict.
+passed on this exact head. The [baseline job](https://github.com/Veycad/Veycad/actions/runs/41390100143/job/125099376610)
+also passed. UI was still running at 05:00 UTC; this is not a completed overall
+CI verdict.
 
 ## Completed checks
 
@@ -54,7 +55,7 @@ has not run. The isolated Emulator 37.2.13 download remains a diagnostic lead;
 it has not been accepted as a fix. Text/speech/AAC and other V11 results retain
 their original binary scope.
 
-### Unchanged test on software graphics
+### Matched graphics-environment comparison
 
 The exact failing method passed separately in 74.484s on a fresh instance of
 the same API36 AVD and Emulator 37.1.11.0 using `-gpu swiftshader`. Emulator logs
@@ -62,14 +63,30 @@ confirm Google SwiftShader. The installed app and instrumentation hashes were
 verified against the original V12 APKs listed below; no probe, app or test changes
 were used. Display, density, font scale and 4096-byte page size match the host run.
 
-This is one focused pass, with a different initial process/workload history.
-It supports investigating the graphics environment but does not prove a driver
-root cause or close the earlier host failure, full-suite or physical-device gate.
-The unchanged fifteen-case compositor/style group was then started on software
-graphics and was still running when this note was written; no group verdict is
-claimed. Receipt: `D:/CodexWork/veycad-v12-software-parity-20261102.json`;
-its log and `veycad-v12-swiftshader-20261102.stdout.log` retain the result and
-renderer identity. The isolated newer emulator download is a separate experiment.
+The unchanged fifteen-case compositor/style group then passed on software
+graphics: 15/15, 562.605s. A fresh NVIDIA host instance was given the same sequence:
+first the isolated method, then the same fifteen-case group. Both used the
+verified original V12 APKs and the same AVD/display settings.
+
+| Emulator 37.1.11.0 backend | Isolated method | Subsequent compositor/style group |
+| --- | --- | --- |
+| Google SwiftShader | PASS, 74.484s host elapsed | PASS, 15/15, 562.605s host elapsed |
+| NVIDIA host | PASS, 6.344s host elapsed | FAIL, 14/15, 28.237s host elapsed |
+
+The host group again failed the centered-manual-versus-legacy display comparison
+at line202, this time first byte 0 versus 255. No manual-editor preload was needed.
+Thus an isolated host pass does not establish stability. The comparison supports
+investigating both backend and prior workload; it does not establish the driver
+as the root cause, prove a production fix or clear full-suite/device acceptance.
+No comparison tolerance or production workaround was introduced.
+
+Receipts under `D:/CodexWork`: `veycad-v12-software-parity-20261102.json`,
+`veycad-v12-software-graphics-style-20261102.json`,
+`veycad-v12-host-parity-20261102.json` and
+`veycad-v12-cold-host-graphics-style-20261102.json`, with matching `.log` files.
+Renderer identities are retained in `veycad-v12-swiftshader-20261102.stdout.log`
+and `veycad-v12-cold-host-20261102.stdout.log`.
+The isolated newer emulator download is a separate experiment, not yet a fix.
 
 ## Unsigned APK identities
 
