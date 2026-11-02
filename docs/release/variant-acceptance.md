@@ -1,5 +1,25 @@
 # Release and UI-test feature visibility
 
+## Current V11 configuration — 2026-11-02
+
+Generated BuildConfig for release and uiTest at
+`fca633adb0eb863562cfe8fe38b18a475fc95c41` has matching feature visibility:
+
+| Flag | release | uiTest | User-visible effect |
+| --- | --- | --- | --- |
+| `LIVE_PREVIEW_ENABLED` | true | true | Manual editor entry enabled in MainActivity |
+| `GALLERY_MVP` | false | false | Experimental GALLERY_MONTAGE recipe excluded |
+
+Normal gallery import for Heartbeat, FEAR and DUALITY remains available.
+The manual editor is required for the first release by the owner's decision;
+its entry must be reachable through the normal interface of the final signed APK.
+Matching flags and a successful build do not close that device check.
+
+Evidence: `D:/CodexWork/veycad-v11-variant-privacy-delta-20261102.json` and
+[V11 build/package report](integration-2026-11-02-v11.md).
+
+## Historical pre-change audit — 2026-10-26
+
 Checked 2026-10-26 against generated BuildConfig and owning source, not variant
 names alone. Release build: `1f67643bfada2f6c14e9d5956f6da3f4c4889a0c` tree;
 UI integration: `b9105cdc3bf5b96b8439a10bcc23730141179693`.
