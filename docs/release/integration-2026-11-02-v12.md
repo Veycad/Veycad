@@ -124,6 +124,34 @@ Receipt: `D:/CodexWork/veycad-v12-emulator37213-full-ui-receipt-20261102.json`.
 Full watchdog log: `build/reports/ui-tests/runs/20261102-051535-541/screens/logcat.txt`
 under the integration checkout, starting at line201475.
 
+## Completed GitHub UI result and follow-up work
+
+The independent GitHub UI job completed all 271 screen cases on the same V12
+head: 269 passed, two failed, zero errors/skips. Job `125099378147`, run
+`41390100270`, finished at 05:36:13 UTC after 52 minutes. This is a completed
+failing suite, distinct from the incomplete local Android watchdog attempt.
+
+- `CaptureModeScreenTest.failedFullCaptureShowsItsTakeReasonWithoutOpeningLibraryAgain`
+  received `Unable to install built-in music` instead of the expected capture
+  rejection. Read-only investigation identified concurrent installation to the
+  same music `.partial` file as a plausible production race; deterministic
+  reproduction and a verified fix are still pending.
+- `TextEditActivityDeviceTest.pausedPreviewStopsRedrawingButSeekAndPlaybackStillUpdateTextTime`
+  counted five draws. Its listener observes the whole window, so sibling draws
+  may be counted as preview work. Correcting the measurement needs a negative
+  control proving that real repeated overlay invalidation still fails.
+
+The complete downloaded job log is retained at
+`D:/CodexWork/veycad-pr109-ui-job-125099378147-20261102.log`, SHA-256
+`bc3b48a729ecf031425d4c92c64cbf12f1e7caf5b77f334fcc735fe04b26bbb6`.
+Neither investigation closes the local system crash or the full-suite gate.
+
+Separately, [PR #110](https://github.com/Veycad/Veycad/pull/110) contains the
+verified user-facing render error messages and cancellation correction on
+`a4d42b369974c73fd5657437b46a7f45bc94cb2c`: clean baseline 1394 JVM/338 Python,
+five focused native cases passed, with original-error and cancellation negative
+controls. These changes are not yet part of V12 and do not resolve music setup.
+
 ## Unsigned APK identities
 
 Version 0.1.16/code17. Expected signature rejection was verified; no permanent
