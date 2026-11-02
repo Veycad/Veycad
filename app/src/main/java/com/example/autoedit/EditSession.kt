@@ -386,7 +386,9 @@ internal class EditSession internal constructor(
                     val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
                     wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "${app.packageName}:edit-session")
                         .apply { acquire(15 * 60 * 1000L) }
-                    val checkCancelled = { check(!cancelled) { "Монтаж отменён" } }
+                    val checkCancelled = {
+                        if (cancelled) throw java.util.concurrent.CancellationException("Монтаж отменён")
+                    }
                     val sources = resolveSources(checkCancelled)
                     if (captureSessionId == null && sources.items.any { it.file.parentFile?.canonicalFile == sourceStore.root.canonicalFile }) {
                         require(sourceSelectionConfirmed && confirmedDraft?.files == sources.items.map { it.file }) {
@@ -406,18 +408,18 @@ internal class EditSession internal constructor(
                         jobLease = lease,
                         checkCancelled = checkCancelled,
                         onProgress = { progress ->
-                            check(!cancelled) { "Монтаж отменён" }
+                            checkCancelled()
                             mediaWork.post { publish(State(busy = true, entry = previous, draft = previousDraft, progress = progress)) }
                         }
                     ))
                     provisionalProject = edit.projectId.takeIf { edit.ownsNewProject }
-                    check(!cancelled) { "Монтаж отменён" }
+                    checkCancelled()
                     val warning = if (edit.passedQualityGate) "проверено" else
                         "готово с предупреждением QA: ${edit.issues.joinToString()}"
                     val summary = edit.productSummary ?: "${style.title} · ${edit.clipCount} фрагментов · " +
                         "бит ${(edit.beatHitRate * 100).toInt()}% · $warning"
                     synchronized(cancelLock) {
-                        check(!cancelled) { "Монтаж отменён" }
+                        checkCancelled()
                         publishing = true
                     }
                     mediaWork.post { publish(State(busy = true, publishing = true,
@@ -439,8 +441,11 @@ internal class EditSession internal constructor(
                     }
                 }
                 wakeLock?.let { if (it.isHeld) it.release() }
-                if (captureSessionId != null) result.exceptionOrNull()?.let {
-                    CaptureDiagnostics.failure(app, CaptureDiagnostics.Stage.RENDER, it, mapOf("style" to style.id))
+                result.exceptionOrNull()?.let {
+                    android.util.Log.e("Veycad", "Automatic edit failed", it)
+                    LocalDiagnostics.record(app, "render_failed", CaptureDiagnostics.failureFields(it))
+                    if (captureSessionId != null)
+                        CaptureDiagnostics.failure(app, CaptureDiagnostics.Stage.RENDER, it, mapOf("style" to style.id))
                 }
                 directory.deleteRecursively()
                 activeLease = null

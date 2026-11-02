@@ -14,10 +14,12 @@ class MultiSourceRequestTest {
             val sources = MediaSourceSet(gallerySources(20).items.map { it.copy(file = video) })
             VeycadAutomaticEditor.Request.validateSourceFiles(sources, music, MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
             val missing = MediaSourceSet(sources.items.mapIndexed { index, source ->
-                if (index == 19) source.copy(file = File(directory, "missing.mp4")) else source })
-            assertThrows(IllegalArgumentException::class.java) {
+                if (index == 19) source.copy(file = File(directory, "missing.mp4"),
+                    displayName = "at least 15000 bytes.mp4") else source })
+            val missingError = assertThrows(IllegalArgumentException::class.java) {
                 VeycadAutomaticEditor.Request.validateSourceFiles(missing, music, MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
             }
+            assertEquals(missingError.message, MontageFailurePresentation.message(missingError, 20))
             assertThrows(IllegalArgumentException::class.java) {
                 VeycadAutomaticEditor.Request.validateSourceFiles(sources, video, MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
             }

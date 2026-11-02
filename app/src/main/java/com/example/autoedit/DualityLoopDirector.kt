@@ -28,9 +28,10 @@ internal object DualityLoopDirector {
             (map.beats.filter { it.strength >= .35f }.map { map.timestampUs(it.sampleIndex) } +
                 map.onsets.filter { it.strength >= .35f }.map { map.timestampUs(it.sampleIndex) }).distinct()
         }.orEmpty()
-        require(sources.all {
+        if (!sources.all {
             it.durationUs / 1_000L >= DualityLoopProfile.MINIMUM_SOURCE_DURATION_MS
-        }) { "Each DUALITY source must provide at least ${DualityLoopProfile.MINIMUM_SOURCE_DURATION_MS} ms" }
+        }) throw UserMessageException(
+            "Для DUALITY каждое видео должно быть не короче ${DualityLoopProfile.MINIMUM_SOURCE_DURATION_MS / 1_000L} секунд")
 
         val used = List(2) { mutableListOf<LongRange>() }
         val counts = IntArray(2)

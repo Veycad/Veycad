@@ -4,9 +4,19 @@ import java.io.File
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class DualityLoopDirectorTest {
+    @Test fun short_source_refusal_keeps_its_owned_minimum_in_the_ui() {
+        val valid = visualMap(.04f, .92f, .66f)
+        val short = VisualEventMap(5_999_999L, emptyList(), valid.observations.take(1))
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            DualityLoopDirector.build(short, valid, "score")
+        }
+        assertEquals("Для DUALITY каждое видео должно быть не короче 6 секунд",
+            MontageFailurePresentation.message(error, 1))
+    }
     @Test fun measured_timeline_uses_distinct_moments_from_exactly_two_sources() {
         val calm = visualMap(motion = .04f, faceConfidence = .92f, luma = .66f)
         val kinetic = visualMap(motion = .48f, faceConfidence = .74f, luma = .24f)

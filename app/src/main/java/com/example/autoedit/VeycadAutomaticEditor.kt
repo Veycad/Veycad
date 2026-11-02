@@ -85,7 +85,7 @@ internal object VeycadAutomaticEditor {
                 require(sources.items.isNotEmpty() && musicFile.isFile)
                 val musicPath = musicFile.canonicalPath
                 val paths = sources.items.map { source ->
-                    require(source.file.isFile) { "Недоступен исходный файл: ${source.displayName}" }
+                    if (!source.file.isFile) throw UserMessageException("Недоступен исходный файл: ${source.displayName}")
                     source.file.canonicalPath.also { require(it != musicPath) }
                 }
                 // Gallery identity belongs to selections even when they reference the same file.
