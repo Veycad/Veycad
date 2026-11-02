@@ -844,6 +844,10 @@ class ManualMvpActivity : AppCompatActivity() {
                         exportThread = null
                     }
                 }
+                result.exceptionOrNull()?.let { error ->
+                    android.util.Log.e("Veycad", "Manual export failed", error)
+                    LocalDiagnostics.record(this, "manual_export_failed", CaptureDiagnostics.failureFields(error))
+                }
                 runOnUiThread {
                     if (destroyed || !started || sequence != generation) return@runOnUiThread
                     setBusy(false)

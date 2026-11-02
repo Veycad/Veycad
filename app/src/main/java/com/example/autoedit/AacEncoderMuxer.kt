@@ -21,6 +21,7 @@ import kotlin.math.max
  */
 internal object AacEncoderMuxer {
     const val AAC_SAMPLES_PER_ACCESS_UNIT = 1024
+    private const val MAX_SOURCE_DELAY_FRAMES = 4800
 
     data class Config(val sampleRate: Int, val channelCount: Int, val bitrate: Int = 192_000) {
         init { require(sampleRate > 0 && channelCount in 1..2) }
@@ -129,7 +130,7 @@ internal object AacEncoderMuxer {
 
     /** Existing AAC encoder owner, progressively drains each packet straight into a single-track
      * M4A. No PCM timeline or AAC packet list. Scratch is the caller's <=1024-frame buffer. */
-    private data class SourceTiming(val codecName: String, val delayFrames: Int)
+    private data class SourceTiming(val codecName: String, val delayFrames: Int, val tailInputFrames: Int = 0)
 
     /** No guessed codec offset. A bounded probe establishes this selected encoder/config and the
      * actual extractor/decoder/container contract on each preparation, including first/last PCM.
@@ -162,11 +163,19 @@ internal object AacEncoderMuxer {
                     sink.finish()
                 }
             }
-            encode(raw, SourceTiming(name, 0))
+            // Some encoders emit no delayed tail at EOS. Guard silence lets all three markers
+            // survive the probe; measure automatic tail before choosing real export padding.
+            val probeTailFrames = (MAX_SOURCE_DELAY_FRAMES + 1023) / 1024 * 1024
+            encode(raw, SourceTiming(name, 0, probeTailFrames))
             val measured = probeMarkers(raw, checkCancelled)
             val offsets = measured.first.mapIndexed { index, position -> position - listOf(1600L,24000L,46400L)[index] }
-            check(offsets.distinct().size == 1 && offsets[0] in 1..4800) { "Unsupported AAC marker delay: $name $offsets" }
-            val timing = SourceTiming(name, offsets[0].toInt())
+            check(offsets.distinct().size == 1 && offsets[0] in 1..MAX_SOURCE_DELAY_FRAMES.toLong()) { "Unsupported AAC marker delay: $name $offsets" }
+            val probeInputFrames = (48000L + 1023) / 1024 * 1024 + probeTailFrames
+            val automaticTail = measured.second - probeInputFrames
+            check(automaticTail in 0..MAX_SOURCE_DELAY_FRAMES.toLong() && automaticTail % 1024 == 0L) {
+                "Unsupported AAC automatic tail: $name $automaticTail"
+            }
+            val timing = SourceTiming(name, offsets[0].toInt(), (offsets[0] - automaticTail).coerceAtLeast(0).toInt())
             encode(trimmedFile, timing)
             val extractor = MediaExtractor()
             try {
@@ -178,7 +187,7 @@ internal object AacEncoderMuxer {
                 check(kotlin.math.abs(extractor.sampleTime + timing.delayFrames * 1_000_000L / 48000) <= 1) { "AAC extractor did not preserve negative priming PTS" }
             } finally { extractor.release() }
             val proof = probeMarkers(trimmedFile, checkCancelled)
-            android.util.Log.i("SourceAacTiming", "codec=$name rawMarkers=${measured.first} rawFrames=${measured.second} trimmedMarkers=${proof.first} trimmedFrames=${proof.second}")
+            android.util.Log.i("SourceAacTiming", "codec=$name tailInput=${timing.tailInputFrames} rawMarkers=${measured.first} rawFrames=${measured.second} trimmedMarkers=${proof.first} trimmedFrames=${proof.second}")
             check(proof.first == listOf(1600L,24000L,46400L) && proof.second == 48000L) {
                 "Unsupported AAC container trim/double-trim: $name markers=${proof.first}, frames=${proof.second}"
             }
@@ -333,6 +342,11 @@ internal object AacEncoderMuxer {
                 // units so EOS and every coded output stay on the same 1024-frame clock.
                 inputPcm.fill(0, pendingFrames * 2)
                 queueAlignedInput()
+            }
+            if (timing.tailInputFrames > 0) {
+                // Flush only the measured missing encoder delay; authored PCM length stays intact.
+                inputPcm.fill(0)
+                repeat((timing.tailInputFrames + 1023) / 1024) { queueAlignedInput() }
             }
             var queued = false
             while (!eos) {
