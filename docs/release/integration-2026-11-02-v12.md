@@ -13,9 +13,14 @@ is its regression and owning-branch screenshot evidence.
 The exact tested source is also published as the draft integration checkpoint
 [PR #109](https://github.com/Veycad/Veycad/pull/109), branch
 `codex/rustore-v12-candidate`. It lets GitHub CI check the combined changes in
-another environment; no terminal CI result is claimed here. Separate owning PRs
+another environment; no completed overall CI verdict is claimed here. Separate owning PRs
 remain available for review. Neither the checkpoint nor these local checks
 authorize merging or store submission.
+
+GitHub checkpoint: the [legacy-save job](https://github.com/Veycad/Veycad/actions/runs/41390100270/job/125099378370)
+and [legacy job](https://github.com/Veycad/Veycad/actions/runs/41390100133/job/125099376633)
+passed on this exact head. Baseline and UI were still running at 04:52 UTC;
+this is not a completed overall CI verdict.
 
 ## Completed checks
 
@@ -48,6 +53,23 @@ earlier long-run freeze or V11 Android system crash. A complete V12 screen suite
 has not run. The isolated Emulator 37.2.13 download remains a diagnostic lead;
 it has not been accepted as a fix. Text/speech/AAC and other V11 results retain
 their original binary scope.
+
+### Unchanged test on software graphics
+
+The exact failing method passed separately in 74.484s on a fresh instance of
+the same API36 AVD and Emulator 37.1.11.0 using `-gpu swiftshader`. Emulator logs
+confirm Google SwiftShader. The installed app and instrumentation hashes were
+verified against the original V12 APKs listed below; no probe, app or test changes
+were used. Display, density, font scale and 4096-byte page size match the host run.
+
+This is one focused pass, with a different initial process/workload history.
+It supports investigating the graphics environment but does not prove a driver
+root cause or close the earlier host failure, full-suite or physical-device gate.
+The unchanged fifteen-case compositor/style group was then started on software
+graphics and was still running when this note was written; no group verdict is
+claimed. Receipt: `D:/CodexWork/veycad-v12-software-parity-20261102.json`;
+its log and `veycad-v12-swiftshader-20261102.stdout.log` retain the result and
+renderer identity. The isolated newer emulator download is a separate experiment.
 
 ## Unsigned APK identities
 
