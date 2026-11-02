@@ -72,6 +72,12 @@ V10 плюс исправление перерисовок текста на п�
 - **Пока не сделано:** приёмка итогового подписанного APK, проверка обновления без
   потери проектов, TalkBack, просмотр и прослушивание реальных результатов,
   оставшиеся проверки камеры и устройства без Google-сервисов.
+- **Отдельная UX-правка после V11:** выбранные 30/60 кадров в секунду теперь
+  выделяются цветом и контрастной галочкой, есть подпись состояния —
+  [PR #108](https://github.com/Veycad/Veycad/pull/108). На исходном приложении
+  регрессия падает; на исправленном проходит при обычном и 200% шрифте,
+  включая восстановление выбора в новом экземпляре экрана. Чистый baseline
+  прошёл. Правка пока не входит в V11; общая и физическая приёмка остаются открытыми.
 - **Для публикации нужны:** аккаунт RuStore, постоянный ключ с резервной копией,
   подтверждённые права на музыку, финальные изображения карточки, публичная политика
   и одобрение владельца. Телефон владелец подключит позже; повторно не запрашиваем.
@@ -143,6 +149,7 @@ Consumes: existing session states and typed failures. Produces: clearer copy and
 - [ ] Fix the existing final `VERIFYING` progress event in `VeycadAutomaticEditor`: it reports `alternatives.size + 1` completed against `alternatives.size` total. Add regression coverage for the final-selection stage; preserve actual progress rather than merely hiding invalid values in text.
 - [ ] Unify visible Veykad → Veycad without renaming storage keys, package IDs or historical evidence.
 - [ ] Check and fix recovery from error, save/share states, navigation, touch targets, font scaling and accessibility labels using current UI.
+- [x] Fix invisible 30/60 fps selection in the manual editor: [PR #108](https://github.com/Veycad/Veycad/pull/108), identical-instrumentation red/green check, 100%/200% text and recreated-screen restoration passed; contrast check and native screenshots retained. This is an isolated main-based fix, not combined/signed or spoken TalkBack acceptance.
 - [ ] Run affected JVM/UI checks, then capture native screens. Commit and PR with visual acceptance still explicit.
 
 ## Task 3 — Bound processing and protect user work
