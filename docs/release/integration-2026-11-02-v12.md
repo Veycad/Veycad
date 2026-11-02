@@ -51,8 +51,8 @@ assertion. No comparison tolerance or production graphics workaround was added.
 
 All three style cases passed in this short selection. That does not clear the
 earlier long-run freeze or V11 Android system crash. A complete V12 screen suite
-has not run. The isolated Emulator 37.2.13 download remains a diagnostic lead;
-it has not been accepted as a fix. Text/speech/AAC and other V11 results retain
+has not completed. The isolated Emulator 37.2.13 now passes the short group;
+it has not yet established long-run stability. Text/speech/AAC and other V11 results retain
 their original binary scope.
 
 ### Matched graphics-environment comparison
@@ -68,10 +68,11 @@ graphics: 15/15, 562.605s. A fresh NVIDIA host instance was given the same seque
 first the isolated method, then the same fifteen-case group. Both used the
 verified original V12 APKs and the same AVD/display settings.
 
-| Emulator 37.1.11.0 backend | Isolated method | Subsequent compositor/style group |
+| Emulator / backend | Isolated method | Subsequent compositor/style group |
 | --- | --- | --- |
-| Google SwiftShader | PASS, 74.484s host elapsed | PASS, 15/15, 562.605s host elapsed |
-| NVIDIA host | PASS, 6.344s host elapsed | FAIL, 14/15, 28.237s host elapsed |
+| 37.1.11.0 / Google SwiftShader | PASS, 74.484s host elapsed | PASS, 15/15, 562.605s host elapsed |
+| 37.1.11.0 / NVIDIA host | PASS, 6.344s host elapsed | FAIL, 14/15, 28.237s host elapsed |
+| 37.2.13.0 / NVIDIA host | PASS, 4.172s host elapsed | PASS, 15/15, 26.966s host elapsed |
 
 The host group again failed the centered-manual-versus-legacy display comparison
 at line202, this time first byte 0 versus 255. No manual-editor preload was needed.
@@ -86,7 +87,21 @@ Receipts under `D:/CodexWork`: `veycad-v12-software-parity-20261102.json`,
 `veycad-v12-cold-host-graphics-style-20261102.json`, with matching `.log` files.
 Renderer identities are retained in `veycad-v12-swiftshader-20261102.stdout.log`
 and `veycad-v12-cold-host-20261102.stdout.log`.
-The isolated newer emulator download is a separate experiment, not yet a fix.
+The isolated 37.2.13 archive was size/SHA1/ZIP-CRC verified before extraction;
+its binary reports build16740729. Installed SDK tools and the separate 16 KB
+image download were not replaced. The new host run keeps the same V12 APKs,
+AVD, display settings and test order. Its short group passes where the old
+host group fails, but this does not prove an application fix or long-run stability.
+New receipts: `veycad-v12-host-parity-emulator37213-20261102.json` and
+`veycad-v12-emulator37213-host-graphics-style-20261102.json`; launcher/renderer
+identity: `veycad-v12-emulator37213-host-20261102.stdout.log`.
+
+A complete V12 UI run was started on this new host environment:
+`20261102-051535-541`, original app/instrumentation hashes unchanged after the
+runner's build. It expects two permission and 271 screen cases, followed by
+restart checks. Permission phase passed; screen phase was still running when
+this note was written. This is not a completed or passing full-suite verdict.
+Outer log: `D:/CodexWork/veycad-v12-emulator37213-full-ui-20261102.log`.
 
 ## Unsigned APK identities
 
