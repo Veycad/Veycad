@@ -138,6 +138,9 @@ Consumes: supported-input contract and baseline measurements. Produces: measurab
 Files: `docs/SupportMatrix.md`, existing `docs/testing/` and `docs/quality/` protocols; new receipt under `docs/release/` without user media.
 Consumes: signed candidate SHA and explicit feature scope. Produces: evidence-backed release verdict.
 
+Практический маршрут: [проверка итогового релиза на телефоне](../../release/phone-acceptance.md).
+Он дополняет критерии ниже; заполненного результата пока нет.
+
 - [ ] Record at least one constrained and one modern physical arm64 phone, OS/codec capabilities and available space; include no-GMS verification before advertising it.
 - [ ] Test fresh install, same-key update preserving edits/settings, permissions declined and revoked, offline use, accessibility and every exposed first-release route.
 - [ ] Use varied new authorized media and existing regression fixtures; follow current quality/human-review requirements rather than reusing old approvals.
@@ -150,7 +153,7 @@ Files: `README.md`, `docs/release/rustore-listing.md`, future approved screensho
 Consumes: verified current features and accepted build. Produces: honest listing and understandable repository entry point.
 
 - [x] Move full rights block lower in README unchanged, retain prominent license link; lead with benefit and current availability.
-- [ ] Draft RuStore name (≤30 chars), short text (≤80), full text (≤4000), support contact, what's new and moderator instructions.
+- [x] Draft RuStore name (≤30 chars), short text (≤80), full text (≤4000), support contact, what's new and moderator instructions. [Draft](../../release/rustore-listing.md), text limits rechecked 2026-11-02: 26/77/1800 chars. Final signed-build review and console entry remain open.
 - [ ] Inventory data/permissions and third-party terms including music distribution rights; owner confirms any rights not documented in repository.
 - [ ] Prepare privacy text and an accessible policy URL consistent with actual SDK behavior; do not equate local inference with a completed SDK privacy audit.
 - [ ] Capture at least three current app screenshots from the accepted build and prepare 512×512 opaque icon. Check current RuStore limits immediately before upload.
