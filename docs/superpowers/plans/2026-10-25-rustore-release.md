@@ -124,12 +124,13 @@ Consumes: current main and installed Android/JDK/NDK tools. Produces: exact buil
 - [x] Read current main, repository contribution rules, RuStore publication/signature requirements.
 - [x] Isolate changes from historical dirty checkout and create task branch.
 - [x] Run `gradlew.bat baselineVerify` with configured JDK/SDK/Python; record failures without calling them regressions until compared to base. [Baseline receipt](../../release/baseline-2026-10-25.md): 1392 JVM + 338 Python, build/lint/security passed; no release/device verdict.
-- [ ] Inspect release manifest, all runtime features/build flags, native payload and model/music licenses.
+- [x] Inspect the V11 release manifest, runtime build flags and native/model payload: all four unsigned APKs match the [V11 receipt](../../release/integration-2026-11-02-v11.md). This is package inspection, not runtime acceptance.
+- [ ] Close model/music rights and full license compliance; packaged notice checks do not establish permission to distribute every asset.
 - [x] External signing configuration implemented in draft #73 and combined source; opt-in signing, required inputs and no debug fallback verified by negative probes.
-- [ ] Validate actual signing, alias/password and same-key updates with the owner-controlled permanent key. The rejected temporary-key probe did not complete this check.
-- [ ] Build release APK; verify signature, application ID, version, non-debuggable state, debug component exclusion and package size. Record SHA-256, source SHA, certificate fingerprint and tool versions.
-- [ ] Evaluate shrinking by measured benefit and native/model regression; do not enable it blindly as a prerequisite.
-- [ ] Commit packaging changes with checks and open a separate PR.
+- [x] Build and inspect all four unsigned V11 release APKs: application ID/version, non-debuggable state, flags/native payload and file hashes recorded. Signature verification rejects them as unsigned; no certificate fingerprint or signed install is claimed.
+- [ ] Verify the final signed APK, alias/password, certificate fingerprint and same-key update with the owner-controlled permanent key. The rejected temporary-key probe did not complete this check.
+- [x] Measure packaged size and evaluate the minification decision using the [V11 size inventory](../../release/package-size-v11-2026-11-02.md). Keep current settings: DEX plus all Android resources occupy 5.431% of ARM64 APK. No R8 savings or altered-build runtime acceptance is claimed. Optional model compression was measured separately; it is not implemented or a release prerequisite.
+- [x] Packaging changes committed in separate draft [PR #73](https://github.com/Veycad/Veycad/pull/73) and [PR #104](https://github.com/Veycad/Veycad/pull/104); both remain open and unmerged. Signed/device acceptance remains separate.
 
 ## Task 2 — Make the existing workflow understandable
 

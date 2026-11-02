@@ -31,6 +31,8 @@ release signing is claimed.
 Universal APK SHA-256:
 `4c4a8788da0c2d1f5abc89f3ccc8ffe3d0c8ae64d3a0b817db2e7df771826245`.
 Per-APK identities: `D:/CodexWork/veycad-v11-release-20261102/receipt.json`.
+Exact packaged-size breakdown and the minification/compression evaluation:
+[V11 size inventory](package-size-v11-2026-11-02.md).
 Build/test inputs: `D:/CodexWork/veycad-v11-build-inputs-20261102.json`.
 Build log: `D:/CodexWork/veycad-v11-baseline-build-retry-20261102.log`.
 The first invocation stopped before checks because it named a nonexistent task;
