@@ -95,6 +95,20 @@ This is not Android float-output or human listening acceptance.
 Result: `build/reports/ui-tests/runs/20261102-013300-208/screens/source-audio-host-oracle/result.json`.
 Log: `D:/CodexWork/veycad-v11-aac-host-oracle-20261102.log`.
 
+## License export verified through the UI
+
+The original V11 app and instrumentation APKs passed
+`LicenseExportScreenTest.savesOnlyBundledLicensesIncludingNestedAndEmptyFiles`
+(1/1, 3.930s). The resulting ZIP was retained and independently compared with
+every `assets/licenses/` file in that exact app APK: all 35 names and byte
+contents match, with no duplicates or extra entries. The three new runtime
+notice/index files are included. This UI variant also contains export test
+fixtures; the check is not a signed release UI or media-rights acceptance.
+
+ZIP SHA-256: `6763658685a6e9308871e5da117b002ca9fb5f89f47714d566750c5c33281958`.
+Receipt: `D:/CodexWork/veycad-v11-exported-license-check-20261102.json`.
+UI log: `D:/CodexWork/veycad-v11-original-license-export-20261102.log`.
+
 ## Still open
 
 The [V10 preview freeze investigation](integration-2026-11-02-v10.md) remains
