@@ -19,6 +19,12 @@ All four unsigned release APKs passed independent inspection: application ID
 editor enabled, no INTERNET or ACCESS_NETWORK_STATE permission, expected native
 ABIs with Whisper, expected speech model bytes and retained license files.
 Both new runtime notice texts and their index match source bytes in every APK.
+The [notice retention check](notices-v11-2026-11-02.json) also inspected root
+AAR/JAR and nested classes.jar candidates in all 119 unchanged dependency
+archives. All 34 nonempty notice texts are contained in packaged license assets;
+four source entries are empty and 19 are structured metadata. License asset bytes
+match across all four APKs. This does not cover native/deeper archives or establish
+complete license compliance.
 Signature verification rejected these unsigned APKs as expected; no successful
 release signing is claimed.
 
