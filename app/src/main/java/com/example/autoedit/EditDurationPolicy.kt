@@ -20,9 +20,8 @@ object EditDurationPolicy {
     }
 
     fun choose(sourceDurationMs: Long, audio: AudioBeatMap): Choice {
-        require(sourceDurationMs >= MINIMUM_MS) {
-            "Automatic edit needs at least $MINIMUM_MS ms of source video"
-        }
+        if (sourceDurationMs < MINIMUM_MS) throw UserMessageException(
+            "Нужно видео длительностью не менее ${MINIMUM_MS / 1_000L} секунд")
 
         val upperBound = minOf(sourceDurationMs, MAXIMUM_MS)
         if (upperBound < PREFERRED_MS) {

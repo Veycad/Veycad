@@ -1,8 +1,0 @@
-{
-  "id": "blackout-hit",
-  "shader": "effect_lab_flash_hit_es2.glsl",
-  "minimumGles": 2,
-  "durationMs": 72,
-  "parameters": { "intensity": 0.96 },
-  "fallback": "black-frame"
-}

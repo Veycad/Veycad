@@ -37,7 +37,7 @@ class RenderProgressScreenTest {
         ui.scenario.onActivity { it.findViewById<ScrollView>(R.id.directorContent).scrollTo(0, 0) }
         onView(withId(R.id.progressTitle)).check(matches(not(isDisplayed())))
         ui.renderer.progress(VeycadAutomaticEditor.Stage.DIRECTING, 0, 4)
-        ui.awaitText(R.id.progressTitle, "Строю режиссуру")
+        ui.awaitText(R.id.progressTitle, "Подбираю фрагменты")
         ui.scenario.onActivity {
             assertEquals("Progress updates must preserve the user's scroll position", 0,
                 it.findViewById<ScrollView>(R.id.directorContent).scrollY)
@@ -59,18 +59,18 @@ class RenderProgressScreenTest {
         onView(withId(R.id.progressDetail)).check(matches(withSubstring("лица, движение, композицию")))
 
         ui.renderer.progress(VeycadAutomaticEditor.Stage.DIRECTING, 0, 4)
-        ui.awaitText(R.id.progressTitle, "Строю режиссуру")
+        ui.awaitText(R.id.progressTitle, "Подбираю фрагменты")
         ui.waitUntil("directing progress is indeterminate") { progress.isIndeterminate }
         onView(withId(R.id.progressDetail)).check(matches(withSubstring("ритмом музыки")))
 
         ui.renderer.progress(VeycadAutomaticEditor.Stage.RENDERING, 1, 4)
-        ui.awaitText(R.id.progressTitle, "Рендерю варианты")
-        ui.awaitText(R.id.progressDetail, "Кандидат 2 из 4")
+        ui.awaitText(R.id.progressTitle, "Создаю видео")
+        ui.awaitText(R.id.progressDetail, "Вариант 2 из 4")
         ui.waitUntil("one of four candidates gives 25 percent") { !progress.isIndeterminate && progress.progress == 25 }
 
         ui.renderer.progress(VeycadAutomaticEditor.Stage.VERIFYING, 3, 4)
         ui.awaitText(R.id.progressTitle, "Проверяю результат")
-        ui.awaitText(R.id.progressDetail, "Готово 3 из 4")
+        ui.awaitText(R.id.progressDetail, "Проверено вариантов: 3 из 4")
         ui.waitUntil("three of four verified candidates gives 75 percent") { !progress.isIndeterminate && progress.progress == 75 }
 
         ui.renderer.progress(VeycadAutomaticEditor.Stage.COMPLETE, 4, 4)
@@ -147,6 +147,32 @@ class RenderProgressScreenTest {
         assertFalse(ui.context.getSharedPreferences("edit_session", Context.MODE_PRIVATE).getBoolean("running", true))
     }
 
+    @Test fun lease_cancellation_keeps_cancel_copy_when_worker_returns_an_untyped_error() {
+        val previous = ui.seedCompleted("before-worker-cancellation.mp4")
+        val previousBytes = previous.file.readBytes()
+        ui.launch()
+        ui.awaitDisplayed(R.id.resultContent)
+        pressBack()
+        ui.importVideos("worker-cancellation-source.mp4")
+        val source = ui.selectedSources().single()
+        val sourceBytes = source.readBytes()
+        for (error in listOf(IllegalStateException("Монтаж отменён"), java.io.IOException("codec closed"))) {
+            ui.startRender()
+            val entered = ui.renderer.failAfterLeaseCancellation(error)
+            assertTrue("Worker must reach the lease boundary", entered.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            val request = requireNotNull(ui.renderer.currentRequest)
+            ui.click(R.id.cancelRenderButton)
+            assertFalse(requireNotNull(request.jobLease).isFile)
+            ui.awaitIdle()
+            assertEquals("Explicit cancellation must survive worker error types",
+                "Монтаж отменён", EditSession.get(ui.context).state.value?.error)
+            assertFalse(request.outputFile.exists())
+            assertArrayEquals(sourceBytes, source.readBytes())
+            assertArrayEquals(previousBytes, previous.file.readBytes())
+            assertEquals(previous, CompletedRenderStore.latest(ui.context.filesDir))
+        }
+    }
+
     @Test fun render_failure_preserves_the_previous_result_and_readiness_then_a_retry_can_finish() {
         val previous = ui.seedCompleted("before-failure.mp4")
         ui.launch()
@@ -186,10 +212,10 @@ class RenderProgressScreenTest {
         ui.startRender()
         val request = requireNotNull(ui.renderer.currentRequest)
         ui.renderer.progress(VeycadAutomaticEditor.Stage.RENDERING, 1, 3)
-        ui.awaitText(R.id.progressDetail, "Кандидат 2 из 3")
+        ui.awaitText(R.id.progressDetail, "Вариант 2 из 3")
         ui.recreate()
         ui.awaitDisplayed(R.id.directorContent)
-        ui.awaitText(R.id.progressDetail, "Кандидат 2 из 3")
+        ui.awaitText(R.id.progressDetail, "Вариант 2 из 3")
         onView(withId(R.id.renderButton)).check(matches(not(isEnabled())))
         var activity: MainActivity? = null
         ui.scenario.onActivity { activity = it }

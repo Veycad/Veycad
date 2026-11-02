@@ -8,6 +8,7 @@ import android.os.Looper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -20,6 +21,34 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DraftPreviewControllerDeviceTest {
+    @Test fun overlappingStopsAndCloseAcknowledgeEveryCallerWithoutLateExecutorWork() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        repeat(20) {
+            val stopped = CountDownLatch(32)
+            val callbacks = java.util.concurrent.atomic.AtomicInteger()
+            lateinit var controller: DraftPreviewController
+            instrumentation.runOnMainSync {
+                controller = DraftPreviewController {}
+                repeat(32) { index ->
+                    controller.stopAndRelease(keepPrepared = index % 2 == 0) {
+                        callbacks.incrementAndGet()
+                        stopped.countDown()
+                    }
+                }
+                controller.close()
+                controller.close()
+            }
+            assertTrue("Every stop must be acknowledged", stopped.await(10, TimeUnit.SECONDS))
+            val closed = CountDownLatch(1)
+            instrumentation.runOnMainSync { controller.stopAndRelease { closed.countDown() } }
+            assertTrue("Already closed must acknowledge stop", closed.await(10, TimeUnit.SECONDS))
+            assertEquals(32, callbacks.get())
+        }
+    }
+    private fun previewWorkerStack(): String = Thread.getAllStackTraces()
+        .filterKeys { it.name == "Veycad-preview-GL" }.values
+        .joinToString("\n") { it.joinToString("\n") }
+
     @Test fun pausedNormalMinuteDropsProducerAnalysisAndKeepsOnlyBoundedOwnedPages() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -48,18 +77,21 @@ class DraftPreviewControllerDeviceTest {
         }
         // The helper deliberately returns no project/graph/plane. An accidentally retained UI or
         // executor closure therefore keeps these real 120 MiB producer arrays observable here.
-        val producers = prepareNormalMinute(controller, assets, source, score, inspected, settings, output, prepared)
+        val released = ReferenceQueue<Any>()
+        val producers = prepareNormalMinute(controller, assets, source, score, inspected, settings, output, prepared, released)
         var ownedPages = emptyList<File>()
         try {
             assertTrue("Owned preparation callback", prepared.await(60, TimeUnit.SECONDS))
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
             var ready: DraftPreviewController.State? = null
+            val observed = mutableListOf<DraftPreviewController.State>()
             while (System.nanoTime() < deadline && ready == null) {
                 val state = states.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                observed += state
                 assertNull(state.error)
                 if (state.exactFrameReady) ready = state
             }
-            assertNotNull("Actual paused native display must be ready", ready)
+            assertNotNull("Actual paused native display must be ready; states=$observed; image=${pixel.count == 0L}", ready)
             assertFalse(ready!!.playing)
             assertTrue("Prepared pages and actual GL share one 32 MiB owner: ${ready.appOwnedBytes}",
                 ready.appOwnedBytes in 1..(32L * 1024 * 1024))
@@ -70,12 +102,16 @@ class DraftPreviewControllerDeviceTest {
             assertEquals("Large analysis uses one exact owned spool", 1, ownedPages.size)
             assertTrue(ownedPages.single().length() >= 120L * 1024 * 1024)
             val gcDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-            while (producers.any { it.get() != null } && System.nanoTime() < gcDeadline) {
+            var collected = 0
+            // Poll notifications, not referents: get() can keep the observed project alive across GC.
+            while (collected < producers.size && System.nanoTime() < gcDeadline) {
                 Runtime.getRuntime().gc()
                 System.runFinalization()
                 instrumentation.waitForIdleSync()
+                while (released.poll() != null) collected++
                 Thread.sleep(50)
             }
+            assertEquals("Every producer must be collected", producers.size, collected)
             assertTrue("Paused production controller must not retain the input project or any producer float array",
                 producers.all { it.get() == null })
             assertFalse(output.exists())
@@ -96,7 +132,8 @@ class DraftPreviewControllerDeviceTest {
 
     private fun prepareNormalMinute(controller: DraftPreviewController, assets: ProjectAssetStore,
         source: ProjectAsset, score: ProjectAsset, inspected: MediaSource,
-        settings: ProjectExportSettings, output: File, prepared: CountDownLatch): List<WeakReference<*>> {
+        settings: ProjectExportSettings, output: File, prepared: CountDownLatch,
+        released: ReferenceQueue<Any>): List<WeakReference<*>> {
         val frames = List(240) { index -> FrameAttachments(index * 250_000L,
             mask = FrameAttachments.Plane(256, 256, FloatArray(256 * 256) { (index + 1) / 1000f }, .9f),
             depth = FrameAttachments.Plane(256, 256, FloatArray(256 * 256) { .7f }, .8f)) }
@@ -109,8 +146,8 @@ class DraftPreviewControllerDeviceTest {
         val revision = imported.current.copy(visualSettings = ProjectVisualSettings(ProjectAspect.SQUARE_1_1, true),
             audioMix = AudioMixSettings(AudioMixMode.SOURCE))
         val project = imported.copy(original = revision, current = revision)
-        val references = listOf(WeakReference(project)) + frames.flatMap {
-            listOf(WeakReference(it.mask!!.values), WeakReference(it.depth!!.values))
+        val references = listOf(WeakReference(project, released)) + frames.flatMap {
+            listOf(WeakReference(it.mask!!.values, released), WeakReference(it.depth!!.values, released))
         }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             controller.prepareAndOpen(project, settings, assets, output,
@@ -174,12 +211,14 @@ class DraftPreviewControllerDeviceTest {
                 instrumentation.runOnMainSync { controller.seekTo(time) }
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
                 var accepted: DraftPreviewController.State? = null
+                val observed = mutableListOf<DraftPreviewController.State>()
                 while (System.nanoTime() < deadline && accepted == null) {
                     val state = states.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                    observed += state
                     assertNull(state.error)
                     if (state.exactFrameReady && state.shownOutputTimeUs == time) accepted = state
                 }
-                assertNotNull("Expected native direct frame $time", accepted)
+                if (accepted == null) fail("Expected native direct frame $time; states=$observed; worker=${previewWorkerStack()}")
                 if (time == 500_000L || time == 1_100_000L) {
                     assertNotNull("Actual second decoder role must participate", accepted!!.secondarySourceIndex)
                     assertNotNull(accepted.decodedSecondarySourceTimeUs)
@@ -296,13 +335,15 @@ class DraftPreviewControllerDeviceTest {
             val generation = emitted.get().generation
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
             var ready: DraftPreviewController.State? = null
+            val observed = mutableListOf<DraftPreviewController.State>()
             while (System.nanoTime() < deadline) {
                 val state = states.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                observed += state
                 if (state.generation != generation) continue
                 assertNull(state.error)
                 if (state.exactFrameReady && state.shownOutputTimeUs == timeUs) { ready = state; break }
             }
-            assertNotNull("Expected direct frame $timeUs", ready)
+            if (ready == null) fail("Expected direct frame $timeUs; states=$observed; worker=${previewWorkerStack()}")
             assertEquals(source, ready!!.sourceIndex)
             val expected = PreviewFrameSelection.nearest(prepared.framePlan, timeUs).sourceTimeUs
             assertTrue(ready.decodedSourceTimeUs!! >= expected)

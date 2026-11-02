@@ -41,7 +41,7 @@ class MontageStylePresentationTest {
             val copy = MontageStylePresentation.forStyle(style)
             assertEquals(1, copy.sourceCount)
             assertEquals(15_000L, copy.minimumSourceDurationMs)
-            assertEquals("1 видео · от 15 секунд", copy.sourceHint)
+            assertEquals("1 видео · 15–60 секунд", copy.sourceHint)
             assertEquals(copy.sourceHint, copy.sourceDisplay(emptyList()))
             assertEquals("Добавить видео", copy.addSourceLabel)
         }
@@ -51,7 +51,7 @@ class MontageStylePresentationTest {
         val copy = MontageStylePresentation.forStyle(MontageStyleCatalog.dualityLoop)
         assertEquals(2, copy.sourceCount)
         assertEquals(6_000L, copy.minimumSourceDurationMs)
-        assertEquals("2 видео · каждое от 6 секунд", copy.sourceHint)
+        assertEquals("2 видео · каждое 6–60 секунд", copy.sourceHint)
         assertEquals("Добавить 2 видео", copy.addSourceLabel)
         assertEquals(copy.sourceHint, copy.sourceDisplay(emptyList()))
     }
@@ -96,7 +96,7 @@ class MontageStylePresentationTest {
             val copy = MontageStylePresentation.forStyle(MontageStyleCatalog.restore(id))
             assertEquals("Пульс под музыку", copy.title)
             assertEquals("♥", copy.symbol)
-            assertEquals("1 видео · от 15 секунд", copy.sourceDisplay(emptyList()))
+            assertEquals("1 видео · 15–60 секунд", copy.sourceDisplay(emptyList()))
             assertTrue(copy.musicPlaceholder.contains(copy.title))
         }
     }

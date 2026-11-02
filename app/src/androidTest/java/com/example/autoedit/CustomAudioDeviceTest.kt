@@ -142,12 +142,24 @@ class CustomAudioDeviceTest {
         val evidenceFile = File(directory, "native-editor-evidence.json")
         evidenceFile.delete() // A failed rerun must not leave a previous report beside a new MP4.
         val inspected = MediaSourceSet(listOf(MediaInputInspector().inspect("custom-source", video, video.name)))
+        val progress = mutableListOf<VeycadAutomaticEditor.Progress>()
         val result = VeycadAutomaticEditor.render(VeycadAutomaticEditor.Request(context, inspected,
             musicFile = audio, outputFile = output, style = EventMatchingDirector.Style.DYNAMIC,
             recipe = MontageStyleCatalog.Recipe.CUSTOM_MUSIC, width = 160, height = 240,
-            bitrate = 200_000, musicStartUs = 15_000_000))
+            bitrate = 200_000, musicStartUs = 15_000_000, onProgress = { progress += it }))
         // Save before assertions, and before subsequent UI fixtures clear private inspector files.
         val evidence = CustomMusicEvidence.save(result, video, audio, output, evidenceFile)
+        val candidateCount = result.pipeline.alternatives.size
+        val verifying = progress.filter { it.stage == VeycadAutomaticEditor.Stage.VERIFYING }
+        assertEquals("Each candidate and the final selection must report verification", candidateCount + 1, verifying.size)
+        assertEquals("Final selection must not count an extra candidate: $verifying",
+            candidateCount, verifying.last().completedCandidates)
+        assertEquals(candidateCount, verifying.last().totalCandidates)
+        assertTrue("Native progress exceeded its total: $progress",
+            progress.all { it.completedCandidates in 0..it.totalCandidates })
+        assertEquals(VeycadAutomaticEditor.Stage.COMPLETE, progress.last().stage)
+        assertEquals(candidateCount, progress.last().completedCandidates)
+        assertEquals(candidateCount, progress.last().totalCandidates)
         assertEquals(result.passedQualityGate, evidence.qualityGate)
         assertEquals(result.winner.samples.size, evidence.visualSamples)
         assertEquals(15_000_000L, evidence.audioStartUs)

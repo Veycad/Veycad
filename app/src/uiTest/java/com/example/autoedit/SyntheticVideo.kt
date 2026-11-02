@@ -18,11 +18,13 @@ internal object SyntheticVideo {
         require(fps in 1..60 && iFrameIntervalSeconds in 1..2)
         if (lumaPhase == 0 && textureSeed == null && lumaAt == null && iFrameIntervalSeconds == 1 && fps == 30 && lumaBase == 40 && target.isFile && target.length() > 0) {
             val valid = runCatching {
-                MediaMetadataRetriever().use { metadata ->
-                    metadata.setDataSource(target.path)
-                    kotlin.math.abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - durationMs) <= 100 &&
-                        metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() == width &&
-                        metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() == height
+                MediaMetadataRetriever().let { metadata ->
+                    try {
+                        metadata.setDataSource(target.path)
+                        kotlin.math.abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - durationMs) <= 100 &&
+                            metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() == width &&
+                            metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() == height
+                    } finally { metadata.release() }
                 }
             }.getOrDefault(false)
             if (valid) return target

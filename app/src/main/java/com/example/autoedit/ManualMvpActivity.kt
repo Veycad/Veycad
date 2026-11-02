@@ -70,6 +70,7 @@ class ManualMvpActivity : AppCompatActivity() {
     private var export: Button? = null
     private var dragging = false
     private var exporting = false
+    private var awaitingRenderResult = false
     private var preparingPreview = false
     private var pendingImports: List<Uri>? = null
     private val surfaces = mutableListOf<BorrowedSurface>()
@@ -194,7 +195,7 @@ class ManualMvpActivity : AppCompatActivity() {
         stopForLifecycle()
     }
     private fun finishRetirement() {
-        if (retirementScheduled || jobs.isShutdown) return
+        if (retirementScheduled || jobs.isShutdown || awaitingRenderResult) return
         retirementScheduled = true
         val lease = retiringLease
         retiringLease = null
@@ -361,7 +362,8 @@ class ManualMvpActivity : AppCompatActivity() {
             setOnClickListener { leaveAfterCleanup() }
         })
         content.addView(label(getString(R.string.manual_title), 28))
-        status = label(message ?: getString(R.string.manual_intro), 14).also(content::addView)
+        status = label(message ?: getString(if (selected == null) R.string.manual_start else R.string.manual_intro), 14)
+            .also(content::addView)
         status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         if (selected != null && analysisRecoveryRequired) {
             val recoverId = selected.id
@@ -376,10 +378,16 @@ class ManualMvpActivity : AppCompatActivity() {
         }
         content.addView(label(getString(R.string.manual_new), 20))
         content.addView(label(getString(R.string.manual_supported), 14))
-        content.addView(row(
-            button("30 кадр/с") { chooseFps(30) }.apply { isSelected = newProjectFps == 30 },
-            button("60 кадр/с") { chooseFps(60) }.apply { isSelected = newProjectFps == 60 }
-        ))
+        content.addView(row(*listOf(30, 60).map { fps ->
+            button("$fps кадр/с") { chooseFps(fps) }.apply {
+                isSelected = newProjectFps == fps
+                backgroundTintList = enabledColors(if (isSelected) R.color.accent_soft else R.color.surface_high, R.color.stroke)
+                ViewCompat.setStateDescription(this, getString(if (isSelected) R.string.manual_selected else R.string.manual_not_selected))
+                iconSize = dp(16); iconPadding = dp(2); iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+                iconTint = enabledColors(R.color.text_primary, R.color.text_muted)
+                if (isSelected) setIconResource(R.drawable.manual_check)
+            }
+        }.toTypedArray()))
         content.addView(button(getString(R.string.manual_import)) { videoPicker.launch(arrayOf("video/*")) }.apply { tag = "import" })
         content.addView(label(getString(R.string.manual_saved), 20))
         content.addView(button("Восстановить копию") {
@@ -795,6 +803,7 @@ class ManualMvpActivity : AppCompatActivity() {
         setBusy(true, getString(R.string.manual_exporting))
         val sequence = ++generation
         binding = null // No UI getter may borrow an input after the GL owner disposes it.
+        awaitingRenderResult = true
         player.renderPrepared { outcome ->
             // Display/audio and the prepared lifetime have actually retired on their GL owner.
             surfaces.forEach { held -> held.surface.release(); if (held.destroyed) held.texture.release() }
@@ -841,6 +850,9 @@ class ManualMvpActivity : AppCompatActivity() {
                     refresh(getString(if (result.isSuccess) R.string.manual_exported else R.string.manual_export_failed))
                 }
             }
+            // Queue publication/cleanup before the retirement fences can close jobs.
+            awaitingRenderResult = false
+            if (!stopping && retiringLease != null) finishRetirement()
         }
     }
     private fun requireVideoShape(file: File, settings: ProjectExportSettings) {
