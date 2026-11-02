@@ -254,6 +254,9 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$cameraVersion")
     implementation("androidx.camera:camera-video:$cameraVersion")
     implementation("androidx.camera:camera-view:$cameraVersion")
+    // Already supplied by CameraX; used directly for gapless MP4 on older Android.
+    implementation("androidx.media3:media3-muxer:1.9.0")
+    implementation("androidx.media3:media3-container:1.9.0")
     // Bundled, on-device perception. No footage or biometric template leaves the phone.
     implementation("com.google.mlkit:face-detection:16.1.7")
     implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")

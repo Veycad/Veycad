@@ -365,7 +365,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           chmod +x gradlew
-      - name: Verify automatic save on Android 9
+      - name: Verify automatic save and prepared AAC on Android 9
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 28

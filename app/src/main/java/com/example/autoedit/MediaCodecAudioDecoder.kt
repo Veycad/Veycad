@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.os.Build
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
@@ -109,8 +110,10 @@ internal object MediaCodecAudioDecoder {
         // AAC-LC, explicit channel configuration, 1024-frame GA syntax; no extensions.
         if ((bits ushr 11) != 2 || rateIndex !in rates.indices || rates[rateIndex] != rate ||
             ((bits ushr 3) and 15) != channels || (bits and 7) != 0) return null
-        val originUs = Math.addExact(firstPacketUs, AudioExportPlan.presentationTimeUs(delay.toLong(), rate))
-        if (originUs < 0) return null
+        val codecOriginUs = Math.addExact(firstPacketUs, AudioExportPlan.presentationTimeUs(delay.toLong(), rate))
+        // Pre-R extractors expose coded packet PTS rather than the priming edit's negative PTS.
+        val originUs = if (Build.VERSION.SDK_INT < 30) firstPacketUs else codecOriginUs
+        if (originUs < 0 || codecOriginUs < 0) return null
         val proof = MediaExtractor()
         try {
             proof.setDataSource(file.absolutePath)
@@ -137,7 +140,7 @@ internal object MediaCodecAudioDecoder {
                 return durationUs in floorUs..ceilUs
             }
             if (!matchesDuration(frames) && !matchesDuration(Math.multiplyExact(packets, 1024L))) return null
-            return GaplessAacClock(rate, originUs, padding, frames)
+            return GaplessAacClock(rate, originUs, padding, frames, codecOriginUs)
         } finally { proof.release() }
     }
 

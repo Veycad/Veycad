@@ -132,12 +132,16 @@ internal object AacEncoderMuxer {
      * M4A. No PCM timeline or AAC packet list. Scratch is the caller's <=1024-frame buffer. */
     private data class SourceTiming(val codecName: String, val delayFrames: Int, val tailInputFrames: Int = 0)
 
+    private fun hasExpectedPrimingPts(firstPtsUs: Long, delayFrames: Int): Boolean {
+        val expected = if (Build.VERSION.SDK_INT < 30) 0L else -AudioExportPlan.presentationTimeUs(delayFrames.toLong(), 48000)
+        return kotlin.math.abs(firstPtsUs - expected) <= 1
+    }
+
     /** No guessed codec offset. A bounded probe establishes this selected encoder/config and the
      * actual extractor/decoder/container contract on each preparation, including first/last PCM.
-     * Older Android releases have not been proven to support this negative-PTS edit-list policy. */
+     * Each selected muxer/decoder must prove its negative-PTS edit-list policy. */
     private fun establishSourceTiming(directory: File, checkCancelled: () -> Unit): SourceTiming {
         val startedNs = System.nanoTime()
-        check(Build.VERSION.SDK_INT >= 35) { "Source AAC trim requires verified Android 35+ container support" }
         val selection = createEncoder(Config(48_000, 2))
         val name = try { selection.name } finally { selection.release() }
         val raw = File.createTempFile("aac-probe-", ".m4a", directory)
@@ -184,7 +188,7 @@ internal object AacEncoderMuxer {
                 android.util.Log.i("SourceAacTiming", "codec=$name delay=${timing.delayFrames} firstPacketPts=${extractor.sampleTime} format=$format")
                 check(format.containsKey(MediaFormat.KEY_ENCODER_DELAY) && format.getInteger(MediaFormat.KEY_ENCODER_DELAY) == timing.delayFrames)
                 check(format.containsKey(MediaFormat.KEY_ENCODER_PADDING) && format.getInteger(MediaFormat.KEY_ENCODER_PADDING) >= 0)
-                check(kotlin.math.abs(extractor.sampleTime + timing.delayFrames * 1_000_000L / 48000) <= 1) { "AAC extractor did not preserve negative priming PTS" }
+                check(hasExpectedPrimingPts(extractor.sampleTime, timing.delayFrames)) { "AAC extractor did not preserve its verified priming PTS" }
             } finally { extractor.release() }
             val proof = probeMarkers(trimmedFile, checkCancelled)
             android.util.Log.i("SourceAacTiming", "codec=$name tailInput=${timing.tailInputFrames} rawMarkers=${measured.first} rawFrames=${measured.second} trimmedMarkers=${proof.first} trimmedFrames=${proof.second}")
@@ -234,7 +238,7 @@ internal object AacEncoderMuxer {
         private val inputPcm = ShortArray(AAC_SAMPLES_PER_ACCESS_UNIT * config.channelCount)
         private val encoder = createEncoder(config, timing.codecName)
         private var packets = 0L
-        private var muxer: MediaMuxer? = null
+        private var muxer: PreparedMp4Muxer? = null
         private var track = -1
         private var muxStarted = false
         private var finished = false
@@ -249,7 +253,7 @@ internal object AacEncoderMuxer {
 
         init {
             try {
-                muxer = MediaMuxer(file.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                muxer = PreparedMp4Muxer(file)
                 encoder.start()
             } catch (failure: Throwable) {
                 runCatching { encoder.release() }.exceptionOrNull()?.let(failure::addSuppressed)
@@ -377,7 +381,7 @@ internal object AacEncoderMuxer {
     }
 
     /** Borrow prepared audio and video. Caller supplies proven exclusive raw video EOS, not
-     * firstPTS + declared KEY_DURATION. Samples/PTS/rotation are copied unchanged. Publish only
+     * firstPTS + declared KEY_DURATION. Retain encoded packets and rotation. Publish only
      * after successful stop/close and final cancellation check; atomic failure preserves old MP4. */
     fun muxPreparedAudio(prepared: SourceAacPreparation, videoFile: File, outputFile: File,
         videoEndPtsUs: Long, checkCancelled: () -> Unit = {}) {
@@ -416,10 +420,13 @@ internal object AacEncoderMuxer {
                 val audioFormat = select(audio, "audio/")
                 check(audioFormat.getString(MediaFormat.KEY_MIME) == MediaFormat.MIMETYPE_AUDIO_AAC)
                 val delay = audioFormat.getInteger(MediaFormat.KEY_ENCODER_DELAY)
-                check(delay > 0 && kotlin.math.abs(audio.sampleTime + delay * 1_000_000L / 48000) <= 1) {
+                check(delay > 0 && hasExpectedPrimingPts(audio.sampleTime, delay)) {
                     "Prepared AAC lost its verified priming edit"
                 }
-                val muxer = MediaMuxer(partial.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                // Pre-R extractors leave packet PTS unshifted by the verified priming edit.
+                val audioPrimingShiftUs = if (Build.VERSION.SDK_INT < 30)
+                    AudioExportPlan.presentationTimeUs(delay.toLong(), 48000) else 0L
+                val muxer = PreparedMp4Muxer(partial)
                 var started = false
                 try {
                     if (videoFormat.containsKey(MediaFormat.KEY_ROTATION)) muxer.setOrientationHint(videoFormat.getInteger(MediaFormat.KEY_ROTATION))
@@ -434,7 +441,9 @@ internal object AacEncoderMuxer {
                     var lastAudio = Long.MIN_VALUE
                     while (video.sampleTrackIndex >= 0 || audio.sampleTrackIndex >= 0) {
                         checkCancelled()
-                        val useVideo = video.sampleTrackIndex >= 0 && (audio.sampleTrackIndex < 0 || video.sampleTime <= audio.sampleTime)
+                        val audioPtsUs = if (audio.sampleTrackIndex >= 0)
+                            Math.subtractExact(audio.sampleTime, audioPrimingShiftUs) else Long.MAX_VALUE
+                        val useVideo = video.sampleTrackIndex >= 0 && (audio.sampleTrackIndex < 0 || video.sampleTime <= audioPtsUs)
                         val extractor = if (useVideo) video else audio
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
                             check(extractor.sampleSize in 0..capacity.toLong()) { "Mux sample exceeds 16 MiB" }
@@ -442,7 +451,7 @@ internal object AacEncoderMuxer {
                         buffer.clear()
                         val size = extractor.readSampleData(buffer, 0)
                         check(size in 0..capacity) { "Invalid or oversized mux sample" }
-                        val pts = extractor.sampleTime
+                        val pts = if (useVideo) video.sampleTime else audioPtsUs
                         if (useVideo) check(pts < videoEndPtsUs) { "Video sample beyond proven track endpoint" }
                         var flags = if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
                         if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0) flags = flags or MediaCodec.BUFFER_FLAG_PARTIAL_FRAME

@@ -112,6 +112,52 @@ class ManualMvpScreenTest {
         assertChoice(60)
     }
 
+    @Test fun importTrimUndoLandscapeExportAndReopenWorkWithoutWindowCapture() {
+        fixture.launch()
+        importIntoEditor()
+        val initial = store.load(store.list().single().id)
+        val id = initial.id
+        val assets = ProjectAssetStore(store.directory(id))
+        val originals = initial.assets.associate { it.id to assets.resolve(it).readBytes() }
+        onView(withText("Конец −1")).perform(scrollTo(), click())
+        fixture.waitUntil("trim stored", 30_000) {
+            store.load(id).current.clips.first().span.length == initial.current.clips.first().span.length - 1 && ready()
+        }
+        onView(withText("Отменить")).perform(scrollTo(), click())
+        fixture.waitUntil("undo stored", 30_000) { store.load(id).current.clips == initial.current.clips && ready() }
+        tapTag("aspect-LANDSCAPE_16_9")
+        fixture.waitUntil("landscape ready", 30_000) { store.load(id).current.visualSettings.aspect == ProjectAspect.LANDSCAPE_16_9 && ready() }
+        val revision = store.load(id).current.id
+        tapTag("export")
+        fixture.waitUntil("export linked and preview restored", 180_000) { store.load(id).exports.any { it.revisionId == revision } && ready() }
+        val saved = store.load(id).exports.last()
+        val output = File(fixture.context.filesDir, "completed-renders/${saved.fileName}")
+        assertTrue(output.isFile && output.length() > 0)
+        val metadata = MediaMetadataRetriever()
+        try {
+            metadata.setDataSource(output.path)
+            assertEquals("1920", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
+            assertEquals("1080", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT))
+            assertEquals("yes", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO))
+        } finally { metadata.release() }
+        assertEquals(originals.keys, store.load(id).assets.map { it.id }.toSet())
+        store.load(id).assets.forEach { assertArrayEquals(originals.getValue(it.id), assets.resolve(it).readBytes()) }
+        finishEditor()
+        fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("saved revision reopened", 30_000) { ready() }
+        assertEquals(revision, store.load(id).current.id)
+        assertTrue(store.load(id).exports.contains(saved))
+        intending(hasAction(Intent.ACTION_CHOOSER)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null))
+        tapTag("share")
+        val chooser = androidx.test.espresso.intent.Intents.getIntents().last { it.action == Intent.ACTION_CHOOSER }
+        @Suppress("DEPRECATION")
+        val send = requireNotNull(chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT))
+        @Suppress("DEPRECATION")
+        val uri = requireNotNull(send.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
+        assertEquals(Intent.ACTION_SEND, send.action)
+        assertArrayEquals(output.readBytes(), fixture.context.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
+    }
+
     @Test fun importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision() {
         openImported()
         val id = store.list().single().id
@@ -293,6 +339,9 @@ class ManualMvpScreenTest {
     private fun openImported(fps: Int = 30) {
         fixture.launch()
         capture("main-entry")
+        importIntoEditor(fps)
+    }
+    private fun importIntoEditor(fps: Int = 30) {
         fixture.click(R.id.manualMvpButton)
         fixture.waitUntil("editor import ready") { view<Button>("import")?.isEnabled == true }
         if (fps == 60) {

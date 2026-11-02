@@ -60,10 +60,16 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
 & {
     $uiProjectRoot = Split-Path -Parent $PSScriptRoot
     $Serial = 'test'; $AvdName = 'test'; $SdkRoot = 'test'
-    $uiPermissionExpected = @(); $uiOrdinaryExpected = @()
+    $discovery = $runnerAst.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Read-UiExpectedTests'
+    }, $true)
+    if ($null -eq $discovery) { throw 'Cannot locate actual UI test discovery.' }
+    . ([scriptblock]::Create($discovery.Extent.Text))
+    $uiExpected = @(Read-UiExpectedTests)
     function Invoke-UiPhase {
-        param($Name, $SelectionArgument, $Expected)
-        $uiPhases.Add([pscustomobject]@{ name = $Name; passed = $true })
+        param($Name, $SelectionArgument, $Expected, $Selection = $uiPermissionClass)
+        $uiPhases.Add([pscustomobject]@{ name = $Name; passed = $true; expected = @($Expected); selection = $Selection })
     }
     function Invoke-UiNative {
         param($Executable, [switch]$EchoOutput, $Arguments)
@@ -78,6 +84,9 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
         '{"passed":true,"phases":[{},{}]}'
     }
     foreach ($LegacySaveOnly in @($true, $false)) {
+        $uiPermissionClass = if ($LegacySaveOnly) { 'com.veycad.app.AutomaticSaveDestinationTest' } else { 'com.veycad.app.RuntimePermissionsTest' }
+        $uiPermissionExpected = @($uiExpected | Where-Object { $_.StartsWith("$uiPermissionClass#") })
+        $uiOrdinaryExpected = @($uiExpected | Where-Object { -not $_.StartsWith("$uiPermissionClass#") })
         $uiPhases = [Collections.Generic.List[object]]::new()
         $restartCalls = [Collections.Generic.List[object]]::new()
         $uiSucceeded = $false
@@ -86,7 +95,22 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
         $expectedRestarts = if ($LegacySaveOnly) { 0 } else { 2 }
         if (-not $uiSucceeded -or ($uiPhases.name -join ',') -cne $expectedPhases -or
             $restartCalls.Count -ne $expectedRestarts) { throw 'Merged legacy/restart routing failed.' }
+        if ($LegacySaveOnly -and ($uiPhases[0].expected.Count -ne 8 -or
+            $uiPhases[0].selection -notlike '*PreparedHybridExportDeviceTest#preparedSourceMixExportsSourceToneAndExcludesSelectedMusic*')) {
+            throw 'Legacy routing must include both automatic-save cases and the six AAC/editor cases.'
+        }
     }
+    $originalExpected = $uiExpected
+    $uiExpected = @($uiExpected | Where-Object { $_ -notlike '*#preparedSourceMixExportsSourceToneAndExcludesSelectedMusic' })
+    $LegacySaveOnly = $true
+    $uiPhases = [Collections.Generic.List[object]]::new()
+    $uiSucceeded = $false
+    $rejected = $false
+    try { . ([scriptblock]::Create($phaseCode)) } catch {
+        $rejected = $_.Exception.Message -ceq 'Legacy AAC regression cases are missing from discovery.'
+    }
+    if (-not $rejected -or $uiSucceeded -or $uiPhases.Count -ne 0) { throw 'Missing legacy SOURCE regression was accepted.' }
+    $uiExpected = $originalExpected
     $LegacySaveOnly = $false
     foreach ($projectReport in @('{"passed":false,"exactFileChecks":5,"checkpointPid":10,"restartedPid":20}',
         '{"passed":true,"exactFileChecks":0,"checkpointPid":10,"restartedPid":20}',
