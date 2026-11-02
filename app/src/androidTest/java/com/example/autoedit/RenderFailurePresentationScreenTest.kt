@@ -45,9 +45,9 @@ class RenderFailurePresentationScreenTest {
         val trace = HeartbeatSourcePool.SelectionTrace("test", 5, 4, 3, 2, false)
         val cases = listOf(
             HeartbeatCandidateSearchIncompleteException(trace) to
-                "Не удалось завершить подбор измеренных фрагментов для Heartbeat. Это не означает, что видео непригодно",
+                "Не удалось закончить подбор фрагментов для Heartbeat. Попробуй другой стиль или другое видео. Этот результат не означает, что исходник непригоден",
             HeartbeatCandidateDomainExhaustedException(trace.copy(finiteDomainExhausted = true)) to
-                "Heartbeat не нашёл подходящую комбинацию среди проверенных измеренных фрагментов. Это не означает, что видео непригодно"
+                "Не удалось собрать Heartbeat из проверенных фрагментов. Попробуй другой стиль или другое видео. Этот результат не означает, что исходник непригоден"
         )
         for ((error, expected) in cases) {
             ui.startRender()

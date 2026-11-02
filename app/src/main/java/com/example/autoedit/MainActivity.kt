@@ -136,6 +136,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+    private val licenseExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) {
+            val app = applicationContext
+            worker.execute {
+                val saved = LicenseArchive.export(app, uri)
+                runOnUiThread {
+                    if (!isDestroyed) toast(if (saved) "Лицензии сохранены" else
+                        "Не удалось сохранить лицензии. Файл может быть неполным.")
+                }
+            }
+        }
+    }
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -175,7 +187,7 @@ class MainActivity : AppCompatActivity() {
                 updateStyleLabel()
             })
         findViewById<TextView>(R.id.appVersion).text =
-            "Veykad ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}"
+            "Veycad ${BuildConfig.VERSION_NAME} · сборка ${BuildConfig.VERSION_CODE}"
         montageStyle = MontageStyleCatalog.restore(
             getSharedPreferences("montage_style", MODE_PRIVATE).getString("selected",
                 if (BuildConfig.GALLERY_MVP) MontageStyleCatalog.galleryMontage.id else null))
@@ -327,7 +339,7 @@ class MainActivity : AppCompatActivity() {
         stopPreviewPlayback()
         musicRequests.invalidate()
         if (::customMusic.isInitialized) customMusic.close()
-        // Music selection and short diagnostics exports use this executor; media jobs belong to EditSession.
+        // Music selection and document exports use this executor; media jobs belong to EditSession.
         worker.shutdown()
         super.onDestroy()
     }
@@ -733,11 +745,11 @@ class MainActivity : AppCompatActivity() {
                 "Анализирую видео" to if (montageStyle.recipe == MontageStyleCatalog.Recipe.GALLERY_MONTAGE)
                     "Ищу движение, композицию и чистые моменты" else "Ищу лица, движение, композицию и чистые моменты"
             VeycadAutomaticEditor.Stage.DIRECTING ->
-                "Строю режиссуру" to "Сопоставляю визуальные события с ритмом музыки"
+                "Подбираю фрагменты" to "Соединяю выбранные моменты с ритмом музыки"
             VeycadAutomaticEditor.Stage.RENDERING ->
-                "Рендерю варианты" to "Кандидат ${progress.completedCandidates + 1} из ${progress.totalCandidates}: GLES, H.264 и AAC"
+                "Создаю видео" to "Вариант ${progress.completedCandidates + 1} из ${progress.totalCandidates} · собираю изображение и звук"
             VeycadAutomaticEditor.Stage.VERIFYING ->
-                "Проверяю результат" to "Готово ${progress.completedCandidates} из ${progress.totalCandidates}: декодирую и измеряю качество"
+                "Проверяю результат" to "Проверено вариантов: ${progress.completedCandidates} из ${progress.totalCandidates} · проверяю изображение и звук"
             VeycadAutomaticEditor.Stage.COMPLETE -> "Монтаж готов" to "Выбран лучший вариант"
         }
         progressTitle.text = copy.first
@@ -858,7 +870,7 @@ class MainActivity : AppCompatActivity() {
         notificationSwitch.isChecked = settingsPreferences().getBoolean(PREF_NOTIFICATIONS, false)
         findViewById<TextView>(R.id.settingsCacheValue).text = formatBytes(temporaryBytes())
         findViewById<Button>(R.id.versionButton).text =
-            "Версия Veykad                                      ${BuildConfig.VERSION_NAME}"
+            "Версия Veycad                                      ${BuildConfig.VERSION_NAME}"
     }
 
     private fun showQualityPicker() {
@@ -893,7 +905,7 @@ class MainActivity : AppCompatActivity() {
     private fun showPrivacy() {
         AlertDialog.Builder(this)
             .setTitle("Конфиденциальность")
-            .setMessage("Видео обрабатываются только на устройстве. Veykad не отправляет исходники, кадры или готовые монтажи в интернет. Доступ к видео используется только для выбранных вами файлов.")
+            .setMessage("Видео обрабатываются только на устройстве. Veycad не отправляет исходники, кадры или готовые монтажи в интернет. Доступ к видео используется только для выбранных вами файлов.")
             .setPositiveButton("Понятно", null)
             .show()
     }
@@ -902,15 +914,16 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(R.string.capture_help_title)
             .setMessage(getString(R.string.capture_help_body) + "\n\n" + getString(R.string.capture_report_help))
-            .setNeutralButton(R.string.capture_save_report) { _, _ -> diagnosticExport.launch("Veykad-Auto-report.json") }
+            .setNeutralButton(R.string.capture_save_report) { _, _ -> diagnosticExport.launch("Veycad-Auto-report.json") }
             .setPositiveButton(R.string.capture_help_done, null)
             .show()
     }
 
     private fun showVersion() {
         AlertDialog.Builder(this)
-            .setTitle("Veykad ${BuildConfig.VERSION_NAME}")
+            .setTitle("Veycad ${BuildConfig.VERSION_NAME}")
             .setMessage("Сборка ${BuildConfig.VERSION_CODE}\nЛокальный движок автоматического монтажа")
+            .setNeutralButton("Сохранить лицензии") { _, _ -> licenseExport.launch("Veycad-licenses.zip") }
             .setPositiveButton("Закрыть", null)
             .show()
     }
@@ -946,7 +959,7 @@ class MainActivity : AppCompatActivity() {
         manager.notify(READY_NOTIFICATION_ID, NotificationCompat.Builder(this, READY_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Монтаж готов")
-            .setContentText("Откройте Veykad, чтобы посмотреть результат")
+            .setContentText("Откройте Veycad, чтобы посмотреть результат")
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .build())
