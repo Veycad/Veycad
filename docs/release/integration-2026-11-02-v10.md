@@ -119,6 +119,17 @@ no preview production fix or physical-device verdict is claimed.
 Logs: `D:/CodexWork/veycad-style-early-frame-clock-20261102.log` and
 `D:/CodexWork/veycad-style-explicit-loop-test-20261102.log`.
 
+The original V10 app and instrumentation APKs then passed all three style-preview
+cases on freshly started emulators in both modes: SwiftShader (13.484s) and host
+NVIDIA (13.747s). A graphics-specific cause is therefore not established. Restart
+clears the observed failure; accumulated emulator state or earlier test activity
+remains to be investigated through combined verification. The original full-run
+failure remains recorded. Receipt:
+`D:/CodexWork/veycad-v10-style-preview-diagnosis-20261102.json`.
+
+Local V11 combines V10 with PR #106 and PR #107. Its build, baseline and release
+security checks have started; no V11 verdict is available at this checkpoint.
+
 ## Remaining acceptance boundaries
 
 The empty-editor prompt's focused 200% font check belongs to isolated PR #105
