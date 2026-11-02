@@ -1,9 +1,9 @@
 # Release and UI-test feature visibility
 
-## Current V11 configuration — 2026-11-02
+## Current V12 configuration — 2026-11-02
 
 Generated BuildConfig for release and uiTest at
-`fca633adb0eb863562cfe8fe38b18a475fc95c41` has matching feature visibility:
+`b4769596a55ebcc225a931e13d368afd6e872c70` has matching feature visibility:
 
 | Flag | release | uiTest | User-visible effect |
 | --- | --- | --- | --- |
@@ -15,8 +15,8 @@ The manual editor is required for the first release by the owner's decision;
 its entry must be reachable through the normal interface of the final signed APK.
 Matching flags and a successful build do not close that device check.
 
-Evidence: `D:/CodexWork/veycad-v11-variant-privacy-delta-20261102.json` and
-[V11 build/package report](integration-2026-11-02-v11.md).
+Evidence: `D:/CodexWork/veycad-v12-build-and-ui-receipt-20261102.json` and
+[V12 build/package report](integration-2026-11-02-v12.md).
 
 ## Historical pre-change audit — 2026-10-26
 
