@@ -1,0 +1,37 @@
+{
+  "baseSource": "beca0960fbac96837e39a92ed751909eb9e83715",
+  "normalizedSourceSha256": {
+    "app/src/main/java/com/example/autoedit/ManualMvpActivity.kt": "c3e008aad4e182ff3e4f53b58ce1e3f445187fdf2ab243b8cd8e85a6d96555bf",
+    "app/src/androidTest/java/com/example/autoedit/ManualMvpScreenTest.kt": "9660f64ce84d584485a752489f55e3eafb501a48d6759b40b2507cdf2846d32e"
+  },
+  "uiAppSha256": "97cf41b0baad4bbbd29470cb0239da0b6ea5cc605a230822c743235b8152d1d6",
+  "instrumentationSha256": "dfbade34dda663b375519fd3fbb7e45e1407c0f8983ed7914adeb1ba9cea72ec",
+  "device": "Dedicated API36 x86_64 emulator; host NVIDIA graphics; density160; 4096-byte pages",
+  "scope": "Native screenshots of the main-based UI fix, test package only. Other pending release changes are absent; these are not final store images, signed/device/media or spoken TalkBack acceptance.",
+  "screenshots": [
+    {
+      "file": "normal.png",
+      "sha256": "e2a10984a339d94997119350f212a5b9c7a890c968c8a505675f194995c62d67",
+      "width": 320,
+      "height": 480,
+      "fontScale": 1.0,
+      "selectedFps": 60,
+      "buttonBounds": [
+        "[22,318][156,366]",
+        "[160,318][294,366]"
+      ]
+    },
+    {
+      "file": "font200.png",
+      "sha256": "634deed601764a9c304b72e91d6897b5af7005df8e6b6530a34e5c6bc8184410",
+      "width": 320,
+      "height": 480,
+      "fontScale": 2.0,
+      "selectedFps": 60,
+      "buttonBounds": [
+        "[22,239][298,295]",
+        "[22,295][298,351]"
+      ]
+    }
+  ]
+}

@@ -11,6 +11,9 @@ import android.widget.Button
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.core.content.FileProvider
+import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import com.google.android.material.button.MaterialButton
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
@@ -49,6 +52,44 @@ class ManualMvpScreenTest {
             assertTrue("Preview owners must stop before fixture cleanup", android.os.SystemClock.elapsedRealtime() < deadline)
             android.os.SystemClock.sleep(25)
         }
+    }
+
+    @Test fun frameRateSelectionIsVisibleAndSurvivesRecreation() {
+        fixture.launch()
+        fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("empty editor ready", 30_000) { view<Button>("import")?.isEnabled == true }
+        fun assertChoice(fps: Int) {
+            lateinit var selected: MaterialButton
+            lateinit var other: MaterialButton
+            onView(withText("$fps кадр/с")).perform(scrollTo()).check { value, missing ->
+                if (missing != null) throw missing
+                selected = value as MaterialButton
+            }
+            onView(withText("${if (fps == 30) 60 else 30} кадр/с")).perform(scrollTo()).check { value, missing ->
+                if (missing != null) throw missing
+                other = value as MaterialButton
+            }
+            instrumentation.runOnMainSync {
+                assertTrue(selected.isSelected); assertFalse(other.isSelected)
+                val background = selected.backgroundTintList!!.getColorForState(selected.drawableState, 0)
+                assertNotEquals("Selected frame rate must have a distinct visible background", background,
+                    other.backgroundTintList!!.getColorForState(other.drawableState, 0))
+                assertNotNull("Selection must also be visible without relying on color", selected.icon)
+                assertTrue("Selection checkmark must contrast with its background",
+                    ColorUtils.calculateContrast(selected.iconTint!!.getColorForState(selected.drawableState, 0), background) >= 3.0)
+                assertNull(other.icon)
+                assertEquals(fixture.context.getString(R.string.manual_selected), ViewCompat.getStateDescription(selected))
+                assertEquals(fixture.context.getString(R.string.manual_not_selected), ViewCompat.getStateDescription(other))
+            }
+        }
+        assertChoice(30)
+        onView(withText("60 кадр/с")).perform(click())
+        fixture.waitUntil("frame rate changed", 30_000) { view<Button>("import")?.isEnabled == true }
+        assertChoice(60)
+        lateinit var previous: ManualMvpActivity
+        instrumentation.runOnMainSync { previous = current()!!; previous.recreate() }
+        fixture.waitUntil("frame rate restored", 30_000) { current() !== previous && view<Button>("import")?.isEnabled == true }
+        assertChoice(60)
     }
 
     @Test fun importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision() {
