@@ -20,6 +20,56 @@ import java.util.UUID
 class TextEditActivityDeviceTest {
     private val context get()=ApplicationProvider.getApplicationContext<android.content.Context>()
     private val instrumentation get()=InstrumentationRegistry.getInstrumentation()
+    @Test fun pausedPreviewStopsRedrawingButSeekAndPlaybackStillUpdateTextTime() {
+        val source=SyntheticVideo.create(File(context.cacheDir,"paused-text-${UUID.randomUUID()}.mp4"),2000)
+        val session=TextEditSession.get(context)
+        ActivityScenario.launch<TextEditActivity>(Intent(context,TextEditActivity::class.java)
+            .putExtra(TextEditActivity.EXTRA_SOURCE,source.path)).use { scenario ->
+            waitFor { session.state.value?.project?.sourcePath==source.canonicalPath && session.state.value?.busy==false }
+            lateinit var video:android.widget.VideoView
+            lateinit var overlay:TextPreviewOverlay
+            lateinit var sibling:android.view.View
+            scenario.onActivity { activity ->
+                video=activity.findViewById(R.id.textPreview)
+                sibling=activity.findViewById(R.id.textChooseButton)
+                val container=video.parent as android.view.ViewGroup
+                overlay=(0 until container.childCount).map { container.getChildAt(it) }
+                    .filterIsInstance<TextPreviewOverlay>().single()
+            }
+            waitFor { video.duration>0 && !video.isPlaying }
+            android.os.SystemClock.sleep(500)
+            waitFor { overlay.isLaidOut && !overlay.isDirty && overlay.timeUs==video.currentPosition*1000L }
+            val draws=java.util.concurrent.atomic.AtomicInteger()
+            val windowDraws=java.util.concurrent.atomic.AtomicInteger()
+            val listener=android.view.ViewTreeObserver.OnDrawListener {
+                windowDraws.incrementAndGet()
+                if(overlay.isDirty) draws.incrementAndGet()
+            }
+            scenario.onActivity { overlay.viewTreeObserver.addOnDrawListener(listener) }
+            try {
+                android.os.SystemClock.sleep(1000)
+                assertTrue("Paused preview keeps redrawing: ${draws.get()} draws",draws.get()<=1)
+                scenario.onActivity { draws.set(0); windowDraws.set(0); sibling.invalidate() }
+                waitFor { windowDraws.get()>0 }
+                assertEquals("Sibling redraw must not be counted as preview redraw",0,draws.get())
+                scenario.onActivity { draws.set(0); overlay.invalidate() }
+                waitFor { draws.get()>0 }
+                assertEquals("An invalidated overlay must be counted",1,draws.get())
+                scenario.onActivity { video.seekTo(1000) }
+                waitFor { overlay.timeUs>=500_000 }
+                var pausedTime=0L
+                scenario.onActivity { pausedTime=overlay.timeUs; video.start() }
+                waitFor { overlay.timeUs>pausedTime+100_000 }
+                scenario.onActivity { video.pause() }
+                android.os.SystemClock.sleep(500)
+                draws.set(0)
+                android.os.SystemClock.sleep(1000)
+                assertTrue("Pausing again must stop redraws: ${draws.get()}",draws.get()<=1)
+            } finally {
+                scenario.onActivity { overlay.viewTreeObserver.removeOnDrawListener(listener) }
+            }
+        }
+    }
     @Test fun unreadableDraftIsPreservedAndAnotherVideoCanStillOpen() {
         val source=SyntheticVideo.create(File(context.cacheDir,"damaged-draft-${UUID.randomUUID()}.mp4"),1000)
         val other=SyntheticVideo.create(File(context.cacheDir,"good-draft-${UUID.randomUUID()}.mp4"),1000)
