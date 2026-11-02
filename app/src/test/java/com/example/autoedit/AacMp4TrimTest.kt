@@ -9,15 +9,21 @@ import org.junit.Test
 class AacMp4TrimTest {
     private fun box(type: String, body: ByteArray): ByteArray = bytes { writeInt(body.size + 8); writeBytes(type); write(body) }
     private fun bytes(body: DataOutputStream.() -> Unit): ByteArray = ByteArrayOutputStream().also { DataOutputStream(it).use(body) }.toByteArray()
-    private fun fixture(mediaTime: Int = 2048, movieScale: Int = 10000, video: Boolean = false, extendedMdat: Boolean = false): ByteArray {
+    private fun fixture(mediaTime: Int = 2048, movieScale: Int = 10000, video: Boolean = false, extendedMdat: Boolean = false, wideEdit: Boolean = false): ByteArray {
         val mvhd = box("mvhd", bytes { writeInt(0); writeLong(0); writeInt(movieScale); writeInt(640) })
         val tkhd = box("tkhd", bytes { writeInt(0); writeLong(0); writeInt(1); writeInt(0); writeInt(640) })
         val mdhd = box("mdhd", bytes { writeInt(0); writeLong(0); writeInt(48000); writeInt(4096) })
         val hdlr = box("hdlr", bytes { writeLong(0); writeBytes("soun") })
-        val elst = box("elst", bytes { writeInt(0); writeInt(1); writeInt(427); writeInt(mediaTime); writeInt(65536) })
+        fun editEntry(duration: Int, time: Int) = bytes {
+            if (wideEdit) { writeLong(duration.toLong()); writeLong(time.toLong()) }
+            else { writeInt(duration); writeInt(time) }
+            writeInt(65536)
+        }
+        val editVersion = if (wideEdit) 1 shl 24 else 0
+        val elst = box("elst", bytes { writeInt(editVersion); writeInt(1); write(editEntry(427, mediaTime)) })
         val videoTrack = if (!video) byteArrayOf() else box("trak",
             box("tkhd", bytes { writeInt(0); writeLong(0); writeInt(2); writeInt(0); writeInt(11200) }) +
-            box("edts", box("elst", bytes { writeInt(0); writeInt(2); writeInt(1200); writeInt(-1); writeInt(65536); writeInt(10000); writeInt(0); writeInt(65536) })) +
+            box("edts", box("elst", bytes { writeInt(editVersion); writeInt(2); write(editEntry(1200, -1)); write(editEntry(10000, 0)) })) +
             box("mdia", box("mdhd", bytes { writeInt(0); writeLong(0); writeInt(90000); writeInt(90000) }) +
                 box("hdlr", bytes { writeLong(0); writeBytes("vide") }) + box("minf", box("stbl", box("stco", bytes { writeInt(0); writeInt(1); writeInt(if (extendedMdat) 32 else 24) })))))
         val media = if (extendedMdat) bytes { writeInt(1); writeBytes("mdat"); writeLong(20); writeInt(0x01020304) }
@@ -77,7 +83,7 @@ class AacMp4TrimTest {
     @Test fun unit_overflow_and_unsupported_versions_fail_without_writes() {
         val file=File.createTempFile("aac-trim", ".mp4")
         try {
-            val badVersion=fixture().also { val pos=String(it,Charsets.ISO_8859_1).indexOf("elst")+4; it[pos]=1 }
+            val badVersion=fixture().also { val pos=String(it,Charsets.ISO_8859_1).indexOf("elst")+4; it[pos]=2 }
             for (input in listOf(fixture(movieScale=Int.MAX_VALUE),badVersion)) {
                 file.writeBytes(input)
                 assertThrows(IllegalStateException::class.java) { AacMp4Trim.apply(file,1600,2048) }
@@ -104,6 +110,58 @@ class AacMp4TrimTest {
             assertArrayEquals(before.copyOfRange(16,28), after.copyOfRange(16,28))
         } finally { file.delete() }
     }
+    @Test fun wide_edit_entries_preserve_priming_video_origin_and_every_unrelated_byte() {
+        val file = File.createTempFile("aac-trim-wide", ".mp4")
+        try {
+            val before = fixture(video = true, extendedMdat = true, wideEdit = true)
+            file.writeBytes(before)
+            AacMp4Trim.apply(file, 1600, 2048)
+            val after = file.readBytes()
+            val buffer = java.nio.ByteBuffer.wrap(after)
+            fun positions(type: String) = Regex(type).findAll(String(before, Charsets.ISO_8859_1)).map { it.range.first + 4 }.toList()
+            val changed = HashSet<Int>()
+            fun word(at: Int, expected: Int) { assertEquals(expected, buffer.getInt(at)); repeat(4) { changed += at + it } }
+            fun wide(at: Int, expected: Long) { assertEquals(expected, buffer.getLong(at)); repeat(8) { changed += at + it } }
+            word(positions("mvhd").single() + 12, 48000)
+            word(positions("mvhd").single() + 16, 53760)
+            word(positions("tkhd")[0] + 20, 1600)
+            word(positions("tkhd")[1] + 20, 53760)
+            val audio = positions("elst")[0]
+            val video = positions("elst")[1]
+            wide(audio + 8, 1600)
+            wide(video + 8, 5760)
+            wide(video + 28, 48000)
+            assertEquals(2048, buffer.getLong(audio + 16))
+            assertEquals(-1, buffer.getLong(video + 16))
+            assertEquals(0, buffer.getLong(video + 36))
+            assertEquals(before.size, after.size)
+            before.indices.filter { it !in changed }.forEach { assertEquals("unrelated byte $it", before[it], after[it]) }
+        } finally { file.delete() }
+    }
+
+    @Test fun invalid_wide_entries_and_overflow_never_mutate_the_file() {
+        val file = File.createTempFile("aac-trim-wide", ".mp4")
+        try {
+            val valid = fixture(wideEdit = true)
+            val entry = String(valid, Charsets.ISO_8859_1).indexOf("elst") + 4 + 8
+            val invalid = listOf(
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putLong(entry, -1) },
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putLong(entry + 8, 1024) },
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putInt(entry + 16, 65537) },
+                valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putInt(entry - 4, 3) },
+                valid.copyOf(entry + 19))
+            for (input in invalid) {
+                file.writeBytes(input)
+                assertThrows(IllegalStateException::class.java) { AacMp4Trim.apply(file, 1600, 2048) }
+                assertArrayEquals(input, file.readBytes())
+            }
+            val overflow = valid.copyOf().also { java.nio.ByteBuffer.wrap(it).putLong(entry, Long.MAX_VALUE) }
+            file.writeBytes(overflow)
+            assertThrows(ArithmeticException::class.java) { AacMp4Trim.apply(file, 1600, 2048) }
+            assertArrayEquals(overflow, file.readBytes())
+        } finally { file.delete() }
+    }
+
     @Test fun inconsistent_trim_or_malformed_atoms_are_rejected_before_mutation() {
         val file = File.createTempFile("aac-trim", ".mp4")
         try {
