@@ -14,97 +14,25 @@
 
 - RuStore first; Google Play excluded. Do not silently reduce existing quality gates or declare unreviewed output accepted.
 - Current main at intake: `beca0960fbac96837e39a92ed751909eb9e83715`, source version 0.1.16/code17.
-- Existing dirty historical checkout is preserved. Work in clean clone `D:/CodexWork/VeycadRuStore-20261025`, branch `codex/rustore-release-preparation`.
+- Existing dirty historical checkouts are preserved. Use the current isolated code and documentation worktrees listed in the [handoff](../../release/release-handoff.md).
 - No new editor, account, payments, analytics, cloud upload or aesthetic redesign in this release preparation.
 - Primary acceptance paths: gallery montage and text/subtitles. Auto camera and any other exposed feature must pass its own acceptance or have an explicit owner-approved deferral; do not silently remove it.
 - Keep Sigma's existing paused status. No revival in this work.
 - Owner confirmed no permanent signing key or RuStore account exists yet. Follow [account/signing preparation](../../release/account-and-signing.md). Never place secrets in source, logs or chat. No replacement signing identity without explicit agreement.
 - Each coherent implementation gets its own commit/PR. Merge only after owner approval and applicable checks; store submission is a separate approval.
+- Apply Ponytail skills when they help keep the complete change small. Reuse existing code; retain validation, accessibility and acceptance gates.
 
-## Текущее состояние — 2 ноября 2026
+## Текущее состояние
 
-Приложение ещё не готово к публикации. Сборка и большинство проверок пройдены;
-это не означает готовность подписанного релиза на телефоне.
+Актуальные ветки, результаты и оставшиеся действия ведутся в одной
+[краткой сводке](../../release/release-handoff.md). Сборка и отдельные
+успешные проверки не означают готовность к публикации. Подробная история
+проверок сохранена в отчётах `docs/release/` и Git; этот план хранит
+последовательность работ и критерии приёмки.
 
-Последняя локальная сборка — [V13](../../release/integration-2026-11-02-v13.md),
-[PR #113](https://github.com/Veycad/Veycad/pull/113). В неё включены исправления
-обеих ошибок полного GitHub-прогона V12: конфликт установки музыки и неверный
-подсчёт перерисовок окна. Также включены объяснения ошибок/отмена, чистка 13
-неиспользуемых файлов и нативная проверка счётчика готовых вариантов монтажа.
-
-На общем V13 прошли свежая сборка, 1394 JVM и 338 Python проверок, упаковка
-четырёх неподписанных release APK и статическое выравнивание. Пройдены 19
-выбранных нативных/экранных сценариев, включая все шесть сценариев ручного
-редактора, и пять проверок распознавания речи. После остановки процесса
-восстановились импорт и проект с точным сохранением файлов. GitHub baseline
-и оба legacy-задания прошли; полный экранный прогон ещё выполняется.
-Ни отдельные проверки, ни сборка не заменяют его итог.
-
-Полный GitHub-прогон V12 завершился: 269 из 271 сценария прошли, два с ошибками.
-Его отдельный локальный полный запуск прервался аварией Android после 243
-стартов; причина в приложении или эмуляции не доказана. История графических
-сравнений и обновления эмулятора сохранена в [отчёте V12](../../release/integration-2026-11-02-v12.md).
-Эти результаты не переписываются успехом выбранных V13-проверок. Слияния
-и отправки в магазин не было; запуск с 16 КБ страницами и итоговая приёмка
-на телефоне остаются открытыми.
-
-Предыдущий полный прогон — [V11](../../release/integration-2026-11-02-v11.md) — не пройден: он прервался
-аварией системного процесса Android в эмуляторе. Запустились 243 из 270 экранных
-сценариев; в журнале 239 успешных завершений и четыре сообщения об ошибке,
-включая аварию. Оставшиеся 27 не запускались; корректного итогового XML нет.
-После перезапуска все 27 ранее не запущенных сценариев прошли в отдельной
-проверке из 29 случаев: текст, экспорт, декодирование видео и распознавание речи.
-Это закрывает пробел в их проверке, но не отменяет аварийный полный прогон.
-Отдельно в V11 прошли восстановление выбранных видео и проекта после
-принудительного закрытия процесса в эмуляторе. Проверены сохранённые файлы
-и повторное открытие редактора; обновление с постоянной подписью ещё не проверено.
-
-Предыдущий полный прогон V10 завершён: 266 из 269 экранных сценариев пройдены, три с ошибками;
-отдельно пройдены обе проверки разрешений. Ошибки — повтор видео-примера и ожидание
-спокойного интерфейса в двух сценариях текста. Независимая проверка сохранённого AAC
-пройдена. Подробности и восстановление архива после ошибки локального Python — в отчёте V10.
-Статическая проверка выравнивания библиотек повторена для V12; это не запуск с 16 КБ страницами.
-Подписанная релизная версия, физическое устройство, полная приёмка медиа и запуск
-с памятью 16 КБ ещё не проверены.
-
-- **Сделано:** доработаны объяснения ошибок и требований к видео, название приложения,
-  крупные шрифты в выборе стиля и настройка подписи. Ручной редактор включён в
-  release-конфигурации. Изменения подготовлены через отдельные PR, без слияния.
-- **Проверено на V6:** сборка, 266 из 267 экранных сценариев, восстановление импорта
-  и сохранённого проекта после принудительного закрытия. Подробности и ограничения —
-  в [отчёте V6](../../release/integration-2026-10-26-v6.md).
-- **Исправлено отдельно от V10:** лишние перерисовки текста на паузе —
-  [PR #107](https://github.com/Veycad/Veycad/pull/107). Все семь сценариев текста,
-  включая два ранее падавших, и базовые проверки прошли. Добавлены недостающие
-  уведомления о лицензиях зависимостей — [PR #106](https://github.com/Veycad/Veycad/pull/106).
-  Оба изменения вошли в V11; сборка и базовые проверки пройдены. Общая приёмка
-  текста в длительном прогоне остаётся открытой: его сценарии прервались при аварии
-  графической подсистемы. После перезапуска весь класс текста прошёл и в V11.
-- **Проблемы V11:** повторное зависание примера стиля, расхождение кадра предпросмотра
-  и экспорта, зависание закрытия экрана и последующая авария Android. После перезапуска
-  два отдельных сценария снова прошли; причина сбоев после длительного прогона ещё
-  не установлена. Прежний сбой первого кадра на SwiftShader
-  не повторился в полном прогоне на NVIDIA; быстродействие на телефоне остаётся открытым.
-  В отдельном сравнении текущей V11 проверка картинки прошла два цикла на SwiftShader,
-  но снова упала на NVIDIA даже после холодного запуска. Готовится отдельная копия
-  эмулятора 37.2.13 для проверки; исправление приложения этим не подтверждено.
-- **Пока не сделано:** приёмка итогового подписанного APK, проверка обновления без
-  потери проектов, TalkBack, просмотр и прослушивание реальных результатов,
-  оставшиеся проверки камеры и устройства без Google-сервисов.
-- **UX-правка в V12:** выбранные 30/60 кадров в секунду теперь
-  выделяются цветом и контрастной галочкой, есть подпись состояния —
-  [PR #108](https://github.com/Veycad/Veycad/pull/108). На исходном приложении
-  регрессия падает; на исправленном проходит при обычном и 200% шрифте,
-  включая восстановление выбора в новом экземпляре экрана. Чистый baseline
-  прошёл. В V12 дополнительно прошёл весь класс ручного редактора; полный прогон,
-  подписанная и физическая приёмка остаются открытыми.
-- **Для публикации нужны:** аккаунт RuStore, постоянный ключ с резервной копией,
-  подтверждённые права на музыку, финальные изображения карточки, публичная политика
-  и одобрение владельца. Телефон владелец подключит позже; повторно не запрашиваем.
-
-Список ниже — план работ с критериями приёмки. Старые незакрытые пункты нельзя
-использовать как счётчик сделанного: один пункт может объединять готовую реализацию
-и ещё не выполненную проверку подписанного приложения.
+Незакрытый пункт может объединять готовую реализацию и ещё не выполненную
+проверку подписанного приложения. Количество галочек не является процентом
+готовности. Телефон владелец подключит позже; повторно не запрашиваем.
 
 ## Remaining work and sequencing
 
@@ -115,11 +43,11 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | Short V12 graphics group passes15/15 on new37.2.13 NVIDIA; full attempt still aborts in Android WindowManager task snapshot after243/271 screen starts. No preceding assertion failures; OS/app cause remains open |
-| 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | V12 manual class 6/6, large-text follow-up 2/2 and controlled import/project restarts PASS on emulator; signed arm64/physical acceptance open |
-| 3. Integrated candidate | Combined changes build and pass applicable checks | V12 build, baseline, unsigned package inspection and static alignment passed; full UI failed/incomplete on new emulator despite short-group success. Signed/device acceptance and merge approval open |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | PR #120 full UI: 277/278; export/preview wait failed. PR #121 adds phase diagnostics; full exact-head CI pending. Do not assume an emulator-only cause |
+| 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | API28 legacy 8/8 and API36 selected cases passed. Current diagnostic helper functional case passed; signed arm64/physical acceptance open |
+| 3. Integrated candidate | Combined changes build and pass applicable checks | Production candidate `931e530`: 1397 JVM + 338 Python, four unsigned APKs and static 16 KB alignment passed. Full UI, signed/device acceptance and merge approval remain open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
-| 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Listing draft and current public GitHub About checked; final images and public policy pending; see material inventory in listing |
+| 5. Store/GitHub materials | Listing, screenshots, policy and repository describe accepted behavior | Listing/policy/README drafts prepared; accepted-build images and public policy URL pending; see material inventory in listing |
 | 6. Signing and publication | Account, permanent key, verified signed package, owner-approved submission | Account/key absent; third-party music rights unresolved |
 
 Record completed checks against exact source/APK identities in release receipts.
@@ -150,10 +78,10 @@ Consumes: current main and installed Android/JDK/NDK tools. Produces: exact buil
 - [x] Read current main, repository contribution rules, RuStore publication/signature requirements.
 - [x] Isolate changes from historical dirty checkout and create task branch.
 - [x] Run `gradlew.bat baselineVerify` with configured JDK/SDK/Python; record failures without calling them regressions until compared to base. [Baseline receipt](../../release/baseline-2026-10-25.md): 1392 JVM + 338 Python, build/lint/security passed; no release/device verdict.
-- [x] Inspect the V12 release manifest, runtime build flags and native/model payload: all four unsigned APKs match the [V12 receipt](../../release/integration-2026-11-02-v12.md). This is package inspection, not runtime acceptance.
+- [x] Inspect candidate `931e530` release manifest, build flags and native/model payload: all four unsigned APKs match the [current receipt](../../release/aac-legacy-2026-11-09.md). This is package inspection, not runtime acceptance.
 - [ ] Close model/music rights and full license compliance; packaged notice checks do not establish permission to distribute every asset.
 - [x] External signing configuration implemented in draft #73 and combined source; opt-in signing, required inputs and no debug fallback verified by negative probes.
-- [x] Build and inspect all four unsigned V12 release APKs: application ID/version, non-debuggable state, flags/native payload and file hashes recorded. Signature verification rejects them as unsigned; no certificate fingerprint or signed install is claimed.
+- [x] Build and inspect all four unsigned `931e530` release APKs: application ID/version, non-debuggable state, source SHA, flags/native payload and file hashes recorded. Signature verification rejects them as unsigned; no certificate fingerprint or signed install is claimed.
 - [ ] Verify the final signed APK, alias/password, certificate fingerprint and same-key update with the owner-controlled permanent key. The rejected temporary-key probe did not complete this check.
 - [x] Measure packaged size and evaluate the minification decision using the [V11 size inventory](../../release/package-size-v11-2026-11-02.md). Keep current settings: DEX plus all Android resources occupy 5.431% of ARM64 APK. No R8 savings or altered-build runtime acceptance is claimed. Optional model compression was measured separately; it is not implemented or a release prerequisite.
 - [x] Packaging changes committed in separate draft [PR #73](https://github.com/Veycad/Veycad/pull/73) and [PR #104](https://github.com/Veycad/Veycad/pull/104); both remain open and unmerged. Signed/device acceptance remains separate.
@@ -165,7 +93,7 @@ Consumes: existing session states and typed failures. Produces: clearer copy and
 
 - [x] Audit current shared-presentation callers and existing copy assertions: three failure-message callers and two style-presentation callers checked at V12, with matching exact-source JVM results (13 failure-copy and 17 style-copy cases). Repeat the relevant caller check before further edits.
 - [x] Replace typed Heartbeat search/candidate jargon with actionable Russian in PR #71, included in V12; keep finite-search/incomplete-search scope explicit rather than declaring the entire source unsuitable.
-- [ ] Make untyped codec/execution failures actionable while retaining original diagnostics and meaningful business-validation messages. Current fallback still returns raw exception text; `untyped_codec_or_execution_failure_does_not_become_a_material_shortfall` explicitly preserves that behavior. Typed search-copy improvements do not close this item.
+- [x] Make untyped codec/execution failures actionable while retaining diagnostics and typed business messages: #110/#117/#118 are included in `931e530`. The shared fallback and `untyped_codec_or_execution_failure_does_not_become_a_material_shortfall` now require retry copy; the latest baseline and full PR #120 presentation tests passed. This does not close wider recovery/accessibility acceptance.
 - [x] Implement count/duration hints and ordered DUALITY source labels: 15–60 seconds for single-source styles, 6–60 seconds per DUALITY source and numbered selections. Current exact-source style-copy tests pass; final visual/device acceptance remains open.
 - [x] Correct the final `VERIFYING` producer event to report N/N rather than N+1/N: [PR #72](https://github.com/Veycad/Veycad/pull/72), included in V12. The actual source event is corrected; UI formatting is not used to hide overflow.
 - [x] Add a direct native regression for the final-selection producer event: [PR #72 follow-up](../../release/native-progress-regression-2026-11-02.md), same-instrumentation old-arithmetic FAIL and fixed PASS, clean baseline and read-only review. Scope: owning main-based PR, one-candidate fixture; not integrated V12, multi-candidate or media-quality acceptance.
