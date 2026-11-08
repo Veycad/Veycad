@@ -129,7 +129,7 @@ class ManualMvpScreenTest {
         fixture.waitUntil("landscape ready", 30_000) { store.load(id).current.visualSettings.aspect == ProjectAspect.LANDSCAPE_16_9 && ready() }
         val revision = store.load(id).current.id
         tapTag("export")
-        fixture.waitUntil("export linked and preview restored", 180_000) { store.load(id).exports.any { it.revisionId == revision } && ready() }
+        awaitExportAndPreview(id, revision)
         val saved = store.load(id).exports.last()
         val output = File(fixture.context.filesDir, "completed-renders/${saved.fileName}")
         assertTrue(output.isFile && output.length() > 0)
@@ -195,7 +195,7 @@ class ManualMvpScreenTest {
         val revision = store.load(id).current.id
         tapTag("export")
         capture("editor-exporting")
-        fixture.waitUntil("export published", 180_000) { store.load(id).exports.any { it.revisionId == revision } && ready() }
+        awaitExportAndPreview(id, revision)
         val saved = store.load(id).exports.last()
         val file = File(fixture.context.filesDir, "completed-renders/${saved.fileName}")
         MediaMetadataRetriever().use { metadata ->
@@ -356,6 +356,29 @@ class ManualMvpScreenTest {
             Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().apply { data = uri }))
         tapTag("import")
         fixture.waitUntil("real imported paused preview", 45_000) { ready() }
+    }
+
+    private fun awaitExportAndPreview(id: String, revision: Long) {
+        try {
+            fixture.waitUntil("export published and preview restored", 180_000) {
+                store.load(id).exports.any { it.revisionId == revision } && ready()
+            }
+        } catch (error: AssertionError) {
+            val exports = store.load(id).exports.filter { it.revisionId == revision }
+            val files = exports.map { File(fixture.context.filesDir, "completed-renders/${it.fileName}").isFile }
+            var editor = "editor absent"
+            instrumentation.runOnMainSync {
+                current()?.let { activity ->
+                    editor = "status=${field<TextView>(activity, "status")?.text}; " +
+                        "busy=${field<Boolean>(activity, "busy")}; exporting=${field<Boolean>(activity, "exporting")}; " +
+                        "preview=${field<DraftPreviewController.State>(activity, "playbackState")}"
+                }
+            }
+            val workers = Thread.getAllStackTraces().entries.filter { it.key.name.startsWith("Veycad-preview-") }
+                .joinToString("\n") { (thread, stack) -> "${thread.name}:\n${stack.joinToString("\n")}" }
+            throw AssertionError("Export/preview wait failed: revision=$revision; linked=${exports.size}; " +
+                "publishedFiles=$files; $editor; workers=$workers", error)
+        }
     }
 
     private fun ready() = view<TextView>("preview-state")?.text == "Черновик · пауза" &&
