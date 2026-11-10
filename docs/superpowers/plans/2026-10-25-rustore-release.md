@@ -43,7 +43,7 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | PR #123 fixes six API26 AAC failures (old tests 7/8); #124 corrects the save test's recreation API (2/2 separately), independent decode passed. PR #121 full UI: 277/278, direct first-frame timeout; mixed 16 KB group hit VerifyError. Full current CI pending; these causes are not established |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | API26 AAC/save cases passed across documented runs; #124 remote baseline/API28 legacy 8/8 passed. Current combined 16 KB editor/AAC/speech 11/11 passed, old APK cold control 4/4 passed; previous VerifyError/JIT causes remain unknown. Full current UI pending after #121 first-frame timeout |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | API28 legacy 8/8 and API36 selected cases passed. Current diagnostic helper functional case passed; signed arm64/physical acceptance open |
 | 3. Integrated candidate | Combined changes build and pass applicable checks | Production candidate `931e530`: 1397 JVM + 338 Python, four unsigned APKs and static 16 KB alignment passed. Full UI, signed/device acceptance and merge approval remain open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
