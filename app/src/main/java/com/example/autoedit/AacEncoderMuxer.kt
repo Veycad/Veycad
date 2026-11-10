@@ -369,7 +369,7 @@ internal object AacEncoderMuxer {
             // final coded AU duration, then crop only the presentation edit. A shortened EOS
             // also shortens mdhd/stts, hiding the padding from the extractor's gapless contract.
             muxer!!.stop(); muxStarted = false; finished = true
-            if (timing.delayFrames > 0) AacMp4Trim.apply(file, frames, timing.delayFrames)
+            if (timing.delayFrames > 0) AacMp4Trim.apply(file, frames, timing.delayFrames, Build.VERSION.SDK_INT < 28)
         }
 
         override fun close() {
@@ -469,7 +469,7 @@ internal object AacEncoderMuxer {
                     }
                     checkCancelled()
                     muxer.stop(); started = false
-                    AacMp4Trim.apply(partial, prepared.sampleFrames, delay)
+                    AacMp4Trim.apply(partial, prepared.sampleFrames, delay, Build.VERSION.SDK_INT < 28)
                 } finally { try { if (started) runCatching { muxer.stop() } } finally { muxer.release() } }
             } finally { audio.release() }
         } finally { video.release() }

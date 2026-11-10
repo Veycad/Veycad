@@ -2,13 +2,15 @@ package com.veycad.app
 
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.util.Locale
 
 /** Narrow in-place correction for non-fragmented files with version-0 headers and v0/v1 edits.
  * No media/sample table/chunk offset is rewritten. Validate every field before the first write.
  * Wide edits use the 48 kHz PCM clock; v0 edits preserve an exact common movie multiple. */
 internal object AacMp4Trim {
     private data class Atom(val type: String, val data: Long, val end: Long)
-    fun apply(file: File, sampleFrames: Long, delayFrames: Int) {
+    fun apply(file: File, sampleFrames: Long, delayFrames: Int, legacyGaplessTag: Boolean = false) {
         check(sampleFrames > 0 && delayFrames > 0)
         RandomAccessFile(file, "rw").use { io ->
             fun uint(at: Long): Long { check(at >= 0 && at + 4 <= io.length()); io.seek(at); return io.readInt().toLong() and 0xffffffffL }
@@ -62,6 +64,7 @@ internal object AacMp4Trim {
             var audioCount = 0
             var videoCount = 0
             var movieDuration = 0L
+            var paddingFrames = 0L
             val ids = HashSet<Long>()
             for (trak in tracks) {
                 val track = children(trak.data, trak.end)
@@ -74,7 +77,11 @@ internal object AacMp4Trim {
                 val audio = kind == "soun"
                 var duration = rescale(uint(tkhd.data + 20))
                 val edits = track.filter { it.type == "edts" }; check(edits.size <= 1)
-                if (audio) { audioCount++; check(edits.size == 1) { "AAC priming edit missing" } } else videoCount++
+                if (audio) {
+                    audioCount++; check(edits.size == 1) { "AAC priming edit missing" }
+                    // Android 8 assigns iTunSMPB to the last track parsed before the tag.
+                    if (legacyGaplessTag) check(trak == tracks.last()) { "Legacy AAC metadata requires audio last" }
+                } else videoCount++
                 for (edts in edits) {
                     val elst = children(edts.data, edts.end).one("elst")
                     check(elst.end - elst.data >= 8) { "Truncated edit list" }
@@ -99,6 +106,7 @@ internal object AacMp4Trim {
                             check(uint(mdhd.data + 12) == 48000L && mediaTime == delayFrames.toLong()) { "AAC priming/timebase mismatch" }
                             val coded = uint(mdhd.data + 16)
                             check(coded >= sampleFrames + delayFrames && coded - sampleFrames - delayFrames < 4096) { "AAC coded tail mismatch" }
+                            paddingFrames = coded - sampleFrames - delayFrames
                             segment = Math.multiplyExact(sampleFrames, scale / 48000)
                             duration = segment
                         }
@@ -110,9 +118,23 @@ internal object AacMp4Trim {
             }
             check(audioCount == 1 && videoCount <= 1)
             put(mvhd.data + 16, movieDuration)
+            val metadata = if (legacyGaplessTag) {
+                check(moov.end == io.length() && movie.none { it.type == "udta" }) { "Unsupported legacy AAC metadata layout" }
+                fun box(type: String, body: ByteArray) = ByteBuffer.allocate(body.size + 8)
+                    .putInt(body.size + 8).put(type.toByteArray(Charsets.US_ASCII)).put(body).array()
+                val trim = String.format(Locale.ROOT, " 00000000 %08x %08x %016x", delayFrames, paddingFrames, sampleFrames)
+                val comment = box("----", box("mean", ByteArray(4) + "com.apple.iTunes".toByteArray(Charsets.US_ASCII)) +
+                    box("name", ByteArray(4) + "iTunSMPB".toByteArray(Charsets.US_ASCII)) +
+                    box("data", ByteBuffer.allocate(8).putInt(1).putInt(0).array() + trim.toByteArray(Charsets.US_ASCII)))
+                val handler = box("hdlr", ByteBuffer.allocate(25).putLong(0).put("mdir".toByteArray(Charsets.US_ASCII)).array())
+                box("udta", box("meta", ByteArray(4) + handler + box("ilst", comment))).also {
+                    put(moov.data - 8, moov.end - moov.data + 8 + it.size)
+                }
+            } else byteArrayOf()
             // The target is an owned staging file. A failed IO never publishes it.
             writes.forEach { (at, value) -> io.seek(at); io.writeInt(value.toInt()) }
             wideWrites.forEach { (at, value) -> io.seek(at); io.writeLong(value) }
+            if (metadata.isNotEmpty()) { io.seek(moov.end); io.write(metadata) }
         }
     }
 }
