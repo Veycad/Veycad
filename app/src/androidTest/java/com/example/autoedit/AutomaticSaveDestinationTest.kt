@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Instrumentation.ActivityResult
 import android.content.Intent
 import android.os.Build
+import androidx.core.app.ActivityCompat
 import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
@@ -81,7 +82,7 @@ class AutomaticSaveDestinationTest {
             }
             monitor.addLifecycleCallback(callback)
             try {
-                InstrumentationRegistry.getInstrumentation().runOnMainSync { original.recreate() }
+                InstrumentationRegistry.getInstrumentation().runOnMainSync { ActivityCompat.recreate(original) }
                 assertTrue("Recreate while destination is pending", created.await(15, TimeUnit.SECONDS))
             } finally {
                 monitor.removeLifecycleCallback(callback)
