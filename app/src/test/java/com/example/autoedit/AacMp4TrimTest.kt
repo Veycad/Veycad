@@ -172,4 +172,55 @@ class AacMp4TrimTest {
             }
         } finally { file.delete() }
     }
+
+    @Test fun legacy_gapless_tag_matches_validated_trim_without_moving_media_or_changing_other_bytes() {
+        val file = File.createTempFile("aac-trim-tag", ".mp4")
+        try {
+            for (wide in listOf(false, true)) for (video in listOf(false, true)) for (samples in listOf(800L, 1600L)) {
+                // Our muxer adds video first and audio last, as Android 8's metadata reader requires.
+                var input = fixture(video = video, extendedMdat = true, wideEdit = wide)
+                if (video) {
+                    val text = String(input, Charsets.ISO_8859_1)
+                    val first = text.indexOf("trak") - 4
+                    val second = text.lastIndexOf("trak") - 4
+                    input = input.copyOfRange(0, first) + input.copyOfRange(second, input.size) + input.copyOfRange(first, second)
+                }
+                file.writeBytes(input)
+                AacMp4Trim.apply(file, samples, 2048)
+                val edited = file.readBytes()
+                file.writeBytes(input)
+                AacMp4Trim.apply(file, samples, 2048, legacyGaplessTag = true)
+                val result = file.readBytes()
+                val tag = box("udta", box("meta", ByteArray(4) +
+                    box("hdlr", bytes { writeLong(0); writeBytes("mdir"); write(ByteArray(13)) }) +
+                    box("ilst", box("----",
+                        box("mean", bytes { writeInt(0); writeBytes("com.apple.iTunes") }) +
+                        box("name", bytes { writeInt(0); writeBytes("iTunSMPB") }) +
+                        box("data", bytes { writeInt(1); writeInt(0); writeBytes(
+                            if (samples == 800L) " 00000000 00000800 000004e0 0000000000000320"
+                            else " 00000000 00000800 000001c0 0000000000000640") })))))
+                val moov = String(input, Charsets.ISO_8859_1).indexOf("moov") - 4
+                java.nio.ByteBuffer.wrap(edited).putInt(moov, edited.size - moov + tag.size)
+                assertArrayEquals(edited + tag, result)
+                // The original media payload and chunk offsets are included in the byte comparison.
+            }
+        } finally { file.delete() }
+    }
+
+    @Test fun unsupported_legacy_tag_layout_and_invalid_trim_never_mutate() {
+        val file = File.createTempFile("aac-trim-tag", ".mp4")
+        try {
+            val duplicate = fixture().let { original ->
+                val tagged = original + box("udta", byteArrayOf())
+                val moov = String(original, Charsets.ISO_8859_1).indexOf("moov") - 4
+                java.nio.ByteBuffer.wrap(tagged).putInt(moov, tagged.size - moov)
+                tagged
+            }
+            for (input in listOf(fixture(video = true), fixture() + box("free", byteArrayOf()), duplicate, fixture(1024), fixture().copyOf(31))) {
+                file.writeBytes(input)
+                assertThrows(IllegalStateException::class.java) { AacMp4Trim.apply(file, 1600, 2048, legacyGaplessTag = true) }
+                assertArrayEquals(input, file.readBytes())
+            }
+        } finally { file.delete() }
+    }
 }
