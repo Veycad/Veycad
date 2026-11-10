@@ -17,6 +17,9 @@
 - Документация: `D:/CodexWork/VeycadReleaseDocs-20261026`,
   `codex/rustore-release-preparation`,
   [draft PR #70](https://github.com/Veycad/Veycad/pull/70).
+- Политика/модель доступа: `D:/CodexWork/VeycadPrivacyReview-20261110`,
+  `codex/privacy-sdk-review`, [draft PR #75](https://github.com/Veycad/Veycad/pull/75).
+  Это отдельная документационная ветка; проверенный код остаётся `5b22308`.
 - Старый каталог чата `C:/Users/rexar/.codex/worktrees/render-progress-native/AutoEdit`
   не является текущим кандидатом. Перед изменениями проверить ветку и статус.
   Одна связная задача — отдельный коммит; изменения публиковать через PR.
