@@ -9,7 +9,7 @@
     <string name="manual_open_failed">Не удалось открыть проекты. Повтори попытку.</string>
     <string name="manual_retry">Повторить просмотр</string>
     <string name="manual_new">Новый черновик</string>
-    <string name="manual_supported">Добавь 1–2 видео AVC. Базовый монтаж без анализа ИИ: подрезка, порядок клипов и вспышка. Пока без текста, умного кадрирования и размытого фона.</string>
+    <string name="manual_supported">Добавь одно или два видео H.264 (AVC) со стандартным цветом (SDR).</string>
     <string name="manual_import">Добавить видео</string>
     <string name="manual_saved">Сохранённые проекты</string>
     <string name="manual_empty">Здесь появятся твои черновики.</string>
