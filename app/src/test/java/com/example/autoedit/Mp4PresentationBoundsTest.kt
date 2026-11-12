@@ -77,6 +77,15 @@ class Mp4PresentationBoundsTest {
             0, 300_000, 4)!!
         assertEquals(400_000L, bounds.endPtsUs)
     }
+
+    @Test fun olderExtractorCanExposeUnshiftedCompositionTimestamps() {
+        val data = movie(List(3) { 100_000L }, offsets = List(3) { 60_000L },
+            editDurationUs = 280_000, mediaStartUs = 60_000)
+        assertEquals(VideoPresentationBounds(0, 280_000), read(data, 0, 200_000, 3))
+        assertEquals(VideoPresentationBounds(60_000, 340_000), read(data, 60_000, 260_000, 3))
+        assertNull(read(data, 60_000, 260_001, 3))
+        assertNull(read(data, 60_000, 260_000, 2))
+    }
     @Test fun unsupportedTimingCannotBecomeMeasuredEvidence() {
         val data = movie(listOf(500_000))
         assertNull(read(data, 0, 0, 1, id = 8))
