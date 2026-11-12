@@ -59,7 +59,8 @@ object MediaCodecSpeedRampRenderer {
         val onFrameProgress: ((Int) -> Unit)? = null,
         sourceFiles: List<File>? = null,
         val textBehavior: TextBehavior = TextBehavior.FINISHED_VIDEO,
-        val showAuthoredText: Boolean = true
+        val showAuthoredText: Boolean = true,
+        val preciseMusicTiming: Boolean = false
     ) {
         internal val finishingText: Boolean = textProject != null && textBehavior == TextBehavior.FINISHED_VIDEO
         val sourceFiles: List<File> = java.util.Collections.unmodifiableList(ArrayList(
@@ -280,6 +281,10 @@ object MediaCodecSpeedRampRenderer {
         if (projectAudio != null) {
             AacEncoderMuxer.muxPreparedAudio(projectAudio, videoOnlyFile, request.outputFile,
                 completePlan.durationUs, request.checkCancelled)
+            videoOnlyFile.delete()
+        } else if (request.audioFile != null && request.preciseMusicTiming) {
+            AacEncoderMuxer.muxSelectedMusic(request.audioFile, videoOnlyFile, request.outputFile,
+                plan.durationUs, request.audioStartUs, request.checkCancelled)
             videoOnlyFile.delete()
         } else if (request.audioFile != null) {
             AacEncoderMuxer.muxMusicFile(

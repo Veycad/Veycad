@@ -352,6 +352,7 @@ internal object VeycadAutomaticEditor {
                 else HighQualityFramePlan.DEFAULT_FPS,
             audioFile = request.musicFile,
             audioStartUs = request.musicStartUs,
+            preciseMusicTiming = request.recipe == MontageStyleCatalog.Recipe.CUSTOM_MUSIC,
             context = request.context,
             renderPlan = passPlan,
             onPassesExecuted = { executedPasses = it },
