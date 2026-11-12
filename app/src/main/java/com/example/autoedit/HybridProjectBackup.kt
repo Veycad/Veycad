@@ -26,7 +26,9 @@ class HybridProjectBackup(filesDir: File, private val beforePublish: () -> Unit 
         val cleanupIncomplete: Boolean = false, val legacyUnverifiedSources: Int = 0)
     private data class Entry(val path: String, val bytes: Long, val hash: String, val file: File? = null)
 
-    fun export(projectId: String, output: OutputStream): Receipt = store.withBackupSnapshot(projectId) { project, directory ->
+    fun export(projectId: String, output: OutputStream): Receipt = export(projectId) { output }
+
+    internal fun export(projectId: String, openOutput: () -> OutputStream): Receipt = store.withBackupSnapshot(projectId) { project, directory ->
         val entries = mutableListOf<Entry>()
         Files.walk(directory.toPath()).use { paths -> paths.forEach { path ->
             require(!Files.isSymbolicLink(path)) { "Project links cannot be backed up" }
@@ -59,7 +61,7 @@ class HybridProjectBackup(filesDir: File, private val beforePublish: () -> Unit 
                 put(JSONObject().put("path", it.path).put("bytes", it.bytes).put("sha256", it.hash))
             } }).toString().toByteArray(Charsets.UTF_8)
         require(manifest.size <= MAX_MANIFEST) { "Backup inventory is too large" }
-        ZipOutputStream(output).use { zip ->
+        ZipOutputStream(openOutput()).use { zip ->
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(manifest); zip.closeEntry()
             entries.sortedBy { it.path }.forEach { entry ->
                 zip.putNextEntry(ZipEntry(entry.path))
