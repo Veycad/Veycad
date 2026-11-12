@@ -211,3 +211,45 @@ if ($null -eq $collector) { throw 'Cannot locate preview collection boundary.' }
     }
 }
 Write-Host 'Preview evidence pre-restart retention and hash-inventory check PASS.'
+
+$recoveryAst = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PSScriptRoot 'run_project_recovery_tests.ps1'), [ref]$runnerTokens, [ref]$runnerErrors)
+if ($runnerErrors.Count -gt 0) { throw 'Project recovery runner does not parse.' }
+$recoveryLoop = $recoveryAst.Find({
+    param($node)
+    $node -is [Management.Automation.Language.DoWhileStatementAst] -and
+        $node.Body.Extent.Text.Contains("'uiautomator','dump'")
+}, $true)
+if ($null -eq $recoveryLoop) { throw 'Cannot locate project recovery UI wait.' }
+& {
+    $recoveryRunId = '00000000-0000-4000-8000-000000000001'
+    $recoveryArchive = 'fixture'
+    $remoteUi = "/data/local/tmp/project-$recoveryRunId.xml"
+    $deadline = [DateTime]::UtcNow.AddSeconds(2)
+    $ready = $false
+    $previewSwipes = 0
+    $dumpCalls = [Collections.Generic.List[string]]::new()
+    $removed = [Collections.Generic.List[string]]::new()
+    function Add-Content { param($LiteralPath, $Value, $Encoding) }
+    function Invoke-RecoveryAdb {
+        param([string[]]$Arguments, [switch]$AllowFailure)
+        switch ($Arguments[1]) {
+            'rm' { $removed.Add($Arguments[-1]) }
+            'uiautomator' {
+                $dumpCalls.Add($Arguments[-1])
+                if ($dumpCalls.Count -eq 1) { 'ERROR: could not get idle state.' }
+            }
+            'cat' {
+                if ($dumpCalls.Count -gt 1) { '<hierarchy><node text="Черновик · пауза"/></hierarchy>' }
+                elseif ($Arguments[0] -eq 'exec-out' -or -not $AllowFailure) { "cat: $remoteUi`: No such file or directory" }
+            }
+            default { throw "Unexpected recovery command: $($Arguments -join ' ')" }
+        }
+    }
+    . ([scriptblock]::Create($recoveryLoop.Extent.Text))
+    if (-not $ready -or $dumpCalls.Count -ne 2 -or $removed.Count -ne 2 -or
+        @($removed | Where-Object { $_ -cne $remoteUi }).Count -gt 0) {
+        throw 'Recovery UI wait did not retry a missing snapshot without accepting stale data.'
+    }
+}
+Write-Host 'Project recovery waits for a fresh XML snapshot after an empty dump.'
