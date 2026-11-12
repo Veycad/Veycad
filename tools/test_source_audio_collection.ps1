@@ -23,10 +23,18 @@ $uiWindows = $true
 $Serial = 'emulator-5556'
 $uiPhases = [Collections.Generic.List[object]]::new()
 $script:xmlPulled = $false
+$script:instrumentationAborted = $false
 $originalPython = $env:PYTHON
 function Invoke-UiAdb { }
 function Invoke-UiNative {
     param([string]$Executable, [string[]]$Arguments, [switch]$EchoOutput)
+    if ($script:instrumentationAborted -and $Arguments -contains 'instrument') {
+        return [pscustomobject]@{ ExitCode = 1; Output = 'INSTRUMENTATION_ABORTED: System has crashed.' }
+    }
+    if ($script:instrumentationAborted -and $Arguments -contains 'cat') {
+        $status = if ($Arguments -contains 'shell') { 1 } else { 0 }
+        return [pscustomobject]@{ ExitCode = $status; Output = 'cat: files/ui-test-results.xml: No such file or directory' }
+    }
     if ($Arguments -contains '--validate-archive') {
         $script:validationExecutable = $Executable
         $lines = @(& $Executable @Arguments 2>&1)
@@ -93,6 +101,20 @@ try {
         throw 'Validated native bytes were not published intact'
     }
     Write-Host 'PASS: configured PYTHON actually validates and publishes native archive bytes.'
+
+    $script:instrumentationAborted = $true
+    $uiRunId = 'aborted-instrumentation'
+    $uiPhases.Clear()
+    Invoke-UiPhase -Name 'permissions' -SelectionArgument 'class' -Expected @('test.Class#works')
+    $aborted = $uiPhases[0]
+    $archive = Join-Path $uiProjectRoot 'build/reports/ui-tests/runs/aborted-instrumentation/permissions'
+    if ($aborted.passed -or $aborted.instrumentation_finished -or $aborted.xml_reports -ne 0 -or
+        (Test-Path -LiteralPath (Join-Path $archive 'tests.xml')) -or
+        (Get-Content -LiteralPath (Join-Path $archive 'xml-collection-error.txt') -Raw) -notmatch 'No such file' -or
+        (Get-Content -LiteralPath (Join-Path $archive 'instrumentation.txt') -Raw) -notmatch 'INSTRUMENTATION_ABORTED') {
+        throw 'An aborted instrumentation did not retain its failure and missing XML status.'
+    }
+    Write-Host 'PASS: aborted instrumentation retains diagnostics without publishing error text as XML.'
 } finally {
     $env:PYTHON = $originalPython
     # This GUID directory is created only by this check.
