@@ -198,7 +198,7 @@ object MediaCodecSpeedRampRenderer {
             encoder.start()
             encoderStarted = true
             decoders = DecoderSession(sourceFiles, gl.incomingDecodeSurface, gl.outgoingDecodeSurface,
-                request.checkCancelled, request.finishingText)
+                request.checkCancelled, request.finishingText, request.preparedExport?.prepared?.sources)
             request.context?.let { context ->
                 LocalDiagnostics.record(context, "video_decoder_pool", mapOf(
                     "decoder_limit" to "2",
@@ -478,12 +478,14 @@ object MediaCodecSpeedRampRenderer {
         private val incomingSurface: Surface,
         private val outgoingSurface: Surface,
         val checkCancelled: () -> Unit,
-        private val normalizeTimestamps: Boolean = false
+        private val normalizeTimestamps: Boolean = false,
+        private val preparedSources: List<PreparedVideoSource>? = null
     ) {
         private val sourceDurationsUs = files.map { file -> checkCancelled(); requestSourceDurationUs(file) }
         private val slots = SourceDecoderSlots { index, role ->
             require(index in files.indices)
-            VideoDecoderCursor(files[index], if (role == DecoderRole.INCOMING) incomingSurface else outgoingSurface, checkCancelled, normalizeTimestamps)
+            VideoDecoderCursor(files[index], if (role == DecoderRole.INCOMING) incomingSurface else outgoingSurface,
+                checkCancelled, normalizeTimestamps, preparedSources?.get(index)?.metadata)
         }
 
         fun sourceDurationUs(sourceIndex: Int): Long = sourceDurationsUs[sourceIndex]

@@ -11,16 +11,67 @@ import java.math.BigInteger
  */
 internal object Mp4PresentationBounds {
     fun read(file: File, trackId: Int?, firstPtsUs: Long, lastPtsUs: Long,
-        sampleCount: Long, checkCancelled: () -> Unit): VideoPresentationBounds? {
+        sampleCount: Long, checkCancelled: () -> Unit): VideoPresentationBounds? = parse(file, trackId, checkCancelled) { id ->
+        val track = track(id, sampleCount)
+        listOfNotNull(track.edited, track.raw).firstOrNull {
+            it.bounds.firstPtsUs == firstPtsUs && it.lastPtsUs == lastPtsUs
+        }?.bounds
+    }
+
+    /** Only translate when the stored range and the extractor's first decode sample identify both clocks. */
+    fun decoderClock(file: File, trackId: Int?, savedFirstUs: Long, savedEndUs: Long,
+        firstDecodeUs: Long, checkCancelled: () -> Unit): DecoderClock? = parse(file, trackId, checkCancelled) { id ->
+        val track = track(id, null, requireShift = true)
+        val raw = track.raw ?: return@parse null
+        val edited = track.edited ?: return@parse null
+        val clocks = listOf(edited, raw)
+        val saved = clocks.singleOrNull {
+            it.bounds.firstPtsUs == savedFirstUs && it.bounds.endPtsUs == savedEndUs
+        } ?: return@parse null
+        val device = clocks.singleOrNull { it.firstDecodeUs == firstDecodeUs } ?: return@parse null
+        if (saved === device || track.scale > 1_000_000L) return@parse null
+        DecoderClock(track.scale, saved.shift - device.shift)
+    }
+
+    internal class DecoderClock(scale: Long, ticksToProject: Long) {
+        private val units = BigInteger.valueOf(scale)
+        private val micros = BigInteger.valueOf(1_000_000)
+        private val shift = BigInteger.valueOf(ticksToProject)
+
+        private fun firstTickAtOrAfter(timeUs: Long): BigInteger = BigInteger.valueOf(timeUs).multiply(units)
+            .add(micros.subtract(BigInteger.ONE)).divide(micros)
+
+        private fun toUs(tick: BigInteger): Long {
+            require(tick.signum() >= 0)
+            val value = tick.multiply(micros).divide(units)
+            require(value.signum() >= 0 && value.bitLength() <= 63)
+            return value.toLong()
+        }
+
+        fun toProjectUs(sampleUs: Long): Long {
+            require(sampleUs >= 0)
+            val tick = firstTickAtOrAfter(sampleUs)
+            require(toUs(tick) == sampleUs)
+            return toUs(tick.add(shift))
+        }
+
+        fun toDecoderSeekUs(targetUs: Long): Long {
+            require(targetUs >= 0)
+            return toUs(firstTickAtOrAfter(targetUs).subtract(shift).max(BigInteger.ZERO))
+        }
+    }
+
+    private fun <T> parse(file: File, trackId: Int?, checkCancelled: () -> Unit,
+        read: Parser.(Int) -> T?): T? {
         checkCancelled()
-        if (trackId == null || trackId <= 0 || sampleCount <= 0) return null
+        if (trackId == null || trackId <= 0) return null
         var cancellation: Throwable? = null
         val check = {
             try { checkCancelled() } catch (failure: Throwable) { cancellation = failure; throw failure }
         }
         try {
             return RandomAccessFile(file, "r").use { input ->
-                Parser(input, check).read(trackId, firstPtsUs, lastPtsUs, sampleCount)
+                Parser(input, check).read(trackId)
             }
         } catch (failure: Exception) {
             cancellation?.let { throw it }
@@ -31,6 +82,8 @@ internal object Mp4PresentationBounds {
 
     private data class Box(val type: String, val start: Long, val end: Long)
     private data class Edit(val emptyTicks: Long, val mediaStartTicks: Long, val activeDurationTicks: Long?)
+    private data class Clock(val shift: Long, val firstDecodeUs: Long, val lastPtsUs: Long, val bounds: VideoPresentationBounds)
+    private data class Track(val scale: Long, val edited: Clock?, val raw: Clock?)
     private class Parser(val input: RandomAccessFile, val check: () -> Unit) {
         private var headers = 0
         private fun children(start: Long, end: Long): List<Box> {
@@ -119,7 +172,7 @@ internal object Mp4PresentationBounds {
             }
             fun exhausted(): Boolean = remaining == 0L && index == entries
         }
-        fun read(id: Int, actualFirst: Long, actualLast: Long, actualCount: Long): VideoPresentationBounds {
+        fun track(id: Int, expectedCount: Long?, requireShift: Boolean = false): Track {
             val top = children(0, input.length())
             top.one("ftyp")
             require(top.none { it.type == "moof" })
@@ -137,17 +190,22 @@ internal object Mp4PresentationBounds {
             val mediaScale = timescale(mdia.one("mdhd"))
             val edit = edit(track.optional("edts"))
             val empty = scale(edit.emptyTicks, mediaScale, movieScale, round = true)
+            val rawShift = edit.mediaStartTicks - empty
+            require(!requireShift || rawShift != 0L)
             val minf = mdia.one("minf")
             val stbl = children(minf.start, minf.end).one("stbl")
             val table = children(stbl.start, stbl.end)
             val stts = table.one("stts")
             require(version(stts) == 0)
+            val actualCount = expectedCount ?: uint(table.optional("stsz") ?: table.one("stz2"), 8)
+            require(actualCount > 0)
             val ctts = table.optional("ctts")
             val cttsVersion = ctts?.let { version(it) }
             val times = Runs(stts, actualCount)
             val offsets = Runs(ctts, actualCount, cttsVersion == 1)
             var decode = 0L
             var first = Long.MAX_VALUE
+            var firstDecode = -1L
             var last = -1L
             var end = -1L
             var count = 0L
@@ -159,6 +217,7 @@ internal object Mp4PresentationBounds {
                 require(count <= actualCount)
                 val pts = Math.subtractExact(Math.addExact(Math.addExact(decode, offsets.value), empty), edit.mediaStartTicks)
                 require(pts >= 0) // negative preroll/other edit schemes remain unsupported
+                if (firstDecode < 0) firstDecode = pts
                 val runLast = Math.addExact(pts, Math.multiplyExact(n - 1, times.value))
                 val runEnd = Math.addExact(runLast, times.value)
                 first = minOf(first, pts); last = maxOf(last, runLast); end = maxOf(end, runEnd)
@@ -169,19 +228,18 @@ internal object Mp4PresentationBounds {
                 if (offsets.remaining == 0L) offsets.next()
             }
             require(count == actualCount)
-            fun matchesExtractor(shift: Long) =
-                scale(Math.addExact(first, shift), 1_000_000, mediaScale) == actualFirst &&
-                    scale(Math.addExact(last, shift), 1_000_000, mediaScale) == actualLast
-            // Older extractors can expose composition timestamps before applying elst.
-            val shift = if (matchesExtractor(0)) 0L else (edit.mediaStartTicks - empty).also {
-                require(matchesExtractor(it))
-            }
             edit.activeDurationTicks?.let {
                 end = minOf(end, Math.addExact(empty, scale(it, mediaScale, movieScale)))
             }
-            val endUs = scale(Math.addExact(end, shift), 1_000_000, mediaScale)
-            require(endUs > actualLast)
-            return VideoPresentationBounds(actualFirst, endUs)
+            fun clock(shift: Long): Clock? = try {
+                fun micros(ticks: Long) = scale(Math.addExact(ticks, shift), 1_000_000, mediaScale)
+                val lastUs = micros(last)
+                val endUs = micros(end)
+                if (endUs > lastUs) Clock(shift, micros(firstDecode), lastUs, VideoPresentationBounds(micros(first), endUs))
+                else null
+            } catch (_: IllegalArgumentException) { null } catch (_: ArithmeticException) { null }
+            // Older extractors can expose composition timestamps before applying elst.
+            return Track(mediaScale, clock(0L), if (rawShift != 0L) clock(rawShift) else null)
         }
     }
 }

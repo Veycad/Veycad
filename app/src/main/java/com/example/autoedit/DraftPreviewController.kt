@@ -490,7 +490,8 @@ class DraftPreviewController(private val onState: (State) -> Unit) : AutoCloseab
             // This closure reads the worker's CURRENT operation; it never captures an old seek.
             val gl = requireNotNull(compositor)
             VideoDecoderCursor(request.sourceFiles[index],
-                if (role == DecoderRole.INCOMING) gl.incomingDecodeSurface else gl.outgoingDecodeSurface, ::checkCurrent)
+                if (role == DecoderRole.INCOMING) gl.incomingDecodeSurface else gl.outgoingDecodeSurface, ::checkCurrent,
+                projectTiming = binding.prepared.sources[index].metadata)
         }
         val durations = binding.prepared.sources.map { it.durationUs }
         directDraws = LiveDecoderTransitionPlan.directDraws(binding.prepared.framePlan.frames, durations,

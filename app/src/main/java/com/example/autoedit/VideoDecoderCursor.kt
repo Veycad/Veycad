@@ -22,7 +22,8 @@ internal class VideoDecoderCursor(
     file: File,
     outputSurface: Surface,
     private val checkCancelled: () -> Unit = {},
-    normalizeTimestamps: Boolean = false
+    normalizeTimestamps: Boolean = false,
+    projectTiming: VideoSourceMetadata? = null
 ) : AutoCloseable {
     private val extractor = MediaExtractor()
     private lateinit var decoder: MediaCodec
@@ -36,6 +37,7 @@ internal class VideoDecoderCursor(
     private var seeked = false
     private var hasDecodedTexture = false
     private val timelineOriginUs: Long
+    private val projectClock: Mp4PresentationBounds.DecoderClock?
 
     /** Source PTS of the image accepted by the callback; null before a range has a valid image. */
     var currentTexturePtsUs: Long? = null
@@ -65,6 +67,13 @@ internal class VideoDecoderCursor(
             timelineOriginUs = if (normalizeTimestamps) extractor.sampleTime.coerceAtLeast(0) else 0L
             checkCancelled()
             val format = extractor.getTrackFormat(track)
+            val first = projectTiming?.firstVideoPtsUs
+            val end = projectTiming?.videoEndPtsUs
+            projectClock = if (!normalizeTimestamps && first != null && end != null &&
+                format.containsKey(MediaFormat.KEY_TRACK_ID)) {
+                Mp4PresentationBounds.decoderClock(file, format.getInteger(MediaFormat.KEY_TRACK_ID),
+                    first, end, extractor.sampleTime, checkCancelled)
+            } else null
             checkCancelled()
             decoder = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME) ?: error("No video mime"))
             checkCancelled()
@@ -91,7 +100,7 @@ internal class VideoDecoderCursor(
             decoder.flush()
             checkCancelled()
         }
-        extractor.seekTo(targetUs + timelineOriginUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+        seekTo(targetUs + timelineOriginUs)
         checkCancelled()
         inputEnded = false
         outputEnded = false
@@ -108,7 +117,7 @@ internal class VideoDecoderCursor(
         if (outputEnded) return hasDecodedTexture
         if (hasDecodedTexture && targetUs <= requireNotNull(currentTexturePtsUs)) return true
         if (!seeked) {
-            extractor.seekTo(targetUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+            seekTo(targetUs)
             checkCancelled()
             seeked = true
         }
@@ -132,7 +141,8 @@ internal class VideoDecoderCursor(
                         inputEnded = true
                         checkCancelled()
                     } else {
-                        decoder.queueInputBuffer(inputIndex, 0, size, extractor.sampleTime, 0)
+                        val sampleUs = extractor.sampleTime
+                        decoder.queueInputBuffer(inputIndex, 0, size, projectClock?.toProjectUs(sampleUs) ?: sampleUs, 0)
                         checkCancelled()
                         extractor.advance()
                         checkCancelled()
@@ -166,6 +176,9 @@ internal class VideoDecoderCursor(
     }
 
     private fun checkOpen() { check(!released) { "Video decoder cursor is closed" } }
+
+    private fun seekTo(targetUs: Long) = extractor.seekTo(projectClock?.toDecoderSeekUs(targetUs) ?: targetUs,
+        MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
 
     override fun close() = release()
 

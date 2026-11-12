@@ -39,8 +39,9 @@ class Mp4PresentationBoundsTest {
             if (emptyUs > 0) entry(emptyUs, -1, 0x10000)
             entry(active, mediaStartUs, rate)
         }, editVersion)) } ?: byteArrayOf()
+        val stsz = full("stsz", bytes { writeInt(1); writeInt(deltas.size) })
         val track = box("trak", tkhd + edits + box("mdia", mdhd +
-            full("hdlr", bytes { writeInt(0); writeBytes("vide") }) + box("minf", box("stbl", stts + ctts))))
+            full("hdlr", bytes { writeInt(0); writeBytes("vide") }) + box("minf", box("stbl", stts + ctts + stsz))))
         return box("ftyp", "isom0000".toByteArray()) + box("moov",
             full("mvhd", bytes { writeLong(0); writeInt(movieScale) }) + track)
     }
@@ -85,6 +86,25 @@ class Mp4PresentationBoundsTest {
         assertEquals(VideoPresentationBounds(60_000, 340_000), read(data, 60_000, 260_000, 3))
         assertNull(read(data, 60_000, 260_001, 3))
         assertNull(read(data, 60_000, 260_000, 2))
+    }
+
+    @Test fun translatesBothExtractorClocksWithoutMicrosecondRoundingDrift() {
+        val file = File.createTempFile("portable-timing", ".mp4")
+        try {
+            file.writeBytes(movie(List(3) { 512 }, List(3) { 1024 }, editDurationUs = 100_000,
+                mediaStartUs = 1024, mediaScale = 15_360))
+            val toOlder = requireNotNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_666, 0) {})
+            val toNewer = requireNotNull(Mp4PresentationBounds.decoderClock(file, 7, 0, 100_000, 66_666) {})
+            val older = listOf(66_666L, 100_000L, 133_333L)
+            val newer = listOf(0L, 33_333L, 66_666L)
+            assertEquals(older, newer.map(toOlder::toProjectUs))
+            assertEquals(newer, older.map(toNewer::toProjectUs))
+            assertEquals(newer, older.map(toOlder::toDecoderSeekUs))
+            assertEquals(older, newer.map(toNewer::toDecoderSeekUs))
+            assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_666, 66_666) {})
+            assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_665, 0) {})
+            assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_666, 1) {})
+        } finally { assertTrue(file.delete()) }
     }
     @Test fun unsupportedTimingCannotBecomeMeasuredEvidence() {
         val data = movie(listOf(500_000))
