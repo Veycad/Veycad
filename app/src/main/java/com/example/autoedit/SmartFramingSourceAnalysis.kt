@@ -32,7 +32,8 @@ internal object SmartFramingSourceAnalysis {
                 val plane = MediaFrameVisualAnalyzer.motionPlane(bitmap)
                 val estimate = LumaMotionEstimator.estimate(previous, plane)
                 // Failure is current UNKNOWN evidence; never reuse the preceding face or mask.
-                val semantic = analyzer?.let { runCatching { it.analyze(bitmap) }.getOrNull() }
+                // Editorial gesture scores include visible movement, which can look like occlusion to subjectMetrics.
+                val semantic = analyzer?.let { runCatching { it.analyze(bitmap, runPose = false) }.getOrNull() }
                 checkCancelled()
                 successes += semantic?.successfulModels ?: 0
                 val (quality, occlusion) = MediaFrameVisualAnalyzer.subjectMetrics(estimate, semantic)

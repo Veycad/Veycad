@@ -31,7 +31,7 @@ class SmartFramingTrack private constructor(
     }
 
     companion object {
-        const val GENERATOR_VERSION = 3
+        const val GENERATOR_VERSION = 4
         private const val HOLD_US = 500_000L
         private const val BLEND_US = 300_000L
 
