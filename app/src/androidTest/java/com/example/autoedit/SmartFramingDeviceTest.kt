@@ -17,6 +17,25 @@ import org.junit.runner.RunWith
 class SmartFramingDeviceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun visibleGesturesDoNotDisableTrackingForTheBundledDancer() {
+        val file = File.createTempFile("smart-visible-gesture", ".mp4", context.cacheDir)
+        try {
+            context.resources.openRawResource(R.raw.style_preview_duality)
+                .use { input -> file.outputStream().use { input.copyTo(it) } }
+            val source = MediaInputInspector().inspect("dancer", file, "Bundled dance footage")
+            val first = source.requiredFirstVideoPtsUs
+            val end = source.requiredVideoEndPtsUs
+            val key = SmartFramingKey(source.fingerprint, source.durationUs, first, end,
+                listOf(VisualEventMap.UsableWindow(first, end)))
+            val analysis = SmartFramingSourceAnalysis.analyze(context, file, key) {}
+            val track = SmartFramingTrack.build(analysis, key.windows)
+            val danceFrames = analysis.observations.filter { it.sourceTimeUs in 500_000L..1_750_000L }
+            val tracked = danceFrames.map { track.sample(it.sourceTimeUs) }
+                .filter { it.status == SmartFramingStatus.TRACKING }
+            assertTrue("Visible dancer must be tracked at multiple frames; got ${tracked.size}", tracked.size >= 2)
+        } finally { file.delete() }
+    }
+
     @Test fun editedMp4UsesTheSavedProjectClockForSmartAnalysis() {
         val file = File.createTempFile("smart-saved-clock", ".mp4", context.cacheDir)
         try {
