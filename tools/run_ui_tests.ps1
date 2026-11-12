@@ -141,12 +141,32 @@ function Invoke-UiPhase {
         # Fresh evidence for this run; later per-test resets must retain it for collection.
         Invoke-UiAdb @('shell', 'run-as', $uiPackage, 'rm', '-rf', '--', 'files/source-audio-native-evidence') | Out-Null
     }
-    $uiResult = Invoke-UiNative -Executable $uiAdb -EchoOutput -Arguments @(
-        '-s', $Serial, 'shell', 'am', 'instrument', '-w', '-r',
-        '-e', 'listener', 'com.veycad.app.UiXmlRunListener',
-        '-e', $SelectionArgument, $Selection,
-        "$uiPackage.test/androidx.test.runner.AndroidJUnitRunner"
-    )
+    $uiLogger = $null
+    if ($Name -eq 'screens') {
+        # The emulator's log buffer can wrap before this phase reaches its final report.
+        $uiLogOptions = @{
+            FilePath = $uiAdb; ArgumentList = @('-s', $Serial, 'logcat', '-v', 'threadtime')
+            RedirectStandardOutput = Join-Path $uiArchive 'logcat-live.txt'
+            RedirectStandardError = Join-Path $uiArchive 'logcat-live-stderr.txt'
+            PassThru = $true
+        }
+        if ($uiWindows) { $uiLogOptions.WindowStyle = 'Hidden' }
+        try { $uiLogger = Start-Process @uiLogOptions }
+        catch { Write-Warning "Continuous logcat unavailable: $($_.Exception.Message)" }
+    }
+    try {
+        $uiResult = Invoke-UiNative -Executable $uiAdb -EchoOutput -Arguments @(
+            '-s', $Serial, 'shell', 'am', 'instrument', '-w', '-r',
+            '-e', 'listener', 'com.veycad.app.UiXmlRunListener',
+            '-e', $SelectionArgument, $Selection,
+            "$uiPackage.test/androidx.test.runner.AndroidJUnitRunner"
+        )
+    } finally {
+        if ($null -ne $uiLogger) {
+            Stop-Process -InputObject $uiLogger -ErrorAction SilentlyContinue
+            $uiLogger.Dispose()
+        }
+    }
     $uiResult.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'instrumentation.txt') -Encoding UTF8
     $uiLogcat = Invoke-UiNative -Executable $uiAdb -Arguments @('-s', $Serial, 'logcat', '-d', '-v', 'threadtime')
     $uiLogcat.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'logcat.txt') -Encoding UTF8
