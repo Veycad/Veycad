@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -145,14 +146,19 @@ class BackupRecoveryActivity : AppCompatActivity() {
                         if (receipt.cleanupIncomplete) status.append("\n" + getString(R.string.backup_cleanup_warning))
                         if (restoring) setResult(RESULT_OK, Intent().putExtra(EXTRA_PROJECT_ID, receipt.projectId))
                         else { backupUri = uri; share.visibility = View.VISIBLE }
-                    }, onFailure = { status.text = getString(R.string.backup_failed, it.message ?: it.javaClass.simpleName) })
+                    }, onFailure = { showFailure(restoring, it) })
                     updateControls()
                 }
             }
         } catch (error: Throwable) {
             busy = false; updateControls()
-            status.text = getString(R.string.backup_failed, error.message ?: error.javaClass.simpleName)
+            showFailure(restoring, error)
         }
+    }
+
+    private fun showFailure(restoring: Boolean, error: Throwable) {
+        Log.w("Veycad", if (restoring) "Project restore failed" else "Project backup failed", error)
+        status.setText(if (restoring) R.string.backup_restore_failed else R.string.backup_save_failed)
     }
 
     companion object { const val EXTRA_PROJECT_ID = "projectId" }
