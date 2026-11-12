@@ -6,8 +6,8 @@ import java.io.RandomAccessFile
 import java.math.BigInteger
 
 /** Non-fragmented ISO-BMFF only. Unknown timing is not a duration estimate.
- * stts supplies each sample's hold; ctts and the supported unit-rate elst mapping
- * produce the same presentation clock as AOSP MPEG4Source. No media payload is read.
+ * stts supplies each sample's hold. ctts and unit-rate edits establish the endpoint
+ * in the extractor's observed timestamp coordinate system. No media payload is read.
  */
 internal object Mp4PresentationBounds {
     fun read(file: File, trackId: Int?, firstPtsUs: Long, lastPtsUs: Long,
@@ -168,12 +168,18 @@ internal object Mp4PresentationBounds {
                 if (times.remaining == 0L) times.next()
                 if (offsets.remaining == 0L) offsets.next()
             }
-            require(count == actualCount && scale(first, 1_000_000, mediaScale) == actualFirst &&
-                scale(last, 1_000_000, mediaScale) == actualLast)
+            require(count == actualCount)
+            fun matchesExtractor(shift: Long) =
+                scale(Math.addExact(first, shift), 1_000_000, mediaScale) == actualFirst &&
+                    scale(Math.addExact(last, shift), 1_000_000, mediaScale) == actualLast
+            // Older extractors can expose composition timestamps before applying elst.
+            val shift = if (matchesExtractor(0)) 0L else (edit.mediaStartTicks - empty).also {
+                require(matchesExtractor(it))
+            }
             edit.activeDurationTicks?.let {
                 end = minOf(end, Math.addExact(empty, scale(it, mediaScale, movieScale)))
             }
-            val endUs = scale(end, 1_000_000, mediaScale)
+            val endUs = scale(Math.addExact(end, shift), 1_000_000, mediaScale)
             require(endUs > actualLast)
             return VideoPresentationBounds(actualFirst, endUs)
         }
