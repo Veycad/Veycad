@@ -222,15 +222,16 @@ function Invoke-UiPhase {
         }
     }
     $uiPulled = Invoke-UiNative -Executable $uiAdb -Arguments @(
-        '-s', $Serial, 'exec-out', 'run-as', $uiPackage, 'cat', 'files/ui-test-results.xml'
+        '-s', $Serial, 'shell', 'run-as', $uiPackage, 'cat', 'files/ui-test-results.xml'
     )
     $uiCases = [Collections.Generic.List[object]]::new()
     $uiReportCount = 0
     $uiExecuted = 0
-    if ($uiPulled.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($uiPulled.Output)) {
+    if ($uiPulled.ExitCode -ne 0) {
+        $uiPulled.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'xml-collection-error.txt') -Encoding UTF8
+    } elseif (-not [string]::IsNullOrWhiteSpace($uiPulled.Output)) {
         $uiCopy = Join-Path $uiArchive 'tests.xml'
         $uiPulled.Output | Set-Content -LiteralPath $uiCopy -Encoding UTF8
-        Copy-Item -LiteralPath $uiCopy -Destination $uiLatestXml -Force
         $uiReaderSettings = [Xml.XmlReaderSettings]::new()
         $uiReaderSettings.DtdProcessing = [Xml.DtdProcessing]::Prohibit
         $uiReaderSettings.XmlResolver = $null
@@ -241,6 +242,7 @@ function Invoke-UiPhase {
             $uiDocument.Load($uiReader)
         } finally { $uiReader.Dispose() }
         if ($uiDocument.DocumentElement.LocalName -cne 'testsuite') { throw "Unexpected XML report root in $Name" }
+        Copy-Item -LiteralPath $uiCopy -Destination $uiLatestXml -Force
         $uiReportCount++
         $uiExecuted = [int]$uiDocument.DocumentElement.GetAttribute('executed')
         foreach ($uiCase in $uiDocument.SelectNodes('//testcase')) {
