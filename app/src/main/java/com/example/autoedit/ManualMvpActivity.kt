@@ -881,6 +881,7 @@ class ManualMvpActivity : AppCompatActivity() {
         if (busy) return
         if (uris.size !in 1..2) {
             status.text = "Выберите одно или два видео для базового монтажа."
+            scroll.scrollTo(0, 0)
             return
         }
         setBusy(true, "Копирую и проверяю выбранные видео…")
@@ -926,7 +927,8 @@ class ManualMvpActivity : AppCompatActivity() {
                         rememberSelection()
                         refresh("Базовый монтаж создан. Можно довести его и сохранить новую версию.")
                     }, onFailure = { error ->
-                        status.text = "Не удалось создать базовый монтаж: ${error.message.orEmpty()}"
+                        scroll.scrollTo(0, 0)
+                        refresh("Не удалось создать базовый монтаж: ${error.message.orEmpty()}")
                     })
                 }
             }

@@ -74,6 +74,23 @@ class ManualMvpScreenTest {
         onView(withText(fixture.context.getString(R.string.manual_intro))).perform(scrollTo()).check(matches(isDisplayed()))
     }
 
+    @Test fun rejectedImportShowsErrorAndRestoresExistingPreview() {
+        openImported()
+        val initial = store.list().single()
+        val file = File(fixture.context.filesDir, "pending-renders/invalid-manual-input.mp4")
+        file.writeText("invalid video")
+        val uri = FileProvider.getUriForFile(fixture.context, "${fixture.context.packageName}.files", file)
+        intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(
+            Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().apply { data = uri }))
+        tapTag("import")
+        fixture.waitUntil("existing preview restored after rejected import", 45_000) { ready() }
+        onView(withText(containsString("Не удалось создать базовый монтаж"))).check(matches(isDisplayed()))
+        val retained = store.list().single()
+        assertEquals(initial.id, retained.id)
+        assertEquals(initial.current, retained.current)
+        assertEquals(initial.exports, retained.exports)
+    }
+
     @Test fun frameRateSelectionIsVisibleAndSurvivesRecreation() {
         fixture.launch()
         fixture.click(R.id.manualMvpButton)
