@@ -20,7 +20,7 @@ class Mp4PresentationBoundsTest {
     private fun movie(deltas: List<Long>, offsets: List<Long>? = null,
         emptyUs: Long = 0, editDurationUs: Long? = null, mediaStartUs: Long = 0,
         rate: Int = 0x10000, trackId: Int = 7, movieScale: Int = 1_000_000,
-        mediaScale: Int = 1_000_000, editVersion: Int = 0): ByteArray {
+        mediaScale: Int = 1_000_000, editVersion: Int = 0, handler: String = "vide"): ByteArray {
         val tkhd = full("tkhd", bytes { writeLong(0); writeInt(trackId) })
         val mdhd = full("mdhd", bytes { writeLong(0); writeInt(mediaScale); writeInt(deltas.sum().toInt()) })
         val stts = full("stts", bytes {
@@ -41,7 +41,7 @@ class Mp4PresentationBoundsTest {
         }, editVersion)) } ?: byteArrayOf()
         val stsz = full("stsz", bytes { writeInt(1); writeInt(deltas.size) })
         val track = box("trak", tkhd + edits + box("mdia", mdhd +
-            full("hdlr", bytes { writeInt(0); writeBytes("vide") }) + box("minf", box("stbl", stts + ctts + stsz))))
+            full("hdlr", bytes { writeInt(0); writeBytes(handler) }) + box("minf", box("stbl", stts + ctts + stsz))))
         return box("ftyp", "isom0000".toByteArray()) + box("moov",
             full("mvhd", bytes { writeLong(0); writeInt(movieScale) }) + track)
     }
@@ -104,6 +104,26 @@ class Mp4PresentationBoundsTest {
             assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_666, 66_666) {})
             assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_665, 0) {})
             assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_666, 1) {})
+        } finally { assertTrue(file.delete()) }
+    }
+
+    @Test fun aacPrimingRequiresAnExactAudioEditInSampleUnits() {
+        val file = File.createTempFile("audio-edit", ".mp4")
+        try {
+            fun write(handler: String = "soun", duration: Long = 4_000, gap: Long = 0, scale: Int = 1000) {
+                file.writeBytes(movie(listOf(1024L), emptyUs = gap, editDurationUs = duration,
+                    mediaStartUs = 1024, movieScale = scale, mediaScale = 48_000, handler = handler))
+            }
+            write()
+            assertEquals(Mp4PresentationBounds.AacEdit(1024, 192_000), Mp4PresentationBounds.aacEdit(file, 7, 48_000) {})
+            assertNull(Mp4PresentationBounds.aacEdit(file, 8, 48_000) {})
+            assertNull(Mp4PresentationBounds.aacEdit(file, 7, 44_100) {})
+            write(handler = "vide")
+            assertNull(Mp4PresentationBounds.aacEdit(file, 7, 48_000) {})
+            write(gap = 20)
+            assertNull(Mp4PresentationBounds.aacEdit(file, 7, 48_000) {})
+            write(duration = 1, scale = 1001)
+            assertNull(Mp4PresentationBounds.aacEdit(file, 7, 48_000) {})
         } finally { assertTrue(file.delete()) }
     }
     @Test fun unsupportedTimingCannotBecomeMeasuredEvidence() {

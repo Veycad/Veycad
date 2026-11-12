@@ -61,6 +61,11 @@ internal object Mp4PresentationBounds {
         }
     }
 
+    data class AacEdit(val delayFrames: Int, val presentationFrames: Long)
+
+    fun aacEdit(file: File, trackId: Int?, sampleRate: Int, checkCancelled: () -> Unit): AacEdit? =
+        parse(file, trackId, checkCancelled) { id -> aacEdit(id, sampleRate) }
+
     private fun <T> parse(file: File, trackId: Int?, checkCancelled: () -> Unit,
         read: Parser.(Int) -> T?): T? {
         checkCancelled()
@@ -172,7 +177,7 @@ internal object Mp4PresentationBounds {
             }
             fun exhausted(): Boolean = remaining == 0L && index == entries
         }
-        fun track(id: Int, expectedCount: Long?, requireShift: Boolean = false): Track {
+        private fun findTrack(id: Int): Pair<Long, List<Box>> {
             val top = children(0, input.length())
             top.one("ftyp")
             require(top.none { it.type == "moof" })
@@ -183,7 +188,23 @@ internal object Mp4PresentationBounds {
             val tracks = movie.filter { it.type == "trak" }.map { children(it.start, it.end) }
             val ids = tracks.map { trackId(it.one("tkhd")) }
             require(ids.distinct().size == ids.size)
-            val track = tracks[ids.indexOf(id.toLong()).also { require(it >= 0) }]
+            return movieScale to tracks[ids.indexOf(id.toLong()).also { require(it >= 0) }]
+        }
+
+        fun aacEdit(id: Int, sampleRate: Int): AacEdit {
+            val (movieScale, track) = findTrack(id)
+            val media = track.one("mdia")
+            val boxes = children(media.start, media.end)
+            require(int(boxes.one("hdlr"), 8) == 0x736f756e && timescale(boxes.one("mdhd")) == sampleRate.toLong())
+            val edit = edit(track.one("edts"))
+            require(edit.emptyTicks == 0L && edit.mediaStartTicks in 1L..Int.MAX_VALUE.toLong())
+            val numerator = Math.multiplyExact(requireNotNull(edit.activeDurationTicks), sampleRate.toLong())
+            require(numerator % movieScale == 0L)
+            return AacEdit(edit.mediaStartTicks.toInt(), numerator / movieScale)
+        }
+
+        fun track(id: Int, expectedCount: Long?, requireShift: Boolean = false): Track {
+            val (movieScale, track) = findTrack(id)
             val mdiaBox = track.one("mdia")
             val mdia = children(mdiaBox.start, mdiaBox.end)
             require(int(mdia.one("hdlr"), 8) == 0x76696465) // vide, not an audio track with similar times

@@ -71,10 +71,9 @@ internal object MediaCodecAudioDecoder {
                     val format = extractor.getTrackFormat(track)
                     if (extractor.sampleTime > firstPacketUs && format.containsKey(MediaFormat.KEY_ENCODER_DELAY))
                         format.setInteger(MediaFormat.KEY_ENCODER_DELAY, 0)
-                    // Interior seeks keep the generic preroll/raw-PTS contract. The independent
-                    // preflight closes before opening the decoder and never moves this cursor.
-                    val gaplessClock = if (extractor.sampleTime == firstPacketUs)
-                        continuousGaplessAacClock(file, track, format, firstPacketUs, checkCancelled) else null
+                    // The independent preflight closes before opening the decoder and never moves this cursor.
+                    val gaplessClock = continuousGaplessAacClock(file, track, format, firstPacketUs,
+                        extractor.sampleTime, checkCancelled)
                     codec = MediaCodec.createDecoderByType(requireNotNull(format.getString(MediaFormat.KEY_MIME)))
                     codec.configure(format, null, null, 0)
                     codec.start()
@@ -94,26 +93,34 @@ internal object MediaCodecAudioDecoder {
     }
 
     private fun continuousGaplessAacClock(file: File, track: Int, format: MediaFormat,
-        firstPacketUs: Long, checkCancelled: () -> Unit): GaplessAacClock? {
-        if (format.getString(MediaFormat.KEY_MIME) != MediaFormat.MIMETYPE_AUDIO_AAC ||
-            !format.containsKey(MediaFormat.KEY_ENCODER_DELAY) || !format.containsKey(MediaFormat.KEY_ENCODER_PADDING)) return null
+        firstPacketUs: Long, decoderStartUs: Long, checkCancelled: () -> Unit): GaplessAacClock? {
+        if (format.getString(MediaFormat.KEY_MIME) != MediaFormat.MIMETYPE_AUDIO_AAC) return null
+        val hasDelay = format.containsKey(MediaFormat.KEY_ENCODER_DELAY)
+        val hasPadding = format.containsKey(MediaFormat.KEY_ENCODER_PADDING)
+        if (hasDelay != hasPadding || hasDelay && decoderStartUs != firstPacketUs) return null
         val rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         val channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-        val delay = format.getInteger(MediaFormat.KEY_ENCODER_DELAY)
-        val padding = format.getInteger(MediaFormat.KEY_ENCODER_PADDING)
-        if (delay < 0 || delay % 1024 != 0 || padding !in 0..1023 || channels !in 1..2) return null
+        if (channels !in 1..2) return null
         val asc = format.getByteBuffer("csd-0")?.duplicate() ?: return null
-        if (asc.remaining() != 2) return null
+        if (asc.remaining() != 2 && (hasDelay || asc.remaining() != 5)) return null
         val bits = ((asc.get().toInt() and 255) shl 8) or (asc.get().toInt() and 255)
+        // AAC-LC sync extension that explicitly disables SBR, with zero alignment bits.
+        if (asc.hasRemaining() && ((asc.get().toInt() and 255) != 0x56 ||
+                (asc.get().toInt() and 255) != 0xe5 || asc.get().toInt() != 0)) return null
         val rates = intArrayOf(96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350)
         val rateIndex = (bits ushr 7) and 15
-        // AAC-LC, explicit channel configuration, 1024-frame GA syntax; no extensions.
+        // AAC-LC, explicit channel configuration, 1024-frame GA syntax.
         if ((bits ushr 11) != 2 || rateIndex !in rates.indices || rates[rateIndex] != rate ||
             ((bits ushr 3) and 15) != channels || (bits and 7) != 0) return null
-        val codecOriginUs = Math.addExact(firstPacketUs, AudioExportPlan.presentationTimeUs(delay.toLong(), rate))
-        // Pre-R extractors expose coded packet PTS rather than the priming edit's negative PTS.
-        val originUs = if (Build.VERSION.SDK_INT < 30) firstPacketUs else codecOriginUs
-        if (originUs < 0 || codecOriginUs < 0) return null
+        val edit = if (!hasDelay) {
+            // Old extractors can omit gapless keys and expose unedited packet timestamps.
+            if (Build.VERSION.SDK_INT >= 30 || firstPacketUs != 0L || decoderStartUs < 0 ||
+                !format.containsKey(MediaFormat.KEY_TRACK_ID)) return null
+            Mp4PresentationBounds.aacEdit(file, format.getInteger(MediaFormat.KEY_TRACK_ID), rate, checkCancelled)
+                ?: return null
+        } else null
+        val delay = edit?.delayFrames ?: format.getInteger(MediaFormat.KEY_ENCODER_DELAY)
+        if (delay < 0 || delay % 1024 != 0) return null
         val proof = MediaExtractor()
         try {
             proof.setDataSource(file.absolutePath)
@@ -128,7 +135,12 @@ internal object MediaCodecAudioDecoder {
                 packets = Math.addExact(packets, 1L)
                 if (!proof.advance()) break
             }
-            val frames = Math.subtractExact(Math.subtractExact(Math.multiplyExact(packets, 1024L), delay.toLong()), padding.toLong())
+            val codedFrames = Math.multiplyExact(packets, 1024L)
+            if (codedFrames <= delay) return null
+            val padding = if (edit != null) codedFrames - delay - edit.presentationFrames
+                else format.getInteger(MediaFormat.KEY_ENCODER_PADDING).toLong()
+            if (padding !in 0L..1023L) return null
+            val frames = codedFrames - delay - padding
             if (frames <= 0 || !format.containsKey(MediaFormat.KEY_DURATION)) return null
             val durationUs = format.getLong(MediaFormat.KEY_DURATION)
             // Extractors report either the presentation edit or the full coded duration.
@@ -139,8 +151,25 @@ internal object MediaCodecAudioDecoder {
                 val ceilUs = Math.addExact(floorUs, if (numerator % rate == 0L) 0L else 1L)
                 return durationUs in floorUs..ceilUs
             }
-            if (!matchesDuration(frames) && !matchesDuration(Math.multiplyExact(packets, 1024L))) return null
-            return GaplessAacClock(rate, originUs, padding, frames, codecOriginUs)
+            if (!matchesDuration(frames) && !matchesDuration(codedFrames) &&
+                !(edit != null && matchesDuration(codedFrames - padding))) return null
+            if (edit != null) {
+                // The independently checked extractor packet grid also identifies interior seeks.
+                val skippedFrames = Math.addExact(Math.multiplyExact(decoderStartUs, rate.toLong()), 500_000L) / 1_000_000L
+                if (skippedFrames % 1024 != 0L || skippedFrames >= codedFrames ||
+                    kotlin.math.abs(AudioExportPlan.presentationTimeUs(skippedFrames, rate) - decoderStartUs) > 2L) return null
+                val remainingDelay = (delay - skippedFrames).coerceAtLeast(0L)
+                val emittedBeforeSeek = (skippedFrames - delay).coerceAtLeast(0L)
+                if (emittedBeforeSeek >= frames) return null
+                format.setInteger(MediaFormat.KEY_ENCODER_DELAY, remainingDelay.toInt())
+                format.setInteger(MediaFormat.KEY_ENCODER_PADDING, padding.toInt())
+                return GaplessAacClock(rate, AudioExportPlan.presentationTimeUs(emittedBeforeSeek, rate), padding.toInt(),
+                    frames - emittedBeforeSeek, Math.addExact(decoderStartUs, AudioExportPlan.presentationTimeUs(remainingDelay, rate)))
+            }
+            val codecOriginUs = Math.addExact(firstPacketUs, AudioExportPlan.presentationTimeUs(delay.toLong(), rate))
+            val originUs = if (Build.VERSION.SDK_INT < 30) firstPacketUs else codecOriginUs
+            if (originUs < 0 || codecOriginUs < 0) return null
+            return GaplessAacClock(rate, originUs, padding.toInt(), frames, codecOriginUs)
         } finally { proof.release() }
     }
 
