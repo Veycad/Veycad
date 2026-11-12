@@ -30,7 +30,7 @@ PNG иконки подготовлен из [вектора приложени�
 адаптивной иконки с теми же контурами, цветами и фоном. Формат, размер и непрозрачность
 сверены с [требованиями RuStore к медиафайлам](https://www.rustore.ru/help/developers/publishing-and-verifying-apps/requirement-apps).
 
-Публичное описание GitHub проверено 1 ноября 2026:
+Публичное описание GitHub проверено 12 ноября 2026:
 `Offline Android app for automatic, beat-synced video editing and on-device subtitles. No account or cloud processing.`
 Сайт в поле homepage не указан, GitHub Pages не включён; публичный адрес политики
 не следует считать готовым на основании наличия её черновика в PR.
