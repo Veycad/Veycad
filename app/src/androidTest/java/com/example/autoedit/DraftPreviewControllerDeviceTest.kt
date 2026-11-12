@@ -238,7 +238,8 @@ class DraftPreviewControllerDeviceTest {
             reader.close()
         }
         assertEquals(prepared.framePlan.frames.size, MediaCodecSpeedRampRenderer.render(request))
-        MediaMetadataRetriever().use { retriever ->
+        NativeResources().use { resources ->
+            val retriever = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             retriever.setDataSource(output.path)
             samples.forEach { (time, preview) ->
                 val bitmap = requireNotNull(retriever.getFrameAtTime(time, MediaMetadataRetriever.OPTION_CLOSEST))
@@ -281,7 +282,8 @@ class DraftPreviewControllerDeviceTest {
         instrumentation.targetContext.resources.openRawResource(R.raw.duality_loop_author).use { source ->
             musicFile.outputStream().use { source.copyTo(it) }
         }
-        val musicDuration = MediaMetadataRetriever().use { retriever ->
+        val musicDuration = NativeResources().use { resources ->
+            val retriever = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             retriever.setDataSource(musicFile.path)
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() * 1_000
         }

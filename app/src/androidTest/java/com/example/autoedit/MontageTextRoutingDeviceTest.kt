@@ -249,7 +249,8 @@ class MontageTextRoutingDeviceTest {
     private fun withFrames(inputs: List<Pair<File, Int>>, assertions: (List<Bitmap>) -> Unit) {
         val images = mutableListOf<Bitmap>()
         try {
-            inputs.forEach { (file, index) -> MediaMetadataRetriever().use { retriever ->
+            inputs.forEach { (file, index) -> NativeResources().use { resources ->
+                val retriever = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
                 retriever.setDataSource(file.path)
                 images += requireNotNull(retriever.getFrameAtIndex(index))
             } }

@@ -198,7 +198,8 @@ class ManualMvpScreenTest {
         awaitExportAndPreview(id, revision)
         val saved = store.load(id).exports.last()
         val file = File(fixture.context.filesDir, "completed-renders/${saved.fileName}")
-        MediaMetadataRetriever().use { metadata ->
+        NativeResources().use { resources ->
+            val metadata = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             metadata.setDataSource(file.path)
             assertEquals("1920", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
             assertEquals("1080", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT))

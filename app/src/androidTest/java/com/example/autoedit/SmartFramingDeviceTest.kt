@@ -109,7 +109,8 @@ class SmartFramingDeviceTest {
                     smartTracks = mapOf(selection.id to track))
                 assertSame(prepared.framePlan, request.resolvedFramePlan())
                 assertEquals("$aspect/$mode encoded count", 30, MediaCodecSpeedRampRenderer.render(request))
-                MediaMetadataRetriever().use { reader ->
+                NativeResources().use { resources ->
+                    val reader = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
                     reader.setDataSource(output.path)
                     fun pixel(time: Long, x: Float, y: Float): Int {
                         val frame = requireNotNull(reader.getFrameAtTime(time, MediaMetadataRetriever.OPTION_CLOSEST))

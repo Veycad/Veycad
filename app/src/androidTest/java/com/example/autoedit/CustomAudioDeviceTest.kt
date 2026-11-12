@@ -105,7 +105,8 @@ class CustomAudioDeviceTest {
         val exportedMap = AudioBeatMapAnalyzer.analyze(pcm, decoded.sampleRate)
         assertEquals(120f, requireNotNull(exportedMap.estimatedTempoBpm), 4f)
         assertTrue(exportedMap.onsets.count { it.sampleIndex >= decoded.sampleRate } >= 3)
-        MediaMetadataRetriever().use { metadata ->
+        NativeResources().use { resources ->
+            val metadata = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             metadata.setDataSource(output.path)
             assertTrue(abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - 3_000L) < 100)
         }
