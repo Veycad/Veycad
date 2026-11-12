@@ -232,7 +232,25 @@ class ProjectRecoveryDeviceTest {
     private fun export(id: String) {
         val count = store.load(id).exports.size
         tap("export")
-        fixture.waitUntil("real native export published", 180_000) { store.load(id).exports.size == count + 1 && ready() }
+        try {
+            fixture.waitUntil("real native export published and preview ready", 180_000) {
+                store.load(id).exports.size == count + 1 && ready()
+            }
+        } catch (error: AssertionError) {
+            val exports = store.load(id).exports
+            val files = exports.map { File(fixture.context.filesDir, "completed-renders/${it.fileName}").isFile }
+            var preview = "editor absent"
+            instrumentation.runOnMainSync {
+                current<ManualMvpActivity>()?.let { activity ->
+                    preview = "state=${field<DraftPreviewController.State>(activity, "playbackState")}; " +
+                        "previewText=${view<TextView>("preview-state")?.text}; playEnabled=${view<Button>("play")?.isEnabled}; " +
+                        "exporting=${field<Boolean>(activity, "exporting")}; " +
+                        "status=${field<TextView>(activity, "status")?.text}"
+                }
+            }
+            throw AssertionError("Recovery export/preview wait failed: expected=${count + 1}; " +
+                "linked=${exports.size}; publishedFiles=$files; $preview", error)
+        }
     }
     private fun documentTypes(vararg types: String) = object : TypeSafeMatcher<Intent>() {
         override fun describeTo(description: Description) { description.appendText("OPEN_DOCUMENT ${types.toList()}") }
