@@ -365,27 +365,36 @@ internal object MediaCodecAudioDecoder {
         } ?: error("No audio track")
         extractor.selectTrack(track)
         val firstPacketUs = extractor.sampleTime
-        // Audio extractors may seek to the closest packet even with PREVIOUS_SYNC. Leave
-        // preroll for MP3's bit reservoir and discard it by the decoded PCM clock below.
-        if (startUs > 0L) extractor.seekTo((startUs - 500_000L).coerceAtLeast(0L),
-            MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
-        val inputFormat = extractor.getTrackFormat(track)
+        val initialFormat = extractor.getTrackFormat(track)
         val maxUs = if (maxDecodeUs > Long.MAX_VALUE - startUs) Long.MAX_VALUE else startUs + maxDecodeUs
-        // Encoder delay/padding describe the original file boundaries, not an interior seek
-        // or the artificial EOS used for a bounded analysis/export window.
-        if (startUs > 0L && extractor.sampleTime > firstPacketUs &&
-            inputFormat.containsKey(MediaFormat.KEY_ENCODER_DELAY))
-            inputFormat.setInteger(MediaFormat.KEY_ENCODER_DELAY, 0)
-        if (inputFormat.containsKey(MediaFormat.KEY_DURATION) &&
-            maxUs < inputFormat.getLong(MediaFormat.KEY_DURATION) &&
-            inputFormat.containsKey(MediaFormat.KEY_ENCODER_PADDING))
-            inputFormat.setInteger(MediaFormat.KEY_ENCODER_PADDING, 0)
-        if (preserveFloatHeadroom && inputFormat.getString(MediaFormat.KEY_MIME) != MediaFormat.MIMETYPE_AUDIO_RAW) {
-            // Ask for float output so AAC overshoots are measured before integer saturation.
+        // MP3 seek tables can report the requested time for a different packet. Count the PCM
+        // from the original decoder origin so delay, padding and the selected window share a clock.
+        val mp3Rate = if (firstPacketUs == 0L && initialFormat.getString(MediaFormat.KEY_MIME) == MediaFormat.MIMETYPE_AUDIO_MPEG)
+            initialFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) else null
+        fun ceilingSample(timeUs: Long, rate: Int): Long =
+            timeUs / 1_000_000L * rate + (timeUs % 1_000_000L * rate + 999_999L) / 1_000_000L
+        val mp3Start = mp3Rate?.let { ceilingSample(startUs, it) } ?: 0L
+        val mp3End = mp3Rate?.let { ceilingSample(maxUs, it) } ?: Long.MAX_VALUE
+        var mp3Frames = 0L
+        if (mp3Rate == null && startUs > 0L) extractor.seekTo((startUs - 500_000L).coerceAtLeast(0L),
+            MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+        val inputFormat = if (mp3Rate == null) extractor.getTrackFormat(track) else initialFormat
+        if (mp3Rate == null) {
+            if (extractor.sampleTime > firstPacketUs && inputFormat.containsKey(MediaFormat.KEY_ENCODER_DELAY))
+                inputFormat.setInteger(MediaFormat.KEY_ENCODER_DELAY, 0)
+            if (inputFormat.containsKey(MediaFormat.KEY_DURATION) &&
+                maxUs < inputFormat.getLong(MediaFormat.KEY_DURATION) &&
+                inputFormat.containsKey(MediaFormat.KEY_ENCODER_PADDING))
+                inputFormat.setInteger(MediaFormat.KEY_ENCODER_PADDING, 0)
+        }
+        val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: error("Audio track has no MIME")
+        // The Android 8 Stagefright MP3 converter can crash when asked for float PCM.
+        val canRequestFloat = mime != MediaFormat.MIMETYPE_AUDIO_RAW &&
+            (mime != MediaFormat.MIMETYPE_AUDIO_MPEG || Build.VERSION.SDK_INT >= 28)
+        if (preserveFloatHeadroom && canRequestFloat) {
             // The returned encoding still has to be checked: this is a request, not evidence.
             inputFormat.setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_FLOAT)
         }
-        val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: error("Audio track has no MIME")
         val decoder = MediaCodec.createDecoderByType(mime)
 
         val bytes = ByteArrayOutputStream()
@@ -406,7 +415,7 @@ internal object MediaCodecAudioDecoder {
                         val input = decoder.getInputBuffer(inputIndex) ?: error("Missing decoder input")
                         input.clear()
                         val sampleTime = extractor.sampleTime
-                        if (sampleTime >= 0 && sampleTime >= maxUs) {
+                        if (mp3Rate == null && sampleTime >= 0 && sampleTime >= maxUs) {
                             decoder.queueInputBuffer(
                                 inputIndex,
                                 0,
@@ -449,18 +458,29 @@ internal object MediaCodecAudioDecoder {
                                 else -> error("Unsupported decoder PCM encoding $encoding")
                             }
                             val frameBytes = sampleBytes * channels
-                            val frames = AudioPcmWindow.frames(info.presentationTimeUs, info.size / frameBytes,
-                                format.getInteger(MediaFormat.KEY_SAMPLE_RATE), startUs, maxDecodeUs)
-                            output.position(info.offset + frames.first * frameBytes)
-                            output.limit(info.offset + (frames.last + 1) * frameBytes)
-                            val chunk = ByteArray(frames.count() * frameBytes)
-                            check(bytes.size().toLong() + chunk.size <= 64L * 1024 * 1024) {
-                                "Аудиофрагмент слишком большой для обработки на устройстве"
+                            val frameCount = info.size / frameBytes
+                            val rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                            val frames = if (mp3Rate == null) {
+                                AudioPcmWindow.frames(info.presentationTimeUs, frameCount, rate, startUs, maxDecodeUs)
+                            } else {
+                                check(rate == mp3Rate) { "MP3 output sample rate changed" }
+                                val first = (mp3Start - mp3Frames).coerceIn(0L, frameCount.toLong()).toInt()
+                                val end = (mp3End - mp3Frames).coerceIn(0L, frameCount.toLong()).toInt()
+                                mp3Frames += frameCount
+                                first until end
                             }
-                            output.get(chunk)
-                            bytes.write(chunk)
+                            if (!frames.isEmpty()) {
+                                output.position(info.offset + frames.first * frameBytes)
+                                output.limit(info.offset + (frames.last + 1) * frameBytes)
+                                val chunk = ByteArray(frames.count() * frameBytes)
+                                check(bytes.size().toLong() + chunk.size <= 64L * 1024 * 1024) {
+                                    "Аудиофрагмент слишком большой для обработки на устройстве"
+                                }
+                                output.get(chunk)
+                                bytes.write(chunk)
+                            }
                         }
-                        outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                        outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0 || mp3Frames >= mp3End
                         decoder.releaseOutputBuffer(outputIndex, false)
                         lastProgressNs = System.nanoTime()
                     }

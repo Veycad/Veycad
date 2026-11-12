@@ -134,6 +134,10 @@ class CustomAudioDeviceTest {
         assertEquals(96_000L, analysisPcm.frameCount)
         assertEquals(analysisPcm.frameCount, exportPcm.frameCount)
         assertArrayEquals(analysisPcm.mono(), exportPcm.mono(), .002f)
+        val fromBeginning = MediaCodecAudioDecoder.decode(file, preserveFloatHeadroom = true)
+        val first = 34_201 // ceiling(2.137511 s × 16 kHz)
+        assertArrayEquals("The MP3 window must start at the same sample as a sequential decode",
+            fromBeginning.mono().copyOfRange(first, first + 96_000), exportPcm.mono(), .0001f)
     }
 
     @Test fun native_editor_routes_custom_music_and_accepts_a_source_without_people() {
