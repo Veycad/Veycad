@@ -43,7 +43,7 @@ remaining effort. No release date is currently supported by evidence.
 
 | Work block | Exit condition | Current dependency |
 | --- | --- | --- |
-| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | API26 AAC/save cases passed across documented runs; #124 remote baseline/API28 legacy 8/8 passed. Current combined 16 KB editor/AAC/speech 11/11 passed, old APK cold control 4/4 passed; previous VerifyError/JIT causes remain unknown. Full current UI pending after #121 first-frame timeout |
+| 1. Remaining failures | Explain and resolve native/UI failures without weakening acceptance | #124 full UI 274/278, including three repeated export/preview waits and a first-frame timeout. API28 legacy passed 8/8. #125 repaired legacy test readers and passed two SDK cases on AOSP without GMS. Combined 16 KB editor/AAC/speech passed 11/11. Earlier VerifyError/JIT causes remain open |
 | 2. Manual editor acceptance | Reach editor normally; import, preview, edit, rotate, reopen and export | API28 legacy 8/8 and API36 selected cases passed. Current diagnostic helper functional case passed; signed arm64/physical acceptance open |
 | 3. Integrated candidate | Combined changes build and pass applicable checks | Candidate `5b22308`: remote baseline/API28 legacy passed; four unsigned release APKs, payload/permissions and static 16 KB alignment passed. Local code baseline 1399 JVM + 338 Python. Full UI, final signed/device acceptance and merge approval remain open |
 | 4. Physical-device acceptance | arm64/no-GMS, output review, lifecycle and update preservation | Phone reconnection explicitly deferred; no-GMS, rear camera, TalkBack, human output review and signed updates remain open |
