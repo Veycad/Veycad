@@ -386,13 +386,18 @@ internal object AacEncoderMuxer {
     fun muxPreparedAudio(prepared: SourceAacPreparation, videoFile: File, outputFile: File,
         videoEndPtsUs: Long, checkCancelled: () -> Unit = {}) {
         prepared.requireOpen()
+        require(outputFile.canonicalFile != prepared.speechPcmFile.canonicalFile)
+        muxPreparedAudio(prepared.aacFile, prepared.sampleFrames, videoFile, outputFile, videoEndPtsUs, checkCancelled)
+    }
+
+    private fun muxPreparedAudio(aacFile: File, sampleFrames: Long, videoFile: File, outputFile: File,
+        videoEndPtsUs: Long, checkCancelled: () -> Unit) {
         require(videoEndPtsUs > 0 && videoFile.isFile)
-        require(outputFile.canonicalFile != videoFile.canonicalFile && outputFile.canonicalFile != prepared.aacFile.canonicalFile
-            && outputFile.canonicalFile != prepared.speechPcmFile.canonicalFile)
+        require(outputFile.canonicalFile != videoFile.canonicalFile && outputFile.canonicalFile != aacFile.canonicalFile)
         checkCancelled()
         val partial = File.createTempFile("source-mux-", ".mp4", requireNotNull(outputFile.absoluteFile.parentFile))
         try {
-            copyPreparedTracks(prepared, videoFile, partial, videoEndPtsUs, checkCancelled)
+            copyPreparedTracks(aacFile, sampleFrames, videoFile, partial, videoEndPtsUs, checkCancelled)
             checkCancelled()
             Files.move(partial.toPath(), outputFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } catch (failure: Throwable) {
@@ -401,14 +406,14 @@ internal object AacEncoderMuxer {
         }
     }
 
-    private fun copyPreparedTracks(prepared: SourceAacPreparation, videoFile: File, partial: File,
+    private fun copyPreparedTracks(aacFile: File, sampleFrames: Long, videoFile: File, partial: File,
         videoEndPtsUs: Long, checkCancelled: () -> Unit) {
         val video = MediaExtractor()
         try {
             video.setDataSource(videoFile.absolutePath)
             val audio = MediaExtractor()
             try {
-                audio.setDataSource(prepared.aacFile.absolutePath)
+                audio.setDataSource(aacFile.absolutePath)
                 fun select(extractor: MediaExtractor, prefix: String): MediaFormat {
                     val track = (0 until extractor.trackCount).firstOrNull {
                         extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith(prefix) == true
@@ -469,7 +474,7 @@ internal object AacEncoderMuxer {
                     }
                     checkCancelled()
                     muxer.stop(); started = false
-                    AacMp4Trim.apply(partial, prepared.sampleFrames, delay, Build.VERSION.SDK_INT < 28)
+                    AacMp4Trim.apply(partial, sampleFrames, delay, Build.VERSION.SDK_INT < 28)
                 } finally { try { if (started) runCatching { muxer.stop() } } finally { muxer.release() } }
             } finally { audio.release() }
         } finally { video.release() }
@@ -495,6 +500,50 @@ internal object AacEncoderMuxer {
         val decoded = MediaCodecAudioDecoder.decode(audioFile, durationUs,
             preserveFloatHeadroom = true, checkCancelled = checkCancelled, startUs = startUs)
         muxPcm(prepareMusicPcm(decoded, checkCancelled), videoFile, outputFile, durationUs, checkCancelled)
+    }
+
+    /** Use the verified AAC priming and final sample boundary for user-selected music. */
+    fun muxSelectedMusic(audioFile: File, videoFile: File, outputFile: File, videoEndPtsUs: Long,
+        startUs: Long, checkCancelled: () -> Unit) {
+        val decoded = MediaCodecAudioDecoder.decode(audioFile, videoEndPtsUs,
+            preserveFloatHeadroom = true, checkCancelled = checkCancelled, startUs = startUs)
+        val pcm = prepareMusicPcm(decoded, checkCancelled)
+        val samples = ByteBuffer.wrap(pcm.bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        val sourceFrames = samples.remaining() / pcm.channels
+        require(sourceFrames > 0) { "Selected music window is empty" }
+        val format = PcmFormat(48_000, 2)
+        val outputFrames = (videoEndPtsUs * format.sampleRate + 500_000L) / 1_000_000L
+        val directory = requireNotNull(outputFile.absoluteFile.parentFile)
+        NativeResources().use { resources ->
+            val aac = File.createTempFile("selected-music-", ".m4a", directory)
+            resources.defer { Files.deleteIfExists(aac.toPath()) }
+            val timing = establishSourceTiming(directory, checkCancelled)
+            StreamingEncoder(aac, checkCancelled, timing).use { encoder ->
+                val buffer = ShortArray(AAC_SAMPLES_PER_ACCESS_UNIT * format.channels)
+                var startFrame = 0L
+                while (startFrame < outputFrames) {
+                    checkCancelled()
+                    val count = minOf(AAC_SAMPLES_PER_ACCESS_UNIT.toLong(), outputFrames - startFrame).toInt()
+                    repeat(count) { index ->
+                        val position = (startFrame + index) * pcm.sampleRate
+                        val frame = (position / format.sampleRate % sourceFrames).toInt()
+                        val next = (frame + 1) % sourceFrames
+                        val fraction = (position % format.sampleRate).toDouble() / format.sampleRate
+                        repeat(format.channels) { channel ->
+                            val sourceChannel = minOf(channel, pcm.channels - 1)
+                            val a = samples[frame * pcm.channels + sourceChannel].toInt()
+                            val b = samples[next * pcm.channels + sourceChannel].toInt()
+                            buffer[index * format.channels + channel] =
+                                kotlin.math.round(a + (b - a) * fraction).toInt().toShort()
+                        }
+                    }
+                    encoder.write(format, startFrame, buffer, count)
+                    startFrame += count
+                }
+                encoder.finish()
+            }
+            muxPreparedAudio(aac, outputFrames, videoFile, outputFile, videoEndPtsUs, checkCancelled)
+        }
     }
 
     private fun prepareMusicPcm(decoded: MediaCodecAudioDecoder.DecodedAudio,

@@ -178,6 +178,20 @@ class CustomAudioDeviceTest {
         assertEquals(15_000_000L, result.winner.alternative.graph.audioTrack!!.sourceStartUs)
         assertTrue(result.pipeline.audioMap.beats.isNotEmpty())
         assertTrue(result.winner.alternative.graph.clips.size >= 2)
+        val durationUs = HighQualityFramePlan.build(result.winner.alternative.graph).durationUs
+        val expectedSamples = (durationUs * 48_000 + 500_000) / 1_000_000
+        val source = MediaCodecAudioDecoder.sourceProvider(mapOf("result" to output))
+        val decodedFrames = requireNotNull(source.open("result", 0)).use { stream ->
+            assertEquals(PcmFormat(48_000, 2), stream.format)
+            var frames = 0L
+            while (true) {
+                val chunk = stream.read() ?: break
+                assertEquals(AudioExportPlan.presentationTimeUs(frames, 48_000), chunk.startPtsUs)
+                frames += chunk.frames
+            }
+            frames
+        }
+        assertEquals("Automatic music must end at the authored sample boundary", expectedSamples, decodedFrames)
         val exported = MediaCodecAudioDecoder.decode(output)
         assertEquals(120f, requireNotNull(AudioBeatMapAnalyzer.analyze(exported.mono(),
             exported.sampleRate).estimatedTempoBpm), 4f)
