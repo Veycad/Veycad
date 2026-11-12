@@ -17,6 +17,25 @@ import org.junit.runner.RunWith
 class SmartFramingDeviceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun editedMp4UsesTheSavedProjectClockForSmartAnalysis() {
+        val file = File.createTempFile("smart-saved-clock", ".mp4", context.cacheDir)
+        try {
+            InstrumentationRegistry.getInstrumentation().context.assets.open("media/offset-short-audio.mp4")
+                .use { input -> file.outputStream().use { input.copyTo(it) } }
+            val source = MediaInputInspector().inspect("offset", file, "Edited MP4 fixture")
+            // A two-second empty edit gives this same video two possible extractor clocks.
+            for (first in listOf(0L, 2_000_000L)) {
+                val end = first + 2_000_000L
+                val key = SmartFramingKey(source.fingerprint, source.durationUs, first, end,
+                    listOf(VisualEventMap.UsableWindow(first, end)))
+                val expected = listOf(133_333L, 400_000L, 633_333L, 900_000L,
+                    1_133_333L, 1_400_000L, 1_633_333L, 1_900_000L).map { first + it }
+                val analysis = SmartFramingSourceAnalysis.analyze(context, file, key) {}
+                assertEquals(expected, analysis.observations.map { it.sourceTimeUs })
+            }
+        } finally { file.delete() }
+    }
+
     @Test fun indexedSmartAnalysisIncludesRealNonzeroOriginTailBeyondDeclaredDuration() {
         val file = File(context.cacheDir, "smart-raw-origin-${UUID.randomUUID()}.mp4")
         InstrumentationRegistry.getInstrumentation().context.assets.open("media/raw-origin-400ms.mp4").use { input ->
@@ -32,10 +51,9 @@ class SmartFramingDeviceTest {
             val key = SmartFramingKey(source.fingerprint, source.durationUs, source.requiredFirstVideoPtsUs,
                 source.requiredVideoEndPtsUs, listOf(VisualEventMap.UsableWindow(
                     source.requiredFirstVideoPtsUs, source.requiredVideoEndPtsUs)))
-            val targets = SmartFramingSourceAnalysis.targets(file, key)
-            assertTrue(targets.last() > source.durationUs)
             val analysis = SmartFramingSourceAnalysis.analyze(context, file, key) {}
-            assertEquals(targets.toList(), analysis.observations.map { it.sourceTimeUs })
+            assertEquals(8, analysis.observations.size)
+            assertTrue(analysis.observations.last().sourceTimeUs > source.durationUs)
             val track = SmartFramingTrack.build(analysis, key.windows)
             assertEquals(source.requiredVideoEndPtsUs, track.sourceWindows.single().endUs)
             assertTrue(track.points.any { it.sourceTimeUs > source.durationUs })
