@@ -1,0 +1,202 @@
+# V6 combined release validation
+
+Status: full UI run completed with one screen failure; not release-ready.
+No PR merged and no store submission approved.
+
+Source: `6ce47f5d4fa278c19488a2c8c0d778638095f9a8`, local branch
+`codex/release-integration-v6-local` in `D:/CodexWork/VeycadRuStore-20261025`.
+It combines V5 (`8916a4c`) with the four native-preview wait corrections from
+[PR #100](https://github.com/Veycad/Veycad/pull/100), recovery intent/compact
+viewport corrections from [PR #99](https://github.com/Veycad/Veycad/pull/99),
+and the full CI job time budget from [PR #98](https://github.com/Veycad/Veycad/pull/98).
+The four-file diff contains tests, the recovery host script and CI configuration;
+`app/src/main` and `app/build.gradle.kts` are unchanged from V5. This does not
+transfer exact-binary acceptance to a newly built artifact.
+
+## Clean build PASS; full UI run FAIL
+
+Clean `baselineVerify`, UI APK/instrumentation and unsigned release assembly
+passed in 8m43s (196 tasks). All 1,392 JVM tests passed with zero failures/errors/
+skips across 189 XML suites; all 338 Python tests passed. Lint/security/build
+checks completed through the baseline task. Log:
+`D:/CodexWork/veycad-integration-v6-build.log`.
+
+Generated release BuildConfig has DEBUG=false, LIVE_PREVIEW_ENABLED=true and
+GALLERY_MVP=false. aapt confirms `com.veycad.app`, version 0.1.16/code17,
+minSdk26/targetSdk36 and arm64-v8a for the arm64 package, without application-debuggable.
+The embedded SOURCE_SHA remains `local-unverified`; source identity is recorded
+by this receipt, not claimed to be embedded. These APKs are unsigned and have not
+passed signed-release install/update acceptance.
+
+All four release APKs contain the exact 30 production license files from source.
+Hashes and UI APK identities: `D:/CodexWork/veycad-v6-build-artifacts.json`.
+
+| Release APK | Bytes | SHA-256 |
+| --- | ---: | --- |
+| app-arm64-v8a-release-unsigned.apk | 220,746,254 | `8d71101a6c6b5e50ef43c0164fd21bb97881ea2e6f8e456813a9ff44ff5d177c` |
+| app-armeabi-v7a-release-unsigned.apk | 209,875,772 | `86ba33bb01b6e6a3dc4f6f41ccc8375cbf6e7d9f60a4c502a3d6561bbc399805` |
+| app-universal-release-unsigned.apk | 318,213,150 | `e4c491876f8b63ee62816d85c9cba0bfb7ee566bba95db90758304a09c791fa5` |
+| app-x86_64-release-unsigned.apk | 225,953,265 | `88123ee7692c588bde3cc53fc518255ea7e2ec1405c7fd9adee64ee621752951` |
+
+The full `run_ui_tests.ps1` completed on dedicated API36 AOSP emulator
+`emulator-5556` / `AutoEditUi_API36`, using explicit JDK/SDK/Python paths.
+Log: `D:/CodexWork/veycad-integration-v6-full-ui.log`. Permissions passed 2/2;
+screens executed all 267 cases, with 266 passing and one failure, zero errors,
+skips, duplicates, missing or unexpected cases. Screen instrumentation took
+4597.49 seconds. Restart phases were not run because the screen phase failed.
+
+On 2026-11-01 the completed run was preserved under
+`D:/CodexWork/veycad-v6-full-ui-archive/20261026-115601-245/`, including the
+summary, XML, logs, native audio and preview evidence. Every copied run file
+was checked against its original SHA-256 and recorded in `manifest.json`.
+The independent host AAC oracle passed: 48,000 stereo frames, peak 0.8921767473,
+no full-scale run and exact boundary markers at samples 1600/24000/46400 in
+all four prepared/exported 30/60 fps artifacts. This does not establish Android
+float decoding or human listening acceptance.
+
+Before cleaning, 545 previous report/artifact files (804,460,595 bytes) were
+preserved under `D:/CodexWork/veycad-v5-before-v6-build/`, with a SHA-256 manifest.
+Earlier full V5 evidence and standalone diagnostic/fix runs remain in the
+[previous receipt](integration-2026-10-26-v5.md).
+
+## Remaining failure
+
+Run `20261026-115601-245`, case 75:
+`DraftPreviewControllerDeviceTest.directSurfaceFirstReverseAndSourceChangePreserveInputsWithoutPreviewFile`
+failed at its initial `awaitFrame(0, ...)`: no exact ready frame before the
+15-second deadline. Captured states had no reported controller error; the worker
+stack was in `GLES20.glGetAttribLocation`, through `EglRenderTarget.preparePresentation`
+and native frame composition. This is a different test from PR #100's manual UI
+scenario, and its root cause is not established by this stack alone.
+
+The same case passed in the previous full V5 XML (whole-case time 29.388s).
+That result does not override the V6 failure. Two focused repeats on the unchanged
+V6 app and original test APK reproduced the initial-frame failure on 2026-11-01.
+Logs: `D:/CodexWork/veycad-v6-first-frame-focused-20261101.log` and
+`D:/CodexWork/veycad-v6-first-frame-focused-warm-20261101.log`.
+
+A temporary diagnostic test APK raised only `awaitFrame` from 15 to 60 seconds
+and logged elapsed time, leaving the app binary unchanged. The scenario completed
+in 44.588s: first frame 21.530s, seeks 0.430/0.520/1.146s, and return to zero
+after cancellation 18.331s. Thus this run demonstrates delayed completion, not
+an indefinite hang. It does not establish the underlying cause or satisfy the
+original 15-second acceptance limit. The temporary source change was reverted;
+the diagnostic APK must not be mistaken for the original acceptance test APK.
+Log and timing evidence: `D:/CodexWork/veycad-v6-first-frame-60s-diagnostic-20261101.log`
+and `D:/CodexWork/veycad-v6-first-frame-60s-timings-20261101.log`.
+
+A second diagnostic app inserted `glFinish` before presentation to distinguish
+queued rendering from the attribute lookup where the original stack was sampled.
+The first render wait took 22.868s, then presentation preparation added 5ms and
+buffer swap approximately 223ms. After cancellation the render wait took 16.685s;
+ordinary subsequent render waits took 16-21ms. The scenario completed in 51.14s
+with the diagnostic 60-second test APK. This localizes the delay to queued GPU
+work before presentation; it does not prove that `glGetAttribLocation` itself
+needs optimization. The added synchronization changes execution and is diagnostic
+only, not a production fix or acceptance pass. Evidence and exact patches/hashes:
+`D:/CodexWork/veycad-v6-stage-diagnostic-{run,timings,apks}-20261101.*` and
+`D:/CodexWork/veycad-v6-stage-diagnostic-20261101.patch`.
+
+A third diagnostic synchronized immediately before and after the source draw.
+The pre-draw wait was 0ms; the first source draw plus completion took 17.307s,
+and 16.831s after cancellation recreated the rendering resources. Warm source
+draws took 15-22ms. Presentation then completed within 168ms. The whole scenario
+completed in 40.666s with the diagnostic test APK. SurfaceFlinger identifies the
+emulator renderer as Google SwiftShader 4.0.0.1. This localizes the cost to the
+first source draw in a new rendering context; driver preparation/compilation is
+a hypothesis, not yet a proven cause. No shader behavior or cancellation safety
+was changed. Evidence uses the corresponding
+`D:/CodexWork/veycad-v6-draw-diagnostic-*20261101.*` files. Both production-source
+diagnostics were reverted and the original V6 app APK was reinstalled; the
+test APK at that checkpoint still had the explicitly diagnostic 60-second wait.
+
+### Unmodified GPU-backend comparison, 2026-11-01
+
+The ordinary 15-second test was rebuilt from the clean V6 source and installed
+on both API36 emulators. Installed app and test SHA-256 identities matched on
+both devices: app `1ef029276544d16e301916611b55daa083c9b77778f9b841c329d461fdde86c2`,
+test `1b59936cc169d9f3df7c33e6245e787f1dff7af19fada3235f34d11cc0f2e933`.
+Both used the same AVD definition, 320x480 override and density 160.
+
+- NVIDIA RTX 3060 host GPU, new read-only emulator-5558: original scenario PASS,
+  whole-case time 10.590s, unchanged pixel/source/cancellation assertions.
+- SwiftShader 4.0.0.1, emulator-5556: control FAIL at the original initial-frame
+  deadline. The extended diagnostic test is no longer installed on either.
+
+This establishes a backend-dependent result on these emulator instances. It
+does not isolate driver compilation from every other backend difference, and
+the instances have different run histories. No production optimization or test
+deadline change is justified solely by this comparison. Physical-device first
+frame/cancellation timing remains open, as does the original full-suite failure.
+Logs: `D:/CodexWork/veycad-v6-host-gpu-first-frame-20261101.log` and
+`D:/CodexWork/veycad-v6-swiftshader-control-first-frame-20261101.log`.
+Installed identities and actual renderers:
+`D:/CodexWork/veycad-v6-gpu-comparison-identities-20261101.json`.
+
+An immutable excerpt, logcat snapshot and hashes are saved at
+`D:/CodexWork/veycad-v6-first-frame-failure/`. The final full-run XML confirms
+this was its only screen failure. The owner deferred reconnecting the Samsung, so
+physical V6 follow-up is pending device availability.
+
+## Separate V6 restart checks
+
+Atomic import restart passed on 2026-11-01, run
+`60290b43-e872-4082-8983-314145d06982`. Both `FILES_PREPARED` and
+`MANIFEST_COMMITTED` phases restarted into a different process, retained the
+selected batch, passed the UI checks and verified two source files byte-for-byte
+each. Archive: `D:/CodexWork/veycad-v6-atomic-restart-archive-20261101/`;
+host log: `D:/CodexWork/veycad-v6-atomic-restart-20261101.log`.
+This separate result does not change the failed full-suite status.
+
+Saved project recovery also passed separately on 2026-11-01, run
+`2582861b-536a-4007-9126-6012eb527644`: process 5560 was replaced by 5920,
+six project files matched exactly, retired scratch was removed and the native
+editor became ready. Archive:
+`D:/CodexWork/veycad-v6-project-recovery-archive-20261101/`; log:
+`D:/CodexWork/veycad-v6-project-recovery-20261101.log`.
+Scope is controlled force-stop, not an OEM low-memory kill, signed update or
+physical-device recovery. Neither restart runner uses the modified frame-wait
+instrumentation test; both exercise probes in the unchanged V6 app APK.
+
+## Prior supporting evidence
+
+- V5 full UI: permissions 2/2, screens 266/267; one manual-preview wait failure.
+- V5 plus PR #100: complete manual scenario 1/1 PASS in 358.117s at 320x480,
+  including native export, exact shared bytes, reopen and rotation.
+- Isolated-main PR #99: process recovery PASS at both 320x960 and 320x480;
+  fresh process, six unchanged files, retired scratch and native paused preview.
+- PR #98 (`427ce9f`), #99 (`b219e23`) and #100 (`95340e6`) exact-head
+  baseline/legacy-save CI passed. The earlier running-state snapshot is
+  `D:/CodexWork/veycad-v6-ci-checkpoint.json`; terminal UI results follow below.
+- PR #98 UI job [121531142216](https://github.com/Veycad/Veycad/actions/runs/40310783117/job/121531142216)
+  subsequently finished FAIL: all 261 cases executed, eight failures, zero errors/
+  skips, 3623.291s instrumentation time. It was no longer cut off at one hour.
+  This branch contains only the CI time-budget change atop main, not combined V6.
+  Its eight failing cases were compared by name against the archived full V5 XML:
+  seven passed there; the manual trim/export scenario failed there at a different
+  wait, then passed on V5 plus #100. This comparison is supporting evidence,
+  not an assertion that PR #98 or V6 is green. Saved comparison and CI excerpt:
+  `D:/CodexWork/veycad-ci98-v5-comparison.json` and
+  `D:/CodexWork/veycad-ci98-ui-log-excerpt.txt`.
+- PR #99 UI job [121546060821](https://github.com/Veycad/Veycad/actions/runs/40315102167/job/121546060821)
+  finished FAIL: 261/261 cases, eight failures, zero errors/skips. This is the
+  isolated recovery-probe branch, not the combined V6 candidate.
+- PR #100 UI job [121551923950](https://github.com/Veycad/Veycad/actions/runs/40316979169/job/121551923950)
+  finished FAIL after a process crash during case 133,
+  `saved60FpsScrubPlayPauseBackgroundAndRecreateRemainPaused`.
+  `PreviewAudioClock.release` returned to an already terminated GL executor in
+  `DraftPreviewController.stopAndRelease` (`RejectedExecutionException`).
+  The run is incomplete, not a 261-case result. V6 contains the pending-stop
+  accounting fix absent from this isolated branch; its acceptance still depends
+  on the combined run. Truncated CI excerpts and exact job/head identities are
+  preserved in `D:/CodexWork/veycad-ci99-ci100-terminal.json`.
+
+These are scoped results, not a replacement for the combined V6 run.
+
+## Remaining release acceptance
+
+Signed final APK, install/update preservation, physical no-GMS acceptance,
+rear-camera/orientation and capture-to-montage acceptance, TalkBack and human
+visual/audio review remain open. Developer account/permanent key, final store
+assets, public privacy URL and third-party music rights remain unresolved.
+The owner has not approved merges or store submission.
