@@ -16,5 +16,6 @@
     <string name="backup_missing_outputs">Ранее удалённых готовых видео в копии нет: %1$d. Сам проект сохранён.</string>
     <string name="backup_legacy_unverified">Исходников без сохранённого проверенного SHA-256 в старом проекте: %1$d. Копия проверяет текущие байты, но не подтверждает их первоначальную идентичность.</string>
     <string name="backup_cleanup_warning">Проект восстановлен, но временные файлы удалось убрать не полностью.</string>
-    <string name="backup_failed">Не удалось завершить операцию: %1$s</string>
+    <string name="backup_restore_failed">Не удалось восстановить проект. Проверь ZIP-файл и свободное место.</string>
+    <string name="backup_save_failed">Не удалось сохранить резервную копию. Проверь свободное место или выбери другую папку.</string>
 </resources>
