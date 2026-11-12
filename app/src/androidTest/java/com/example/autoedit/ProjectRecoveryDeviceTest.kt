@@ -106,7 +106,8 @@ class ProjectRecoveryDeviceTest {
         val recoveredMovie = File(fixture.context.filesDir, "completed-renders/${restored.exports.single().fileName}")
         assertNotEquals(movie.name, recoveredMovie.name)
         assertEquals(movieHash, hash(recoveredMovie))
-        MediaMetadataRetriever().use { metadata ->
+        NativeResources().use { resources ->
+            val metadata = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             metadata.setDataSource(recoveredMovie.path)
             assertTrue(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() > 0)
             assertEquals(restored.exports.single().settings.width.toString(), metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
