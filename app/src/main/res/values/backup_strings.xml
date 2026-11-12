@@ -18,4 +18,5 @@
     <string name="backup_cleanup_warning">Проект восстановлен, но временные файлы удалось убрать не полностью.</string>
     <string name="backup_restore_failed">Не удалось восстановить проект. Проверь ZIP-файл и свободное место.</string>
     <string name="backup_save_failed">Не удалось сохранить резервную копию. Проверь свободное место или выбери другую папку.</string>
+    <string name="backup_incomplete_file">Неполный ZIP-файл мог остаться в выбранной папке.</string>
 </resources>

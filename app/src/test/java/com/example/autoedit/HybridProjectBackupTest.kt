@@ -153,9 +153,9 @@ class HybridProjectBackupTest {
         val files = temporary.newFolder(); val project = populate(files)
         val source = ProjectAssetStore(HybridProjectStore(files).directory(project.id)).resolve(project.assets.first())
         source.writeText("changed source")
-        val output = ByteArrayOutputStream()
-        assertThrows(IllegalArgumentException::class.java) { HybridProjectBackup(files).export(project.id, output) }
-        assertEquals(0, output.size())
+        assertThrows(IllegalArgumentException::class.java) {
+            HybridProjectBackup(files).export(project.id) { error("Invalid backup must not open its destination") }
+        }
     }
 
     @Test fun removedCompletedMovieIsReportedWithoutInventingAnOutputOrLosingTheProject() {
