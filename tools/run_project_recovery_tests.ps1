@@ -132,9 +132,13 @@ try {
             if($null -ne $viewport -and $viewport.GetAttribute('bounds') -match '^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$'){
                 $x=[int](([int]$Matches[1]+[int]$Matches[3])/2)
                 $top=[int]$Matches[2]; $height=[int]$Matches[4]-$top
-                $y1=$top+[int]($height*0.8); $y2=$top+[int]($height*0.2)
+                $y1=$top+[int]($height*0.65); $y2=$top+[int]($height*0.35)
+                # The playback button is below the status, so reverse if we scrolled past it.
+                if($null -ne $tree.SelectSingleNode("//*[@class='android.widget.Button' and @text='Воспроизвести']")){
+                    $y1,$y2=$y2,$y1
+                }
                 $ui | Set-Content -LiteralPath (Join-Path $recoveryArchive "before-preview-scroll-$previewSwipes.xml") -Encoding utf8
-                Invoke-RecoveryAdb @('shell','input','swipe',"$x","$y1","$x","$y2",'300') | Out-Null
+                Invoke-RecoveryAdb @('shell','input','swipe',"$x","$y1","$x","$y2",'500') | Out-Null
                 $previewSwipes++
             }
         }

@@ -230,6 +230,8 @@ if ($null -eq $recoveryLoop) { throw 'Cannot locate project recovery UI wait.' }
     $previewSwipes = 0
     $dumpCalls = [Collections.Generic.List[string]]::new()
     $removed = [Collections.Generic.List[string]]::new()
+    $swipes = [Collections.Generic.List[string]]::new()
+    function Set-Content { param($LiteralPath, [Parameter(ValueFromPipeline)]$Value, $Encoding) process {} }
     function Add-Content { param($LiteralPath, $Value, $Encoding) }
     function Invoke-RecoveryAdb {
         param([string[]]$Arguments, [switch]$AllowFailure)
@@ -240,16 +242,25 @@ if ($null -eq $recoveryLoop) { throw 'Cannot locate project recovery UI wait.' }
                 if ($dumpCalls.Count -eq 1) { 'ERROR: could not get idle state.' }
             }
             'cat' {
-                if ($dumpCalls.Count -gt 1) { '<hierarchy><node text="Черновик · пауза"/></hierarchy>' }
+                if ($swipes.Count -gt 0) { '<hierarchy><node text="Черновик · пауза"/></hierarchy>' }
+                elseif ($dumpCalls.Count -gt 1) {
+                    '<hierarchy><node class="android.widget.ScrollView" scrollable="true" bounds="[0,24][320,592]"><node class="android.widget.Button" text="Воспроизвести" enabled="true" bounds="[38,42][282,90]"/></node></hierarchy>'
+                }
                 elseif ($Arguments[0] -eq 'exec-out' -or -not $AllowFailure) { "cat: $remoteUi`: No such file or directory" }
+            }
+            'input' {
+                if ($Arguments[2] -ne 'swipe' -or [int]$Arguments[6] -le [int]$Arguments[4]) {
+                    throw 'Recovery UI scrolled farther past the preview status.'
+                }
+                $swipes.Add($Arguments -join ' ')
             }
             default { throw "Unexpected recovery command: $($Arguments -join ' ')" }
         }
     }
     . ([scriptblock]::Create($recoveryLoop.Extent.Text))
-    if (-not $ready -or $dumpCalls.Count -ne 2 -or $removed.Count -ne 2 -or
+    if (-not $ready -or $dumpCalls.Count -ne 3 -or $removed.Count -ne 3 -or $swipes.Count -ne 1 -or
         @($removed | Where-Object { $_ -cne $remoteUi }).Count -gt 0) {
-        throw 'Recovery UI wait did not retry a missing snapshot without accepting stale data.'
+        throw 'Recovery UI wait did not recover from a missing snapshot and a scrolled-off preview.'
     }
 }
-Write-Host 'Project recovery waits for a fresh XML snapshot after an empty dump.'
+Write-Host 'Project recovery waits for fresh XML and reveals the scrolled-off preview status.'
