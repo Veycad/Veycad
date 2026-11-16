@@ -152,7 +152,8 @@ class SmartFramingJourneyDeviceTest {
         }
         val exported = store.load(id).exports.last()
         val output = File(fixture.context.filesDir, "completed-renders/${exported.fileName}")
-        MediaMetadataRetriever().use { reader ->
+        NativeResources().use { resources ->
+            val reader = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             reader.setDataSource(output.path)
             assertEquals("1080", reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
             assertEquals("1920", reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT))

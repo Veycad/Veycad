@@ -6,21 +6,77 @@ import java.io.RandomAccessFile
 import java.math.BigInteger
 
 /** Non-fragmented ISO-BMFF only. Unknown timing is not a duration estimate.
- * stts supplies each sample's hold; ctts and the supported unit-rate elst mapping
- * produce the same presentation clock as AOSP MPEG4Source. No media payload is read.
+ * stts supplies each sample's hold. ctts and unit-rate edits establish the endpoint
+ * in the extractor's observed timestamp coordinate system. No media payload is read.
  */
 internal object Mp4PresentationBounds {
     fun read(file: File, trackId: Int?, firstPtsUs: Long, lastPtsUs: Long,
-        sampleCount: Long, checkCancelled: () -> Unit): VideoPresentationBounds? {
+        sampleCount: Long, checkCancelled: () -> Unit): VideoPresentationBounds? = parse(file, trackId, checkCancelled) { id ->
+        val track = track(id, sampleCount)
+        listOfNotNull(track.edited, track.raw).firstOrNull {
+            it.bounds.firstPtsUs == firstPtsUs && it.lastPtsUs == lastPtsUs
+        }?.bounds
+    }
+
+    /** Only translate when the stored range and the extractor's first decode sample identify both clocks. */
+    fun decoderClock(file: File, trackId: Int?, savedFirstUs: Long, savedEndUs: Long,
+        firstDecodeUs: Long, checkCancelled: () -> Unit): DecoderClock? = parse(file, trackId, checkCancelled) { id ->
+        val track = track(id, null, requireShift = true)
+        val raw = track.raw ?: return@parse null
+        val edited = track.edited ?: return@parse null
+        val clocks = listOf(edited, raw)
+        val saved = clocks.singleOrNull {
+            it.bounds.firstPtsUs == savedFirstUs && it.bounds.endPtsUs == savedEndUs
+        } ?: return@parse null
+        val device = clocks.singleOrNull { it.firstDecodeUs == firstDecodeUs } ?: return@parse null
+        if (saved === device || track.scale > 1_000_000L) return@parse null
+        DecoderClock(track.scale, saved.shift - device.shift)
+    }
+
+    internal class DecoderClock(scale: Long, ticksToProject: Long) {
+        private val units = BigInteger.valueOf(scale)
+        private val micros = BigInteger.valueOf(1_000_000)
+        private val shift = BigInteger.valueOf(ticksToProject)
+
+        private fun firstTickAtOrAfter(timeUs: Long): BigInteger = BigInteger.valueOf(timeUs).multiply(units)
+            .add(micros.subtract(BigInteger.ONE)).divide(micros)
+
+        private fun toUs(tick: BigInteger): Long {
+            require(tick.signum() >= 0)
+            val value = tick.multiply(micros).divide(units)
+            require(value.signum() >= 0 && value.bitLength() <= 63)
+            return value.toLong()
+        }
+
+        fun toProjectUs(sampleUs: Long): Long {
+            require(sampleUs >= 0)
+            val tick = firstTickAtOrAfter(sampleUs)
+            require(toUs(tick) == sampleUs)
+            return toUs(tick.add(shift))
+        }
+
+        fun toDecoderSeekUs(targetUs: Long): Long {
+            require(targetUs >= 0)
+            return toUs(firstTickAtOrAfter(targetUs).subtract(shift).max(BigInteger.ZERO))
+        }
+    }
+
+    data class AacEdit(val delayFrames: Int, val presentationFrames: Long)
+
+    fun aacEdit(file: File, trackId: Int?, sampleRate: Int, checkCancelled: () -> Unit): AacEdit? =
+        parse(file, trackId, checkCancelled) { id -> aacEdit(id, sampleRate) }
+
+    private fun <T> parse(file: File, trackId: Int?, checkCancelled: () -> Unit,
+        read: Parser.(Int) -> T?): T? {
         checkCancelled()
-        if (trackId == null || trackId <= 0 || sampleCount <= 0) return null
+        if (trackId == null || trackId <= 0) return null
         var cancellation: Throwable? = null
         val check = {
             try { checkCancelled() } catch (failure: Throwable) { cancellation = failure; throw failure }
         }
         try {
             return RandomAccessFile(file, "r").use { input ->
-                Parser(input, check).read(trackId, firstPtsUs, lastPtsUs, sampleCount)
+                Parser(input, check).read(trackId)
             }
         } catch (failure: Exception) {
             cancellation?.let { throw it }
@@ -31,6 +87,8 @@ internal object Mp4PresentationBounds {
 
     private data class Box(val type: String, val start: Long, val end: Long)
     private data class Edit(val emptyTicks: Long, val mediaStartTicks: Long, val activeDurationTicks: Long?)
+    private data class Clock(val shift: Long, val firstDecodeUs: Long, val lastPtsUs: Long, val bounds: VideoPresentationBounds)
+    private data class Track(val scale: Long, val edited: Clock?, val raw: Clock?)
     private class Parser(val input: RandomAccessFile, val check: () -> Unit) {
         private var headers = 0
         private fun children(start: Long, end: Long): List<Box> {
@@ -119,7 +177,7 @@ internal object Mp4PresentationBounds {
             }
             fun exhausted(): Boolean = remaining == 0L && index == entries
         }
-        fun read(id: Int, actualFirst: Long, actualLast: Long, actualCount: Long): VideoPresentationBounds {
+        private fun findTrack(id: Int): Pair<Long, List<Box>> {
             val top = children(0, input.length())
             top.one("ftyp")
             require(top.none { it.type == "moof" })
@@ -130,24 +188,45 @@ internal object Mp4PresentationBounds {
             val tracks = movie.filter { it.type == "trak" }.map { children(it.start, it.end) }
             val ids = tracks.map { trackId(it.one("tkhd")) }
             require(ids.distinct().size == ids.size)
-            val track = tracks[ids.indexOf(id.toLong()).also { require(it >= 0) }]
+            return movieScale to tracks[ids.indexOf(id.toLong()).also { require(it >= 0) }]
+        }
+
+        fun aacEdit(id: Int, sampleRate: Int): AacEdit {
+            val (movieScale, track) = findTrack(id)
+            val media = track.one("mdia")
+            val boxes = children(media.start, media.end)
+            require(int(boxes.one("hdlr"), 8) == 0x736f756e && timescale(boxes.one("mdhd")) == sampleRate.toLong())
+            val edit = edit(track.one("edts"))
+            require(edit.emptyTicks == 0L && edit.mediaStartTicks in 1L..Int.MAX_VALUE.toLong())
+            val numerator = Math.multiplyExact(requireNotNull(edit.activeDurationTicks), sampleRate.toLong())
+            require(numerator % movieScale == 0L)
+            return AacEdit(edit.mediaStartTicks.toInt(), numerator / movieScale)
+        }
+
+        fun track(id: Int, expectedCount: Long?, requireShift: Boolean = false): Track {
+            val (movieScale, track) = findTrack(id)
             val mdiaBox = track.one("mdia")
             val mdia = children(mdiaBox.start, mdiaBox.end)
             require(int(mdia.one("hdlr"), 8) == 0x76696465) // vide, not an audio track with similar times
             val mediaScale = timescale(mdia.one("mdhd"))
             val edit = edit(track.optional("edts"))
             val empty = scale(edit.emptyTicks, mediaScale, movieScale, round = true)
+            val rawShift = edit.mediaStartTicks - empty
+            require(!requireShift || rawShift != 0L)
             val minf = mdia.one("minf")
             val stbl = children(minf.start, minf.end).one("stbl")
             val table = children(stbl.start, stbl.end)
             val stts = table.one("stts")
             require(version(stts) == 0)
+            val actualCount = expectedCount ?: uint(table.optional("stsz") ?: table.one("stz2"), 8)
+            require(actualCount > 0)
             val ctts = table.optional("ctts")
             val cttsVersion = ctts?.let { version(it) }
             val times = Runs(stts, actualCount)
             val offsets = Runs(ctts, actualCount, cttsVersion == 1)
             var decode = 0L
             var first = Long.MAX_VALUE
+            var firstDecode = -1L
             var last = -1L
             var end = -1L
             var count = 0L
@@ -159,6 +238,7 @@ internal object Mp4PresentationBounds {
                 require(count <= actualCount)
                 val pts = Math.subtractExact(Math.addExact(Math.addExact(decode, offsets.value), empty), edit.mediaStartTicks)
                 require(pts >= 0) // negative preroll/other edit schemes remain unsupported
+                if (firstDecode < 0) firstDecode = pts
                 val runLast = Math.addExact(pts, Math.multiplyExact(n - 1, times.value))
                 val runEnd = Math.addExact(runLast, times.value)
                 first = minOf(first, pts); last = maxOf(last, runLast); end = maxOf(end, runEnd)
@@ -168,14 +248,19 @@ internal object Mp4PresentationBounds {
                 if (times.remaining == 0L) times.next()
                 if (offsets.remaining == 0L) offsets.next()
             }
-            require(count == actualCount && scale(first, 1_000_000, mediaScale) == actualFirst &&
-                scale(last, 1_000_000, mediaScale) == actualLast)
+            require(count == actualCount)
             edit.activeDurationTicks?.let {
                 end = minOf(end, Math.addExact(empty, scale(it, mediaScale, movieScale)))
             }
-            val endUs = scale(end, 1_000_000, mediaScale)
-            require(endUs > actualLast)
-            return VideoPresentationBounds(actualFirst, endUs)
+            fun clock(shift: Long): Clock? = try {
+                fun micros(ticks: Long) = scale(Math.addExact(ticks, shift), 1_000_000, mediaScale)
+                val lastUs = micros(last)
+                val endUs = micros(end)
+                if (endUs > lastUs) Clock(shift, micros(firstDecode), lastUs, VideoPresentationBounds(micros(first), endUs))
+                else null
+            } catch (_: IllegalArgumentException) { null } catch (_: ArithmeticException) { null }
+            // Older extractors can expose composition timestamps before applying elst.
+            return Track(mediaScale, clock(0L), if (rawShift != 0L) clock(rawShift) else null)
         }
     }
 }

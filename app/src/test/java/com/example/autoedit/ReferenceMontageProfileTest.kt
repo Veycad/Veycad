@@ -66,8 +66,9 @@ class ReferenceMontageProfileTest {
         try {
             ReferenceMontageProfile.outputDurationMs(track, EditDurationPolicy.MINIMUM_MS - 1L)
             fail("Expected short source rejection")
-        } catch (_: IllegalArgumentException) {
-            // Expected.
+        } catch (error: IllegalArgumentException) {
+            assertEquals("Нужно видео длительностью не менее 15 секунд",
+                MontageFailurePresentation.message(error, 2))
         }
     }
 

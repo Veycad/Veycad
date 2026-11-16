@@ -2,6 +2,7 @@ package com.veycad.app
 
 import android.app.Application
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -116,6 +117,20 @@ internal class CapturingRenderEngine : EditSession.RenderEngine {
 
     fun fail(message: String) = fail(IllegalStateException(message))
     fun fail(error: Throwable) { commands.put { throw error } }
+    fun failAfterLeaseCancellation(error: Throwable): CountDownLatch {
+        val entered = CountDownLatch(1)
+        commands.put {
+            val lease = requireNotNull(requireNotNull(currentRequest).jobLease)
+            entered.countDown()
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while (lease.isFile) {
+                check(System.nanoTime() < deadline) { "Lease cancellation was not requested" }
+                Thread.sleep(5)
+            }
+            throw error
+        }
+        return entered
+    }
     fun progress(stage: VeycadAutomaticEditor.Stage, completed: Int, total: Int) {
         commands.put {
             requireNotNull(currentRequest).onProgress(VeycadAutomaticEditor.Progress(stage, completed, total))

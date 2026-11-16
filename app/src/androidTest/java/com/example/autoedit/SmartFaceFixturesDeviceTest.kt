@@ -34,7 +34,8 @@ class SmartFaceFixturesDeviceTest {
             val references = listOf(R.raw.style_preview_heartbeat, R.raw.style_preview_fear, R.raw.style_preview_duality)
             referenceSearch@ for (resource in references) {
                 context.resources.openRawResourceFd(resource).use { descriptor ->
-                    MediaMetadataRetriever().use { reader ->
+                    NativeResources().use { resources ->
+                        val reader = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
                         reader.setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
                         for (time in listOf(500_000L, 1_000_000L, 2_000_000L, 4_000_000L)) {
                             val decoded = reader.getFrameAtTime(time, MediaMetadataRetriever.OPTION_CLOSEST) ?: continue

@@ -21,6 +21,16 @@ class GaplessAacClockTest {
         }
     }
 
+    @Test fun legacy_positive_packet_clock_preserves_authored_zero_and_rejects_real_gaps() {
+        val clock = GaplessAacClock(48_000, 0, 128, 1920, codecOriginUs = 42_666)
+        assertEquals(0, clock.accept(42_666, 896))
+        assertEquals(18_666, clock.accept(64_000, 1024))
+        clock.finish()
+        val bad = GaplessAacClock(48_000, 0, 128, 1920, codecOriginUs = 42_666)
+        bad.accept(42_666, 896)
+        assertThrows(IllegalStateException::class.java) { bad.accept(85_333, 1024) }
+    }
+
     @Test fun real_gap_wrong_initial_origin_and_wrong_final_count_are_rejected() {
         val gap = GaplessAacClock(48_000, 0, 128, 1920)
         gap.accept(0, 896)

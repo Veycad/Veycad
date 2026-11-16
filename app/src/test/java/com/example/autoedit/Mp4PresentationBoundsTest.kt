@@ -20,7 +20,7 @@ class Mp4PresentationBoundsTest {
     private fun movie(deltas: List<Long>, offsets: List<Long>? = null,
         emptyUs: Long = 0, editDurationUs: Long? = null, mediaStartUs: Long = 0,
         rate: Int = 0x10000, trackId: Int = 7, movieScale: Int = 1_000_000,
-        mediaScale: Int = 1_000_000, editVersion: Int = 0): ByteArray {
+        mediaScale: Int = 1_000_000, editVersion: Int = 0, handler: String = "vide"): ByteArray {
         val tkhd = full("tkhd", bytes { writeLong(0); writeInt(trackId) })
         val mdhd = full("mdhd", bytes { writeLong(0); writeInt(mediaScale); writeInt(deltas.sum().toInt()) })
         val stts = full("stts", bytes {
@@ -39,8 +39,9 @@ class Mp4PresentationBoundsTest {
             if (emptyUs > 0) entry(emptyUs, -1, 0x10000)
             entry(active, mediaStartUs, rate)
         }, editVersion)) } ?: byteArrayOf()
+        val stsz = full("stsz", bytes { writeInt(1); writeInt(deltas.size) })
         val track = box("trak", tkhd + edits + box("mdia", mdhd +
-            full("hdlr", bytes { writeInt(0); writeBytes("vide") }) + box("minf", box("stbl", stts + ctts))))
+            full("hdlr", bytes { writeInt(0); writeBytes(handler) }) + box("minf", box("stbl", stts + ctts + stsz))))
         return box("ftyp", "isom0000".toByteArray()) + box("moov",
             full("mvhd", bytes { writeLong(0); writeInt(movieScale) }) + track)
     }
@@ -76,6 +77,54 @@ class Mp4PresentationBoundsTest {
         val bounds = read(movie(List(4) { 100_000L }, listOf(0, 200_000, -100_000, -100_000)),
             0, 300_000, 4)!!
         assertEquals(400_000L, bounds.endPtsUs)
+    }
+
+    @Test fun olderExtractorCanExposeUnshiftedCompositionTimestamps() {
+        val data = movie(List(3) { 100_000L }, offsets = List(3) { 60_000L },
+            editDurationUs = 280_000, mediaStartUs = 60_000)
+        assertEquals(VideoPresentationBounds(0, 280_000), read(data, 0, 200_000, 3))
+        assertEquals(VideoPresentationBounds(60_000, 340_000), read(data, 60_000, 260_000, 3))
+        assertNull(read(data, 60_000, 260_001, 3))
+        assertNull(read(data, 60_000, 260_000, 2))
+    }
+
+    @Test fun translatesBothExtractorClocksWithoutMicrosecondRoundingDrift() {
+        val file = File.createTempFile("portable-timing", ".mp4")
+        try {
+            file.writeBytes(movie(List(3) { 512 }, List(3) { 1024 }, editDurationUs = 100_000,
+                mediaStartUs = 1024, mediaScale = 15_360))
+            val toOlder = requireNotNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_666, 0) {})
+            val toNewer = requireNotNull(Mp4PresentationBounds.decoderClock(file, 7, 0, 100_000, 66_666) {})
+            val older = listOf(66_666L, 100_000L, 133_333L)
+            val newer = listOf(0L, 33_333L, 66_666L)
+            assertEquals(older, newer.map(toOlder::toProjectUs))
+            assertEquals(newer, older.map(toNewer::toProjectUs))
+            assertEquals(newer, older.map(toOlder::toDecoderSeekUs))
+            assertEquals(older, newer.map(toNewer::toDecoderSeekUs))
+            assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_666, 66_666) {})
+            assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_665, 0) {})
+            assertNull(Mp4PresentationBounds.decoderClock(file, 7, 66_666, 166_666, 1) {})
+        } finally { assertTrue(file.delete()) }
+    }
+
+    @Test fun aacPrimingRequiresAnExactAudioEditInSampleUnits() {
+        val file = File.createTempFile("audio-edit", ".mp4")
+        try {
+            fun write(handler: String = "soun", duration: Long = 4_000, gap: Long = 0, scale: Int = 1000) {
+                file.writeBytes(movie(listOf(1024L), emptyUs = gap, editDurationUs = duration,
+                    mediaStartUs = 1024, movieScale = scale, mediaScale = 48_000, handler = handler))
+            }
+            write()
+            assertEquals(Mp4PresentationBounds.AacEdit(1024, 192_000), Mp4PresentationBounds.aacEdit(file, 7, 48_000) {})
+            assertNull(Mp4PresentationBounds.aacEdit(file, 8, 48_000) {})
+            assertNull(Mp4PresentationBounds.aacEdit(file, 7, 44_100) {})
+            write(handler = "vide")
+            assertNull(Mp4PresentationBounds.aacEdit(file, 7, 48_000) {})
+            write(gap = 20)
+            assertNull(Mp4PresentationBounds.aacEdit(file, 7, 48_000) {})
+            write(duration = 1, scale = 1001)
+            assertNull(Mp4PresentationBounds.aacEdit(file, 7, 48_000) {})
+        } finally { assertTrue(file.delete()) }
     }
     @Test fun unsupportedTimingCannotBecomeMeasuredEvidence() {
         val data = movie(listOf(500_000))

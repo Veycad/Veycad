@@ -60,10 +60,16 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
 & {
     $uiProjectRoot = Split-Path -Parent $PSScriptRoot
     $Serial = 'test'; $AvdName = 'test'; $SdkRoot = 'test'
-    $uiPermissionExpected = @(); $uiOrdinaryExpected = @()
+    $discovery = $runnerAst.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Read-UiExpectedTests'
+    }, $true)
+    if ($null -eq $discovery) { throw 'Cannot locate actual UI test discovery.' }
+    . ([scriptblock]::Create($discovery.Extent.Text))
+    $uiExpected = @(Read-UiExpectedTests)
     function Invoke-UiPhase {
-        param($Name, $SelectionArgument, $Expected)
-        $uiPhases.Add([pscustomobject]@{ name = $Name; passed = $true })
+        param($Name, $SelectionArgument, $Expected, $Selection = $uiPermissionClass)
+        $uiPhases.Add([pscustomobject]@{ name = $Name; passed = $true; expected = @($Expected); selection = $Selection })
     }
     function Invoke-UiNative {
         param($Executable, [switch]$EchoOutput, $Arguments)
@@ -78,6 +84,9 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
         '{"passed":true,"phases":[{},{}]}'
     }
     foreach ($LegacySaveOnly in @($true, $false)) {
+        $uiPermissionClass = if ($LegacySaveOnly) { 'com.veycad.app.AutomaticSaveDestinationTest' } else { 'com.veycad.app.RuntimePermissionsTest' }
+        $uiPermissionExpected = @($uiExpected | Where-Object { $_.StartsWith("$uiPermissionClass#") })
+        $uiOrdinaryExpected = @($uiExpected | Where-Object { -not $_.StartsWith("$uiPermissionClass#") })
         $uiPhases = [Collections.Generic.List[object]]::new()
         $restartCalls = [Collections.Generic.List[object]]::new()
         $uiSucceeded = $false
@@ -86,7 +95,22 @@ $phaseCode = ($runnerTry.Body.Statements | Where-Object {
         $expectedRestarts = if ($LegacySaveOnly) { 0 } else { 2 }
         if (-not $uiSucceeded -or ($uiPhases.name -join ',') -cne $expectedPhases -or
             $restartCalls.Count -ne $expectedRestarts) { throw 'Merged legacy/restart routing failed.' }
+        if ($LegacySaveOnly -and ($uiPhases[0].expected.Count -ne 8 -or
+            $uiPhases[0].selection -notlike '*PreparedHybridExportDeviceTest#preparedSourceMixExportsSourceToneAndExcludesSelectedMusic*')) {
+            throw 'Legacy routing must include both automatic-save cases and the six AAC/editor cases.'
+        }
     }
+    $originalExpected = $uiExpected
+    $uiExpected = @($uiExpected | Where-Object { $_ -notlike '*#preparedSourceMixExportsSourceToneAndExcludesSelectedMusic' })
+    $LegacySaveOnly = $true
+    $uiPhases = [Collections.Generic.List[object]]::new()
+    $uiSucceeded = $false
+    $rejected = $false
+    try { . ([scriptblock]::Create($phaseCode)) } catch {
+        $rejected = $_.Exception.Message -ceq 'Legacy AAC regression cases are missing from discovery.'
+    }
+    if (-not $rejected -or $uiSucceeded -or $uiPhases.Count -ne 0) { throw 'Missing legacy SOURCE regression was accepted.' }
+    $uiExpected = $originalExpected
     $LegacySaveOnly = $false
     foreach ($projectReport in @('{"passed":false,"exactFileChecks":5,"checkpointPid":10,"restartedPid":20}',
         '{"passed":true,"exactFileChecks":0,"checkpointPid":10,"restartedPid":20}',
@@ -187,3 +211,56 @@ if ($null -eq $collector) { throw 'Cannot locate preview collection boundary.' }
     }
 }
 Write-Host 'Preview evidence pre-restart retention and hash-inventory check PASS.'
+
+$recoveryAst = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PSScriptRoot 'run_project_recovery_tests.ps1'), [ref]$runnerTokens, [ref]$runnerErrors)
+if ($runnerErrors.Count -gt 0) { throw 'Project recovery runner does not parse.' }
+$recoveryLoop = $recoveryAst.Find({
+    param($node)
+    $node -is [Management.Automation.Language.DoWhileStatementAst] -and
+        $node.Body.Extent.Text.Contains("'uiautomator','dump'")
+}, $true)
+if ($null -eq $recoveryLoop) { throw 'Cannot locate project recovery UI wait.' }
+& {
+    $recoveryRunId = '00000000-0000-4000-8000-000000000001'
+    $recoveryArchive = 'fixture'
+    $remoteUi = "/data/local/tmp/project-$recoveryRunId.xml"
+    $deadline = [DateTime]::UtcNow.AddSeconds(2)
+    $ready = $false
+    $previewSwipes = 0
+    $dumpCalls = [Collections.Generic.List[string]]::new()
+    $removed = [Collections.Generic.List[string]]::new()
+    $swipes = [Collections.Generic.List[string]]::new()
+    function Set-Content { param($LiteralPath, [Parameter(ValueFromPipeline)]$Value, $Encoding) process {} }
+    function Add-Content { param($LiteralPath, $Value, $Encoding) }
+    function Invoke-RecoveryAdb {
+        param([string[]]$Arguments, [switch]$AllowFailure)
+        switch ($Arguments[1]) {
+            'rm' { $removed.Add($Arguments[-1]) }
+            'uiautomator' {
+                $dumpCalls.Add($Arguments[-1])
+                if ($dumpCalls.Count -eq 1) { 'ERROR: could not get idle state.' }
+            }
+            'cat' {
+                if ($swipes.Count -gt 0) { '<hierarchy><node text="Черновик · пауза"/></hierarchy>' }
+                elseif ($dumpCalls.Count -gt 1) {
+                    '<hierarchy><node class="android.widget.ScrollView" scrollable="true" bounds="[0,24][320,592]"><node class="android.widget.Button" text="Воспроизвести" enabled="true" bounds="[38,42][282,90]"/></node></hierarchy>'
+                }
+                elseif ($Arguments[0] -eq 'exec-out' -or -not $AllowFailure) { "cat: $remoteUi`: No such file or directory" }
+            }
+            'input' {
+                if ($Arguments[2] -ne 'swipe' -or [int]$Arguments[6] -le [int]$Arguments[4]) {
+                    throw 'Recovery UI scrolled farther past the preview status.'
+                }
+                $swipes.Add($Arguments -join ' ')
+            }
+            default { throw "Unexpected recovery command: $($Arguments -join ' ')" }
+        }
+    }
+    . ([scriptblock]::Create($recoveryLoop.Extent.Text))
+    if (-not $ready -or $dumpCalls.Count -ne 3 -or $removed.Count -ne 3 -or $swipes.Count -ne 1 -or
+        @($removed | Where-Object { $_ -cne $remoteUi }).Count -gt 0) {
+        throw 'Recovery UI wait did not recover from a missing snapshot and a scrolled-off preview.'
+    }
+}
+Write-Host 'Project recovery waits for fresh XML and reveals the scrolled-off preview status.'

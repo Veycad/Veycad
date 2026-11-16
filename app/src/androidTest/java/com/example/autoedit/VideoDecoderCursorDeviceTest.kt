@@ -25,9 +25,12 @@ class VideoDecoderCursorDeviceTest {
             "cursor-initial-offset").apply { mkdirs() }
         val original = SyntheticVideo.create(File(directory, "source.mp4"), 3_000, 64, 96,
             iFrameIntervalSeconds = 1)
-        val file = SourceAudioNativeFixtures.remux(File(directory, "shifted.mp4"), listOf(original),
+        // An audio track at zero prevents MediaMuxer from rebasing the only track to zero.
+        val audio = SourceAudioNativeFixtures.aac(File(directory, "origin-anchor.mp4"))
+        val file = SourceAudioNativeFixtures.remux(File(directory, "shifted.mp4"), listOf(original, audio),
             shiftVideoUs = 2_000_000, videoEndUs = 3_000_000)
         val samples = samples(file)
+        assertEquals("Fixture preserves the authored video origin", 2_000_000L, samples.pts.first())
         val relative = 217_777L
         val target = samples.pts.first() + relative
         val expected = samples.pts.first { it >= target }

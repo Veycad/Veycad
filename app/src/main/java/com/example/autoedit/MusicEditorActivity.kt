@@ -217,7 +217,7 @@ class MusicEditorActivity : AppCompatActivity() {
         content.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(label("VEYKAD  •", 13).apply {
+            addView(label("VEYCAD  •", 13).apply {
                 setTextColor(getColor(R.color.text_primary))
                 letterSpacing = .20f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)

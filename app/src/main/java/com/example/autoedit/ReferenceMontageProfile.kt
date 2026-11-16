@@ -63,9 +63,8 @@ object ReferenceMontageProfile {
 
     fun outputDurationMs(audioFile: File, sourceDurationMs: Long): Long? {
         if (!matchesAudio(audioFile)) return null
-        require(canExtendSourceToTimeline(sourceDurationMs, OUTPUT_DURATION_MS)) {
-            "$ID requires at least ${EditDurationPolicy.MINIMUM_MS} ms of source video"
-        }
+        if (!canExtendSourceToTimeline(sourceDurationMs, OUTPUT_DURATION_MS)) throw UserMessageException(
+            "Нужно видео длительностью не менее ${EditDurationPolicy.MINIMUM_MS / 1_000L} секунд")
         return OUTPUT_DURATION_MS
     }
 

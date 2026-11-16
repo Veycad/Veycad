@@ -99,7 +99,8 @@ class TextExportDeviceTest {
         assertEquals(240,project.width); assertEquals(160,project.height)
         val output=File(folder,"result.mp4")
         TextVideoExporter.export(context,project.copy(layers=listOf(project.hook("Поворот"))),output,{}, {})
-        MediaMetadataRetriever().use { metadata ->
+        NativeResources().use { resources ->
+            val metadata = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             metadata.setDataSource(output.path)
             assertEquals("240",metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
             assertEquals("160",metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT))
@@ -132,7 +133,8 @@ class TextExportDeviceTest {
         assertTrue("Frame progress remains ordered", progress.zipWithNext().all { (a,b) -> a <= b })
         assertEquals(100, progress.last())
         assertEquals("Compatible AAC packets are copied without another lossy encode",audioPackets(source),audioPackets(result))
-        MediaMetadataRetriever().use { retriever ->
+        NativeResources().use { resources ->
+            val retriever = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             retriever.setDataSource(result.path)
             assertTrue(kotlin.math.abs(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong()-2000)<100)
             assertEquals("yes",retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO))

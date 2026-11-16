@@ -59,7 +59,8 @@ object MediaCodecSpeedRampRenderer {
         val onFrameProgress: ((Int) -> Unit)? = null,
         sourceFiles: List<File>? = null,
         val textBehavior: TextBehavior = TextBehavior.FINISHED_VIDEO,
-        val showAuthoredText: Boolean = true
+        val showAuthoredText: Boolean = true,
+        val preciseMusicTiming: Boolean = false
     ) {
         internal val finishingText: Boolean = textProject != null && textBehavior == TextBehavior.FINISHED_VIDEO
         val sourceFiles: List<File> = java.util.Collections.unmodifiableList(ArrayList(
@@ -117,19 +118,11 @@ object MediaCodecSpeedRampRenderer {
         // Prepared exports own failure cleanup, including synchronous cancellation/native failures.
         // Admission happens outside cleanup: an invalid request must not touch an existing output.
         request.preparedExport!!.validate(request)
-        check(Build.VERSION.SDK_INT >= 35 || request.preparedExport!!.prepared.audio.settings.mode == AudioMixMode.MUSIC) {
-            "Экспорт исходной речи требует Android 15+; поддержка старых версий ещё не проверена"
-        }
         return try {
             val directory = File(request.outputFile.absoluteFile.parentFile, "project-audio-work")
             request.preparedExport!!.prepared.audio.compose(directory, request.checkCancelled).use { composed ->
-                if (Build.VERSION.SDK_INT < 35) {
-                    // shortcut: older MUSIC exports retain the existing muxer until native gapless acceptance.
-                    renderOwned(request, composedMusic = composed.playbackFile)
-                } else {
-                    AacEncoderMuxer.prepareProjectAudio(composed, directory, request.checkCancelled).use { audio ->
-                        renderOwned(request, audio)
-                    }
+                AacEncoderMuxer.prepareProjectAudio(composed, directory, request.checkCancelled).use { audio ->
+                    renderOwned(request, audio)
                 }
             }
         } catch (error: Throwable) {
@@ -139,7 +132,7 @@ object MediaCodecSpeedRampRenderer {
         }
     }
 
-    private fun renderOwned(request: Request, projectAudio: SourceAacPreparation? = null, composedMusic: File? = null): Int {
+    private fun renderOwned(request: Request, projectAudio: SourceAacPreparation? = null): Int {
         require(Build.VERSION.SDK_INT >= 26) { "MediaCodec GPU renderer requires Android 8+" }
         val sourceFiles = request.sourceFiles
         require(sourceFiles.all(File::isFile))
@@ -206,7 +199,7 @@ object MediaCodecSpeedRampRenderer {
             encoder.start()
             encoderStarted = true
             decoders = DecoderSession(sourceFiles, gl.incomingDecodeSurface, gl.outgoingDecodeSurface,
-                request.checkCancelled, request.finishingText)
+                request.checkCancelled, request.finishingText, request.preparedExport?.prepared?.sources)
             request.context?.let { context ->
                 LocalDiagnostics.record(context, "video_decoder_pool", mapOf(
                     "decoder_limit" to "2",
@@ -289,14 +282,18 @@ object MediaCodecSpeedRampRenderer {
             AacEncoderMuxer.muxPreparedAudio(projectAudio, videoOnlyFile, request.outputFile,
                 completePlan.durationUs, request.checkCancelled)
             videoOnlyFile.delete()
-        } else if (composedMusic != null || request.audioFile != null) {
+        } else if (request.audioFile != null && request.preciseMusicTiming) {
+            AacEncoderMuxer.muxSelectedMusic(request.audioFile, videoOnlyFile, request.outputFile,
+                plan.durationUs, request.audioStartUs, request.checkCancelled)
+            videoOnlyFile.delete()
+        } else if (request.audioFile != null) {
             AacEncoderMuxer.muxMusicFile(
-                composedMusic ?: requireNotNull(request.audioFile),
+                requireNotNull(request.audioFile),
                 videoOnlyFile,
                 request.outputFile,
-                if (composedMusic != null) completePlan.durationUs else request.outputWindow?.durationUs ?: request.audioDurationUs,
+                request.outputWindow?.durationUs ?: request.audioDurationUs,
                 request.checkCancelled,
-                startUs = if (composedMusic != null) 0L else request.audioStartUs
+                startUs = request.audioStartUs
             )
             videoOnlyFile.delete()
         } else if (request.audioResourceId != 0 && request.context != null) {
@@ -486,12 +483,14 @@ object MediaCodecSpeedRampRenderer {
         private val incomingSurface: Surface,
         private val outgoingSurface: Surface,
         val checkCancelled: () -> Unit,
-        private val normalizeTimestamps: Boolean = false
+        private val normalizeTimestamps: Boolean = false,
+        private val preparedSources: List<PreparedVideoSource>? = null
     ) {
         private val sourceDurationsUs = files.map { file -> checkCancelled(); requestSourceDurationUs(file) }
         private val slots = SourceDecoderSlots { index, role ->
             require(index in files.indices)
-            VideoDecoderCursor(files[index], if (role == DecoderRole.INCOMING) incomingSurface else outgoingSurface, checkCancelled, normalizeTimestamps)
+            VideoDecoderCursor(files[index], if (role == DecoderRole.INCOMING) incomingSurface else outgoingSurface,
+                checkCancelled, normalizeTimestamps, preparedSources?.get(index)?.metadata)
         }
 
         fun sourceDurationUs(sourceIndex: Int): Long = sourceDurationsUs[sourceIndex]

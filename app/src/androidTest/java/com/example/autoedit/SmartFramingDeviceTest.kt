@@ -17,6 +17,44 @@ import org.junit.runner.RunWith
 class SmartFramingDeviceTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    @Test fun visibleGesturesDoNotDisableTrackingForTheBundledDancer() {
+        val file = File.createTempFile("smart-visible-gesture", ".mp4", context.cacheDir)
+        try {
+            context.resources.openRawResource(R.raw.style_preview_duality)
+                .use { input -> file.outputStream().use { input.copyTo(it) } }
+            val source = MediaInputInspector().inspect("dancer", file, "Bundled dance footage")
+            val first = source.requiredFirstVideoPtsUs
+            val end = source.requiredVideoEndPtsUs
+            val key = SmartFramingKey(source.fingerprint, source.durationUs, first, end,
+                listOf(VisualEventMap.UsableWindow(first, end)))
+            val analysis = SmartFramingSourceAnalysis.analyze(context, file, key) {}
+            val track = SmartFramingTrack.build(analysis, key.windows)
+            val danceFrames = analysis.observations.filter { it.sourceTimeUs in 500_000L..1_750_000L }
+            val tracked = danceFrames.map { track.sample(it.sourceTimeUs) }
+                .filter { it.status == SmartFramingStatus.TRACKING }
+            assertTrue("Visible dancer must be tracked at multiple frames; got ${tracked.size}", tracked.size >= 2)
+        } finally { file.delete() }
+    }
+
+    @Test fun editedMp4UsesTheSavedProjectClockForSmartAnalysis() {
+        val file = File.createTempFile("smart-saved-clock", ".mp4", context.cacheDir)
+        try {
+            InstrumentationRegistry.getInstrumentation().context.assets.open("media/offset-short-audio.mp4")
+                .use { input -> file.outputStream().use { input.copyTo(it) } }
+            val source = MediaInputInspector().inspect("offset", file, "Edited MP4 fixture")
+            // A two-second empty edit gives this same video two possible extractor clocks.
+            for (first in listOf(0L, 2_000_000L)) {
+                val end = first + 2_000_000L
+                val key = SmartFramingKey(source.fingerprint, source.durationUs, first, end,
+                    listOf(VisualEventMap.UsableWindow(first, end)))
+                val expected = listOf(133_333L, 400_000L, 633_333L, 900_000L,
+                    1_133_333L, 1_400_000L, 1_633_333L, 1_900_000L).map { first + it }
+                val analysis = SmartFramingSourceAnalysis.analyze(context, file, key) {}
+                assertEquals(expected, analysis.observations.map { it.sourceTimeUs })
+            }
+        } finally { file.delete() }
+    }
+
     @Test fun indexedSmartAnalysisIncludesRealNonzeroOriginTailBeyondDeclaredDuration() {
         val file = File(context.cacheDir, "smart-raw-origin-${UUID.randomUUID()}.mp4")
         InstrumentationRegistry.getInstrumentation().context.assets.open("media/raw-origin-400ms.mp4").use { input ->
@@ -32,10 +70,9 @@ class SmartFramingDeviceTest {
             val key = SmartFramingKey(source.fingerprint, source.durationUs, source.requiredFirstVideoPtsUs,
                 source.requiredVideoEndPtsUs, listOf(VisualEventMap.UsableWindow(
                     source.requiredFirstVideoPtsUs, source.requiredVideoEndPtsUs)))
-            val targets = SmartFramingSourceAnalysis.targets(file, key)
-            assertTrue(targets.last() > source.durationUs)
             val analysis = SmartFramingSourceAnalysis.analyze(context, file, key) {}
-            assertEquals(targets.toList(), analysis.observations.map { it.sourceTimeUs })
+            assertEquals(8, analysis.observations.size)
+            assertTrue(analysis.observations.last().sourceTimeUs > source.durationUs)
             val track = SmartFramingTrack.build(analysis, key.windows)
             assertEquals(source.requiredVideoEndPtsUs, track.sourceWindows.single().endUs)
             assertTrue(track.points.any { it.sourceTimeUs > source.durationUs })
@@ -109,7 +146,8 @@ class SmartFramingDeviceTest {
                     smartTracks = mapOf(selection.id to track))
                 assertSame(prepared.framePlan, request.resolvedFramePlan())
                 assertEquals("$aspect/$mode encoded count", 30, MediaCodecSpeedRampRenderer.render(request))
-                MediaMetadataRetriever().use { reader ->
+                NativeResources().use { resources ->
+                    val reader = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
                     reader.setDataSource(output.path)
                     fun pixel(time: Long, x: Float, y: Float): Int {
                         val frame = requireNotNull(reader.getFrameAtTime(time, MediaMetadataRetriever.OPTION_CLOSEST))
@@ -168,9 +206,10 @@ class SmartFramingDeviceTest {
         val project = EditableMontageImporter.create("cached-smart", graph, MontageStyleCatalog.Recipe.HEARTBEAT,
             ProjectExportSettings(720, 1280, 30, 2_000_000, 128_000), listOf(video), music, null,
             listOf(selection)).shared.let { imported ->
-            imported.copy(current = imported.current.copy(visualSettings = ProjectVisualSettings(
+            val revision = imported.current.copy(visualSettings = ProjectVisualSettings(
                 ProjectAspect.PORTRAIT_9_16, true, mapOf(FramingKey(selection.id, ProjectAspect.PORTRAIT_9_16) to
-                    SourceFramingSettings(mode = FramingMode.SMART_PERSON)))))
+                    SourceFramingSettings(mode = FramingMode.SMART_PERSON))))
+            imported.copy(original = revision, current = revision)
         }
         assertEquals("The production preparation path must consume the exact cached compact track",
             track.points, SmartFramingPreparation.prepare(context, project, assets).getValue(selection.id).points)

@@ -39,6 +39,44 @@ class SourceAudioDeviceTest {
     private fun source(files: Map<String, File>, metrics: MediaCodecAudioDecoder.StreamMetrics = MediaCodecAudioDecoder.StreamMetrics(), cancel: () -> Unit = {}) =
         MediaCodecAudioDecoder.sourceProvider(files, metrics, cancel)
 
+    @Test fun low_rate_wave_large_codec_buffers_preserve_samples_and_bounded_chunks() {
+        val file = SyntheticAudio.writeWave(File(directory("large-pcm"), "score.wav"), 4)
+        val expected = ByteBuffer.wrap(file.readBytes(), 44, SyntheticAudio.RATE * 4 * 2)
+            .slice().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        val metrics = MediaCodecAudioDecoder.StreamMetrics()
+        var frames = 0
+        source(mapOf("score" to file), metrics).open("score", 0)!!.use { stream ->
+            while (true) {
+                val chunk = stream.read() ?: break
+                assertTrue(chunk.frames <= SyntheticAudio.RATE)
+                assertEquals(frames * 1_000_000L / SyntheticAudio.RATE, chunk.startPtsUs)
+                repeat(chunk.frames) { index ->
+                    assertEquals(expected.get() / 32768.0, chunk.sample(index, 0), 0.0)
+                }
+                frames += chunk.frames
+            }
+            assertNull(stream.read())
+        }
+        assertEquals(SyntheticAudio.RATE * 4, frames)
+        assertFalse(expected.hasRemaining())
+        assertTrue("Fixture must exercise a codec buffer over one second",
+            metrics.peakDecoderBufferBytes > SyntheticAudio.RATE * 2)
+        assertEquals(0, metrics.openDecoders)
+        assertEquals(0, metrics.retainedChunks)
+        for (cancel in listOf(false, true)) {
+            var cancelled = false
+            val failure = CancellationException("pending codec output")
+            source(mapOf("score" to file), metrics) { if (cancelled) throw failure }
+                .open("score", 0)!!.use { stream ->
+                    assertEquals(SyntheticAudio.RATE, stream.read()!!.frames)
+                    cancelled = cancel
+                    if (cancel) assertSame(failure, assertThrows(CancellationException::class.java) { stream.read() })
+                }
+            assertEquals(0, metrics.openDecoders)
+            assertEquals(0, metrics.retainedChunks)
+        }
+    }
+
     @Test fun three_sources_silent_middle_early_eof_repeat_match_literal_markers_at_30_and_60() {
         val dir = directory("markers")
         val files = mapOf(
@@ -204,7 +242,7 @@ class SourceAudioDeviceTest {
                 assertEquals(fps,videoPts.size)
                 assertEquals(500_000,videoPts[fps/2])
                 for (encoded in listOf(retained,output)) {
-                assertTrue("priming packets preserved ${encoded.name}",recordAudioPackets(encoded)<0)
+                assertPrimingPacketsRetained(encoded, 48_000)
                 val peaks=DoubleArray(3); val peakUs=LongArray(3) { -1 }; var audioEndUs = 0L; var decodedFrames=0L
                 File(dir,"${encoded.name}-decoded-chunks.txt").bufferedWriter().use { ledger ->
                 source(mapOf("out" to encoded)).open("out",0)!!.use { stream ->
@@ -289,7 +327,7 @@ class SourceAudioDeviceTest {
                 val output=File(dir,"final-$fps-$kind.mp4")
                 AacEncoderMuxer.muxPreparedAudio(prepared,video,output,endUs)
                 for(file in listOf(retained,output)) {
-                    assertTrue(recordAudioPackets(file)<0)
+                    assertPrimingPacketsRetained(file, frames)
                     var count=0L
                     File(dir,"${file.name}-samples.txt").bufferedWriter().use { ledger ->
                         source(mapOf("a" to file)).open("a",0)!!.use { stream -> while(true) {
@@ -406,6 +444,29 @@ class SourceAudioDeviceTest {
             }
         }
         // Audible-source eligibility for captions is intentionally owned by T4/T8, not this PCM seam.
+    }
+
+    private fun assertPrimingPacketsRetained(file: File, expectedFrames: Long) {
+        val first = recordAudioPackets(file)
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.path)
+            val track = (0 until extractor.trackCount).first {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME) == MediaFormat.MIMETYPE_AUDIO_AAC
+            }
+            extractor.selectTrack(track)
+            val format = extractor.getTrackFormat(track)
+            assertEquals(48000, format.getInteger(MediaFormat.KEY_SAMPLE_RATE))
+            val delay = format.getInteger(MediaFormat.KEY_ENCODER_DELAY)
+            val padding = format.getInteger(MediaFormat.KEY_ENCODER_PADDING)
+            assertTrue(delay > 0 && padding in 0..1023)
+            var packets = 0L
+            while (extractor.sampleTrackIndex >= 0) { packets++; extractor.advance() }
+            assertEquals("Every coded priming/tail packet retained", expectedFrames, packets * 1024 - delay - padding)
+            // Pre-R exposes unedited packet PTS; the same files retain negative priming in FFmpeg.
+            if (android.os.Build.VERSION.SDK_INT < 30) assertEquals(0, first)
+            else assertTrue("Negative priming PTS retained", first < 0)
+        } finally { extractor.release() }
     }
 
     private fun recordAudioPackets(file: File): Long {

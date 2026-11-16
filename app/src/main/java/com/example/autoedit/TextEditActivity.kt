@@ -42,9 +42,13 @@ class TextEditActivity:AppCompatActivity() {
     }
     private val ticker=object:Runnable {
         override fun run() {
-            overlay.timeUs=previewTimeMs()*1000L
-            overlay.invalidate()
-            if(!seek.isPressed) seek.progress=previewTimeMs()
+            val positionMs=previewTimeMs()
+            val timeUs=positionMs*1000L
+            if(overlay.timeUs!=timeUs) {
+                overlay.timeUs=timeUs
+                overlay.invalidate()
+            }
+            if(!seek.isPressed) seek.progress=positionMs
             handler.postDelayed(this,50)
         }
     }

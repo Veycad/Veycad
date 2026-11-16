@@ -75,7 +75,8 @@ class NativeExportSmokeTest {
                 assertEquals("Count actual AVC samples, not the renderer's return value", 30, count)
             } finally { extractor.release() }
 
-            MediaMetadataRetriever().use { retriever ->
+            NativeResources().use { resources ->
+                val retriever = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
                 retriever.setDataSource(output.path)
                 val early = requireNotNull(retriever.getFrameAtTime(200_000, MediaMetadataRetriever.OPTION_CLOSEST))
                 val late = requireNotNull(retriever.getFrameAtTime(800_000, MediaMetadataRetriever.OPTION_CLOSEST))

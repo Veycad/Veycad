@@ -1,6 +1,7 @@
 package com.veycad.app
 
 import android.content.Intent
+import android.graphics.Rect
 import android.os.SystemClock
 import android.view.View
 import android.widget.TextView
@@ -8,6 +9,7 @@ import android.widget.VideoView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.withId
@@ -82,6 +84,15 @@ class CaptureReviewScreenTest {
             .putExtra(CaptureActivity.EXTRA_SESSION, saved.id)
             .putExtra(CaptureActivity.EXTRA_TAKE, 2)).use { screen ->
             awaitReview(screen)
+            onView(withId(R.id.captureTakePicker)).perform(scrollTo())
+            screen.onActivity { activity ->
+                val picker = Rect()
+                val actions = Rect()
+                activity.findViewById<View>(R.id.captureTakePicker).getGlobalVisibleRect(picker)
+                activity.findViewById<View>(R.id.captureActionBar).getGlobalVisibleRect(actions)
+                assertFalse("Take picker touch centre is covered by actions: picker=$picker, actions=$actions",
+                    actions.contains(picker.centerX(), picker.centerY()))
+            }
             ui.click(R.id.captureTakePicker)
             onView(withText(startsWith("Дубль 2"))).check(matches(isChecked()))
             onView(withText(R.string.capture_auto_select)).perform(click())

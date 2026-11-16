@@ -1,0 +1,329 @@
+{
+  "format": 1,
+  "description": "Unmodified upstream third-party notice pairs; identical files are stored once.",
+  "artifacts": [
+    {
+      "coordinate": "com.google.android.datatransport:transport-api:3.0.0",
+      "artifact": "transport-api-3.0.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356.json",
+          "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "bytes": 3
+        },
+        "third_party_licenses.txt": {
+          "file": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      },
+      "indexedNotices": 0
+    },
+    {
+      "coordinate": "com.google.android.datatransport:transport-backend-cct:3.1.0",
+      "artifact": "transport-backend-cct-3.1.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356.json",
+          "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "bytes": 3
+        },
+        "third_party_licenses.txt": {
+          "file": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      },
+      "indexedNotices": 0
+    },
+    {
+      "coordinate": "com.google.android.datatransport:transport-runtime:3.1.0",
+      "artifact": "transport-runtime-3.1.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "ca9b2e984212979d947d460c8da1e1ac6adee64961784b513b453dcb634298c6.json",
+          "sha256": "ca9b2e984212979d947d460c8da1e1ac6adee64961784b513b453dcb634298c6",
+          "bytes": 38
+        },
+        "third_party_licenses.txt": {
+          "file": "00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e.txt",
+          "sha256": "00bdeca73c2a7724261eb7443713e3b4b913ba0907dfe5c4d67d87f3920c1e6e",
+          "bytes": 11368
+        }
+      },
+      "indexedNotices": 1
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-base:18.5.0",
+      "artifact": "play-services-base-18.5.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970.json",
+          "sha256": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970",
+          "bytes": 834
+        },
+        "third_party_licenses.txt": {
+          "file": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+          "sha256": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5",
+          "bytes": 313001
+        }
+      },
+      "indexedNotices": 16
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-basement:18.4.0",
+      "artifact": "play-services-basement-18.4.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970.json",
+          "sha256": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970",
+          "bytes": 834
+        },
+        "third_party_licenses.txt": {
+          "file": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+          "sha256": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5",
+          "bytes": 313001
+        }
+      },
+      "indexedNotices": 16
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-mlkit-face-detection:17.1.0",
+      "artifact": "play-services-mlkit-face-detection-17.1.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "edded192abd860a92203db9118e730341b75bb3aace6e6b986b0f037b83137d2.json",
+          "sha256": "edded192abd860a92203db9118e730341b75bb3aace6e6b986b0f037b83137d2",
+          "bytes": 3461
+        },
+        "third_party_licenses.txt": {
+          "file": "0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47.txt",
+          "sha256": "0d27ce1930ffd0618f9ca8074afb4f93db1a55617b68c4c978c85679a2720c47",
+          "bytes": 659640
+        }
+      },
+      "indexedNotices": 54
+    },
+    {
+      "coordinate": "com.google.android.gms:play-services-tasks:18.2.0",
+      "artifact": "play-services-tasks-18.2.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970.json",
+          "sha256": "f49b0d3754fe9430ca8e1d7578b98f9c74c912fa5182bee2db86f0c386ab7970",
+          "bytes": 834
+        },
+        "third_party_licenses.txt": {
+          "file": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5.txt",
+          "sha256": "653d2e7a2bb02c79b897e826df9c3b2d8e8b1a3b2cef5e29585124fa455ddaf5",
+          "bytes": 313001
+        }
+      },
+      "indexedNotices": 16
+    },
+    {
+      "coordinate": "com.google.android.odml:image:1.0.0-beta1",
+      "artifact": "image-1.0.0-beta1.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "595c1aeca965ae48385ab3ce6f1b5b59fa029d5d18343ca63df936503db0451e.json",
+          "sha256": "595c1aeca965ae48385ab3ce6f1b5b59fa029d5d18343ca63df936503db0451e",
+          "bytes": 2954
+        },
+        "third_party_licenses.txt": {
+          "file": "bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25.txt",
+          "sha256": "bb0feabf4a92027b248c075821ee93e14ad4ce53fc3ebb9ca9ee18b316f6aa25",
+          "bytes": 461117
+        }
+      },
+      "indexedNotices": 45
+    },
+    {
+      "coordinate": "com.google.firebase:firebase-components:16.1.0",
+      "artifact": "firebase-components-16.1.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356.json",
+          "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "bytes": 3
+        },
+        "third_party_licenses.txt": {
+          "file": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      },
+      "indexedNotices": 0
+    },
+    {
+      "coordinate": "com.google.firebase:firebase-encoders-json:18.0.0",
+      "artifact": "firebase-encoders-json-18.0.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356.json",
+          "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "bytes": 3
+        },
+        "third_party_licenses.txt": {
+          "file": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      },
+      "indexedNotices": 0
+    },
+    {
+      "coordinate": "com.google.mlkit:acceleration:16.0.0-beta2",
+      "artifact": "acceleration-16.0.0-beta2.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "2c07b2c5cd87c8ad591489a436069057f38bda7348d1af293eebc98ef462aceb.json",
+          "sha256": "2c07b2c5cd87c8ad591489a436069057f38bda7348d1af293eebc98ef462aceb",
+          "bytes": 4540
+        },
+        "third_party_licenses.txt": {
+          "file": "4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b.txt",
+          "sha256": "4a380a176116508abc05b8a2a1d786e1ed3fb6974e8ec5d731e43ff7587a7a2b",
+          "bytes": 889852
+        }
+      },
+      "indexedNotices": 70
+    },
+    {
+      "coordinate": "com.google.mlkit:common:18.11.0",
+      "artifact": "common-18.11.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "c421e0ab8fb44de3aea1eaae744d7e68a1d8905e1e309368bf0ca82c95ad9d3f.json",
+          "sha256": "c421e0ab8fb44de3aea1eaae744d7e68a1d8905e1e309368bf0ca82c95ad9d3f",
+          "bytes": 3605
+        },
+        "third_party_licenses.txt": {
+          "file": "86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14.txt",
+          "sha256": "86ed829b6e5a860ae586e8aef21f14c95fa5f5255f85f6a9388e9c7b3ee48e14",
+          "bytes": 769067
+        }
+      },
+      "indexedNotices": 57
+    },
+    {
+      "coordinate": "com.google.mlkit:face-detection:16.1.7",
+      "artifact": "face-detection-16.1.7.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "d17bf08f9da566f9ec974daa805f0ac580dd1fbffa32963b107fbe87be1f5c6c.json",
+          "sha256": "d17bf08f9da566f9ec974daa805f0ac580dd1fbffa32963b107fbe87be1f5c6c",
+          "bytes": 6957
+        },
+        "third_party_licenses.txt": {
+          "file": "4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa.txt",
+          "sha256": "4813f465ac04651bf612d51eb6acb8e550f430f7b48a64cff6d14d2ce177f2fa",
+          "bytes": 1439042
+        }
+      },
+      "indexedNotices": 124
+    },
+    {
+      "coordinate": "com.google.mlkit:mediapipe-internal:17.0.0-beta10",
+      "artifact": "mediapipe-internal-17.0.0-beta10.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "3de1f868eff1be0836a6a3f07fd70ac218c2afe8eb0010cfad6faed8752c322d.json",
+          "sha256": "3de1f868eff1be0836a6a3f07fd70ac218c2afe8eb0010cfad6faed8752c322d",
+          "bytes": 7535
+        },
+        "third_party_licenses.txt": {
+          "file": "cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+          "sha256": "cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c",
+          "bytes": 1770881
+        }
+      },
+      "indexedNotices": 135
+    },
+    {
+      "coordinate": "com.google.mlkit:pose-detection-common:18.0.0-beta5",
+      "artifact": "pose-detection-common-18.0.0-beta5.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "64e8ae795d9fe07dcde6907a63c8cd18cb3de371cc360eee76c7284f1006baa4.json",
+          "sha256": "64e8ae795d9fe07dcde6907a63c8cd18cb3de371cc360eee76c7284f1006baa4",
+          "bytes": 8720
+        },
+        "third_party_licenses.txt": {
+          "file": "2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+          "sha256": "2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54",
+          "bytes": 1955275
+        }
+      },
+      "indexedNotices": 153
+    },
+    {
+      "coordinate": "com.google.mlkit:pose-detection:18.0.0-beta5",
+      "artifact": "pose-detection-18.0.0-beta5.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "64e8ae795d9fe07dcde6907a63c8cd18cb3de371cc360eee76c7284f1006baa4.json",
+          "sha256": "64e8ae795d9fe07dcde6907a63c8cd18cb3de371cc360eee76c7284f1006baa4",
+          "bytes": 8720
+        },
+        "third_party_licenses.txt": {
+          "file": "2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54.txt",
+          "sha256": "2c369c7b788b584e3ad98c131ebfcca97c2668eb636b74d9b2b507b098d12c54",
+          "bytes": 1955275
+        }
+      },
+      "indexedNotices": 153
+    },
+    {
+      "coordinate": "com.google.mlkit:segmentation-selfie:16.0.0-beta6",
+      "artifact": "segmentation-selfie-16.0.0-beta6.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "3de1f868eff1be0836a6a3f07fd70ac218c2afe8eb0010cfad6faed8752c322d.json",
+          "sha256": "3de1f868eff1be0836a6a3f07fd70ac218c2afe8eb0010cfad6faed8752c322d",
+          "bytes": 7535
+        },
+        "third_party_licenses.txt": {
+          "file": "cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c.txt",
+          "sha256": "cb4ad2355ea3e9f0725c2eb3835a80c02e92d84eeff9c18232761d24036d099c",
+          "bytes": 1770881
+        }
+      },
+      "indexedNotices": 135
+    },
+    {
+      "coordinate": "com.google.mlkit:vision-common:17.3.0",
+      "artifact": "vision-common-17.3.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "970e95c84c518383a7d0a5c861d2407e8ba22b9f7a536140b3d874ea3e68e44b.json",
+          "sha256": "970e95c84c518383a7d0a5c861d2407e8ba22b9f7a536140b3d874ea3e68e44b",
+          "bytes": 3574
+        },
+        "third_party_licenses.txt": {
+          "file": "33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160.txt",
+          "sha256": "33b776d5cae5981fc08236f37ccb15cf7ea91c8d17bd38a0a612d19eaacfe160",
+          "bytes": 682395
+        }
+      },
+      "indexedNotices": 56
+    },
+    {
+      "coordinate": "com.google.mlkit:vision-interfaces:16.3.0",
+      "artifact": "vision-interfaces-16.3.0.aar",
+      "files": {
+        "third_party_licenses.json": {
+          "file": "750f3c7ce8c0f0786436c51a027f093d050b0634b8d097fb80ca3f343306b1da.json",
+          "sha256": "750f3c7ce8c0f0786436c51a027f093d050b0634b8d097fb80ca3f343306b1da",
+          "bytes": 3383
+        },
+        "third_party_licenses.txt": {
+          "file": "39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f.txt",
+          "sha256": "39ce1aa1dc8a3209adcafd71fb1a5c993cb1850abd2b2d7921e33dca3940507f",
+          "bytes": 704596
+        }
+      },
+      "indexedNotices": 52
+    }
+  ]
+}

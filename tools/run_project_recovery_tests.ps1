@@ -108,16 +108,45 @@ try {
     }
     $deadline=[DateTime]::UtcNow.AddSeconds(90)
     $ready=$false
+    $previewSwipes=0
+    $remoteUi="/data/local/tmp/project-$recoveryRunId.xml"
+    $ui=$null
     do {
-        Invoke-RecoveryAdb @('shell','uiautomator','dump',"/data/local/tmp/project-$recoveryRunId.xml") | Out-Null
-        $ui=Invoke-RecoveryAdb @('exec-out','cat',"/data/local/tmp/project-$recoveryRunId.xml")
-        [xml]$tree=$ui
+        Invoke-RecoveryAdb @('shell','rm','-f',$remoteUi) | Out-Null
+        $dump=Invoke-RecoveryAdb -Arguments @('shell','uiautomator','dump',$remoteUi) -AllowFailure
+        $snapshot=Invoke-RecoveryAdb -Arguments @('shell','cat',$remoteUi) -AllowFailure
+        # UIAutomator may return without creating a snapshot while the window is settling.
+        if(-not $snapshot){
+            "No recovery UI snapshot: $dump" | Add-Content -LiteralPath (Join-Path $recoveryArchive 'commands.log') -Encoding utf8
+            Start-Sleep -Milliseconds 250
+            continue
+        }
+        [xml]$tree=$snapshot
+        if($tree.DocumentElement.Name -cne 'hierarchy'){throw 'Unexpected recovery UI snapshot root'}
+        $ui=$snapshot
         $ready=$null -ne $tree.SelectSingleNode("//*[@text='Черновик · пауза']")
+        # As in the import restart gate, reveal controls below a compact viewport.
+        $previewStatus=$tree.SelectSingleNode("//*[@text='Черновик · пауза' or @text='Подготавливаю просмотр…' or starts-with(@text,'Не удалось показать кадр.')]")
+        if($null -eq $previewStatus -and $previewSwipes -lt 8){
+            $viewport=$tree.SelectSingleNode("//*[@class='android.widget.ScrollView' and @scrollable='true']")
+            if($null -ne $viewport -and $viewport.GetAttribute('bounds') -match '^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$'){
+                $x=[int](([int]$Matches[1]+[int]$Matches[3])/2)
+                $top=[int]$Matches[2]; $height=[int]$Matches[4]-$top
+                $y1=$top+[int]($height*0.65); $y2=$top+[int]($height*0.35)
+                # The playback button is below the status, so reverse if we scrolled past it.
+                if($null -ne $tree.SelectSingleNode("//*[@class='android.widget.Button' and @text='Воспроизвести']")){
+                    $y1,$y2=$y2,$y1
+                }
+                $ui | Set-Content -LiteralPath (Join-Path $recoveryArchive "before-preview-scroll-$previewSwipes.xml") -Encoding utf8
+                Invoke-RecoveryAdb @('shell','input','swipe',"$x","$y1","$x","$y2",'500') | Out-Null
+                $previewSwipes++
+            }
+        }
         if(-not $ready){Start-Sleep -Milliseconds 250}
     }while(-not $ready -and [DateTime]::UtcNow -lt $deadline)
-    $ui | Set-Content -LiteralPath (Join-Path $recoveryArchive 'recovered-editor.xml') -Encoding utf8
+    if($ui){$ui | Set-Content -LiteralPath (Join-Path $recoveryArchive 'recovered-editor.xml') -Encoding utf8}
     if(-not $ready){throw 'Recovered editor did not reach real native paused preview'}
-    Invoke-RecoveryAdb @('shell','rm','-f',"/data/local/tmp/project-$recoveryRunId.xml") | Out-Null
+    Invoke-RecoveryAdb @('shell','rm','-f',$remoteUi) | Out-Null
 }catch{$recoveryFailure=$_.Exception.Message;Write-Host "Project recovery gate failed: $recoveryFailure"}
 finally {
     if($recoveryAllowed){Invoke-RecoveryAdb -Arguments @('shell','am','force-stop',$recoveryPackage) -AllowFailure | Out-Null}

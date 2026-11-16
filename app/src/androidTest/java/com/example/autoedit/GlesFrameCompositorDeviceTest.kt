@@ -360,6 +360,24 @@ class GlesFrameCompositorDeviceTest {
         }
     }
 
+    @Test fun direct_user_text_reaches_display_backing_and_matches_encoder_pixels() {
+        val graph = graph(false)
+        val frame = HighQualityFramePlan.build(graph).frames[10]
+        val text = TextEditProject("owned-source.mp4", 1_000_000, composition.width, composition.height,
+            layers = listOf(TextLayer("title", "VISIBLE", 0, 1_000_000,
+                TextStyle(sizeRatio = .10f, color = android.graphics.Color.GREEN))))
+        val plain = renderDisplay(graph, frame, 0)
+        val display = renderDisplay(graph, frame, 0, text = text)
+        val encoder = renderEncoder(graph, frame, renderOverride = {
+            render(graph, frame, 0, it, false, text = text)
+        })
+        assertFalse("Text must alter composition pixels", plain.compositionPixels.contentEquals(display.compositionPixels))
+        assertFalse("Text must survive physical display presentation",
+            requireNotNull(plain.physicalPixels).contentEquals(requireNotNull(display.physicalPixels)))
+        assertArrayEquals(display.compositionPixels, encoder.compositionPixels)
+        assertEquals(frame.outputTimeUs, encoder.encoderPtsUs)
+    }
+
     @Test fun surface_texture_metadata_rotation_is_not_applied_twice() {
         val graph = graph(false)
         val frame = HighQualityFramePlan.build(graph).frames[10]
@@ -529,12 +547,13 @@ class GlesFrameCompositorDeviceTest {
         val evidence: GlesFrameCompositor.DrawEvidence,val passes: List<RenderPassPlanner.PassKind>,val encoderPtsUs: Long?=null)
 
     private fun renderDisplay(graph: MontageGraph,frame: HighQualityFramePlan.Frame,rotation: Int,
-        manual: ManualFramingTable?=null,legacyCrop: SourceFraming.Crop=SourceFraming.Crop(1f,1f)): Result {
+        manual: ManualFramingTable?=null,legacyCrop: SourceFraming.Crop=SourceFraming.Crop(1f,1f),
+        text: TextEditProject?=null): Result {
         val texture = SurfaceTexture(false).apply { setDefaultBufferSize(actualDisplay.width,actualDisplay.height) }
         val surface = Surface(texture)
         try {
             val target = EglRenderTarget.forDisplay(surface,composition) as EglRenderTarget
-            return render(graph,frame,rotation,target,true,manual,legacyCrop)
+            return render(graph,frame,rotation,target,true,manual,legacyCrop,text)
         } finally { surface.release(); texture.release() }
     }
 
@@ -570,7 +589,8 @@ class GlesFrameCompositorDeviceTest {
     }
 
     private fun render(graph: MontageGraph,frame: HighQualityFramePlan.Frame,rotation: Int,egl: EglRenderTarget,isDisplay: Boolean,
-        manual: ManualFramingTable?=null,legacyCrop: SourceFraming.Crop=SourceFraming.Crop(1f,1f)): Result {
+        manual: ManualFramingTable?=null,legacyCrop: SourceFraming.Crop=SourceFraming.Crop(1f,1f),
+        text: TextEditProject?=null): Result {
         var composed: ByteArray?=null; var physical: ByteArray?=null; var evidence: GlesFrameCompositor.DrawEvidence?=null
         val passes=mutableListOf<RenderPassPlanner.PassKind>()
         val target=object : RenderTarget by egl, ViewportRenderTarget {
@@ -588,7 +608,7 @@ class GlesFrameCompositorDeviceTest {
         }
         val compositor=GlesFrameCompositor(target,RenderPassPlanner.plan(graph,RenderPassPlanner.DeviceCapabilities.conservative()),
             graph.frameAttachments,onDraw={ evidence=it },onPassExecuted={ passes+=it },manualFraming=manual,
-            sourceCrops=listOf(legacyCrop))
+            sourceCrops=listOf(legacyCrop), textProject=text)
         try {
             produceMarkers(compositor.decoderSurface(0),composition,sourcePtsUs)
             compositor.awaitTexture(0) {}

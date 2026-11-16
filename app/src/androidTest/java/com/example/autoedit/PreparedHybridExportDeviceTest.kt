@@ -65,14 +65,15 @@ class PreparedHybridExportDeviceTest {
                     kotlin.math.abs(actualUs - expectedUs) <= 1L)
             }
         } finally { extractor.release() }
-        MediaMetadataRetriever().use { retriever ->
+        val retriever = MediaMetadataRetriever()
+        try {
             retriever.setDataSource(output.path)
             val pixels = requireNotNull(retriever.getFrameAtTime(500_000, MediaMetadataRetriever.OPTION_CLOSEST))
             try {
                 assertTrue("MANUAL right half must be bright", Color.red(pixels.getPixel(pixels.width / 4, pixels.height / 2)) > 120)
                 assertTrue("Crop must fill output", Color.red(pixels.getPixel(pixels.width * 3 / 4, pixels.height / 2)) > 120)
             } finally { pixels.recycle() }
-        }
+        } finally { retriever.release() }
         // Cancel a second operation after admission, while the native renderer owns partial output.
         val cancelled = File(directory, "cancelled.mp4")
         var armed = false
@@ -85,4 +86,47 @@ class PreparedHybridExportDeviceTest {
         assertFalse(File(directory, "cancelled.video.mp4").exists())
         assertTrue(prepared.sources.all { it.file.isFile })
     }
+    @Test fun preparedSourceMixExportsSourceToneAndExcludesSelectedMusic() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(context.filesDir, "prepared-source-evidence/${System.nanoTime()}").apply { mkdirs() }
+        val video = SyntheticVideo.create(File(directory, "video.mp4"), 1000)
+        val sourceAudio = SourceAudioNativeFixtures.aac(File(directory, "source.m4a"), hz = 440.0)
+        val source = SourceAudioNativeFixtures.remux(File(directory, "source.mp4"), listOf(video, sourceAudio))
+        val inspected = MediaInputInspector().inspect("selection", source, "Source tone")
+        val assets = ProjectAssetStore(File(directory, "project"))
+        val asset = assets.importVideo(inspected, 1f)
+        val selected = SelectedVideo.fromInspected(inspected, asset, SourceOwnership.IMPORTED)
+        val graph = MontageGraph(1000, 1000, clips = listOf(MontageGraph.Clip("clip", 0, 1000, 1000,
+            MontageGraph.ShotRole.ACTION, MontageGraph.Transition.HARD_CUT, MontageGraph.Motion.HOLD, 1f, 0)),
+            metadata = NleProjectMetadata(generator = "prepared-source-fixture"))
+        val export = ProjectExportSettings(720, 720, 30, 2_000_000, 128_000)
+        val musicFile = SourceAudioNativeFixtures.wav(File(directory, "music.wav")) { SourceAudioNativeFixtures.tone(it, hz = 880.0) }
+        val music = assets.import(musicFile, ProjectAsset.Kind.AUDIO, 1_000_000)
+        val imported = EditableMontageImporter.create("native-source", graph, MontageStyleCatalog.Recipe.DUALITY_LOOP,
+            export, listOf(asset), music, null, listOf(selected)).shared
+        val revision = imported.current.copy(audioMix = AudioMixSettings(AudioMixMode.SOURCE),
+            visualSettings = ProjectVisualSettings(ProjectAspect.SQUARE_1_1, true))
+        val project = imported.copy(original = revision, current = revision)
+        HybridPreviewPreparation.prepare(project, export, assets).use { prepared ->
+            val output = File(directory, "source-export.mp4")
+            val request = PreparedHybridExportAdapter.request(prepared, project, output, context = context)
+            assertEquals(30, MediaCodecSpeedRampRenderer.render(request))
+            val decoded = MediaCodecAudioDecoder.decode(output, preserveFloatHeadroom = true)
+            assertEquals(48000, decoded.sampleRate)
+            assertEquals(48000, decoded.frameCount)
+            fun amplitude(hz: Double): Double {
+                var real = 0.0; var imaginary = 0.0
+                for (frame in 9600 until 38400) {
+                    val angle = 2 * Math.PI * hz * frame / 48000
+                    val value = decoded.interleavedSamples[frame * decoded.channelCount]
+                    real += value * kotlin.math.cos(angle); imaginary += value * kotlin.math.sin(angle)
+                }
+                return 2 * kotlin.math.hypot(real, imaginary) / 28800
+            }
+            assertTrue("Authored source tone retained", amplitude(440.0) > .15)
+            assertTrue("Selected music excluded in SOURCE mode", amplitude(880.0) < .03)
+            assertTrue(assets.resolve(asset).isFile)
+        }
+    }
+
 }

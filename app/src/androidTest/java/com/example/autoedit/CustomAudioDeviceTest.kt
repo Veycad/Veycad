@@ -105,7 +105,8 @@ class CustomAudioDeviceTest {
         val exportedMap = AudioBeatMapAnalyzer.analyze(pcm, decoded.sampleRate)
         assertEquals(120f, requireNotNull(exportedMap.estimatedTempoBpm), 4f)
         assertTrue(exportedMap.onsets.count { it.sampleIndex >= decoded.sampleRate } >= 3)
-        MediaMetadataRetriever().use { metadata ->
+        NativeResources().use { resources ->
+            val metadata = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             metadata.setDataSource(output.path)
             assertTrue(abs(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() - 3_000L) < 100)
         }
@@ -133,6 +134,10 @@ class CustomAudioDeviceTest {
         assertEquals(96_000L, analysisPcm.frameCount)
         assertEquals(analysisPcm.frameCount, exportPcm.frameCount)
         assertArrayEquals(analysisPcm.mono(), exportPcm.mono(), .002f)
+        val fromBeginning = MediaCodecAudioDecoder.decode(file, preserveFloatHeadroom = true)
+        val first = 34_201 // ceiling(2.137511 s × 16 kHz)
+        assertArrayEquals("The MP3 window must start at the same sample as a sequential decode",
+            fromBeginning.mono().copyOfRange(first, first + 96_000), exportPcm.mono(), .0001f)
     }
 
     @Test fun native_editor_routes_custom_music_and_accepts_a_source_without_people() {
@@ -142,12 +147,24 @@ class CustomAudioDeviceTest {
         val evidenceFile = File(directory, "native-editor-evidence.json")
         evidenceFile.delete() // A failed rerun must not leave a previous report beside a new MP4.
         val inspected = MediaSourceSet(listOf(MediaInputInspector().inspect("custom-source", video, video.name)))
+        val progress = mutableListOf<VeycadAutomaticEditor.Progress>()
         val result = VeycadAutomaticEditor.render(VeycadAutomaticEditor.Request(context, inspected,
             musicFile = audio, outputFile = output, style = EventMatchingDirector.Style.DYNAMIC,
             recipe = MontageStyleCatalog.Recipe.CUSTOM_MUSIC, width = 160, height = 240,
-            bitrate = 200_000, musicStartUs = 15_000_000))
+            bitrate = 200_000, musicStartUs = 15_000_000, onProgress = { progress += it }))
         // Save before assertions, and before subsequent UI fixtures clear private inspector files.
         val evidence = CustomMusicEvidence.save(result, video, audio, output, evidenceFile)
+        val candidateCount = result.pipeline.alternatives.size
+        val verifying = progress.filter { it.stage == VeycadAutomaticEditor.Stage.VERIFYING }
+        assertEquals("Each candidate and the final selection must report verification", candidateCount + 1, verifying.size)
+        assertEquals("Final selection must not count an extra candidate: $verifying",
+            candidateCount, verifying.last().completedCandidates)
+        assertEquals(candidateCount, verifying.last().totalCandidates)
+        assertTrue("Native progress exceeded its total: $progress",
+            progress.all { it.completedCandidates in 0..it.totalCandidates })
+        assertEquals(VeycadAutomaticEditor.Stage.COMPLETE, progress.last().stage)
+        assertEquals(candidateCount, progress.last().completedCandidates)
+        assertEquals(candidateCount, progress.last().totalCandidates)
         assertEquals(result.passedQualityGate, evidence.qualityGate)
         assertEquals(result.winner.samples.size, evidence.visualSamples)
         assertEquals(15_000_000L, evidence.audioStartUs)
@@ -161,6 +178,20 @@ class CustomAudioDeviceTest {
         assertEquals(15_000_000L, result.winner.alternative.graph.audioTrack!!.sourceStartUs)
         assertTrue(result.pipeline.audioMap.beats.isNotEmpty())
         assertTrue(result.winner.alternative.graph.clips.size >= 2)
+        val durationUs = HighQualityFramePlan.build(result.winner.alternative.graph).durationUs
+        val expectedSamples = (durationUs * 48_000 + 500_000) / 1_000_000
+        val source = MediaCodecAudioDecoder.sourceProvider(mapOf("result" to output))
+        val decodedFrames = requireNotNull(source.open("result", 0)).use { stream ->
+            assertEquals(PcmFormat(48_000, 2), stream.format)
+            var frames = 0L
+            while (true) {
+                val chunk = stream.read() ?: break
+                assertEquals(AudioExportPlan.presentationTimeUs(frames, 48_000), chunk.startPtsUs)
+                frames += chunk.frames
+            }
+            frames
+        }
+        assertEquals("Automatic music must end at the authored sample boundary", expectedSamples, decodedFrames)
         val exported = MediaCodecAudioDecoder.decode(output)
         assertEquals(120f, requireNotNull(AudioBeatMapAnalyzer.analyze(exported.mono(),
             exported.sampleRate).estimatedTempoBpm), 4f)

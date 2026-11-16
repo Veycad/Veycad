@@ -11,11 +11,15 @@ import android.widget.Button
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.core.content.FileProvider
+import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import com.google.android.material.button.MaterialButton
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
+import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.espresso.matcher.ViewMatchers.*
@@ -30,6 +34,7 @@ import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import kotlin.math.roundToInt
 
 /** Real Activity -> production import/store -> real decoder/Surface; no preview renderer substitute. */
 class ManualMvpScreenTest {
@@ -49,6 +54,125 @@ class ManualMvpScreenTest {
             assertTrue("Preview owners must stop before fixture cleanup", android.os.SystemClock.elapsedRealtime() < deadline)
             android.os.SystemClock.sleep(25)
         }
+        assertFalse("Retired editor must remove all preview/export temporary files",
+            File(fixture.context.cacheDir, "manual-renders").walkTopDown().any { it.isFile })
+    }
+
+    @Test fun emptyEditorPromptsForVideoWithoutClaimingSavedDraft() {
+        fixture.launch()
+        fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("empty editor import ready", 30_000) { view<Button>("import")?.isEnabled == true }
+        assertTrue(store.list().isEmpty())
+        onView(withText("Добавь видео, чтобы начать ручной монтаж.")).check(matches(isDisplayed()))
+    }
+
+    @Test fun reopenedProjectKeepsSavedDraftPrompt() {
+        openImported()
+        finishEditor()
+        fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("saved project reopened", 30_000) { ready() }
+        onView(withText(fixture.context.getString(R.string.manual_intro))).perform(scrollTo()).check(matches(isDisplayed()))
+    }
+
+    @Test fun rejectedImportShowsErrorAndRestoresExistingPreview() {
+        openImported()
+        val initial = store.list().single()
+        val file = File(fixture.context.filesDir, "pending-renders/invalid-manual-input.mp4")
+        file.writeText("invalid video")
+        val uri = FileProvider.getUriForFile(fixture.context, "${fixture.context.packageName}.files", file)
+        intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(
+            Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().apply { data = uri }))
+        tapTag("import")
+        fixture.waitUntil("existing preview restored after rejected import", 45_000) { ready() }
+        onView(withText(containsString("Не удалось создать базовый монтаж"))).check(matches(isDisplayed()))
+        val retained = store.list().single()
+        assertEquals(initial.id, retained.id)
+        assertEquals(initial.current, retained.current)
+        assertEquals(initial.exports, retained.exports)
+    }
+
+    @Test fun frameRateSelectionIsVisibleAndSurvivesRecreation() {
+        fixture.launch()
+        fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("empty editor ready", 30_000) { view<Button>("import")?.isEnabled == true }
+        fun assertChoice(fps: Int) {
+            lateinit var selected: MaterialButton
+            lateinit var other: MaterialButton
+            onView(withText("$fps кадр/с")).perform(scrollTo()).check { value, missing ->
+                if (missing != null) throw missing
+                selected = value as MaterialButton
+            }
+            onView(withText("${if (fps == 30) 60 else 30} кадр/с")).perform(scrollTo()).check { value, missing ->
+                if (missing != null) throw missing
+                other = value as MaterialButton
+            }
+            instrumentation.runOnMainSync {
+                assertTrue(selected.isSelected); assertFalse(other.isSelected)
+                val background = selected.backgroundTintList!!.getColorForState(selected.drawableState, 0)
+                assertNotEquals("Selected frame rate must have a distinct visible background", background,
+                    other.backgroundTintList!!.getColorForState(other.drawableState, 0))
+                assertNotNull("Selection must also be visible without relying on color", selected.icon)
+                assertTrue("Selection checkmark must contrast with its background",
+                    ColorUtils.calculateContrast(selected.iconTint!!.getColorForState(selected.drawableState, 0), background) >= 3.0)
+                assertNull(other.icon)
+                assertEquals(fixture.context.getString(R.string.manual_selected), ViewCompat.getStateDescription(selected))
+                assertEquals(fixture.context.getString(R.string.manual_not_selected), ViewCompat.getStateDescription(other))
+            }
+        }
+        assertChoice(30)
+        onView(withText("60 кадр/с")).perform(click())
+        fixture.waitUntil("frame rate changed", 30_000) { view<Button>("import")?.isEnabled == true }
+        assertChoice(60)
+        lateinit var previous: ManualMvpActivity
+        instrumentation.runOnMainSync { previous = current()!!; previous.recreate() }
+        fixture.waitUntil("frame rate restored", 30_000) { current() !== previous && view<Button>("import")?.isEnabled == true }
+        assertChoice(60)
+    }
+
+    @Test fun importTrimUndoLandscapeExportAndReopenWorkWithoutWindowCapture() {
+        fixture.launch()
+        importIntoEditor()
+        val initial = store.load(store.list().single().id)
+        val id = initial.id
+        val assets = ProjectAssetStore(store.directory(id))
+        val originals = initial.assets.associate { it.id to assets.resolve(it).readBytes() }
+        onView(withText("Конец −1")).perform(scrollTo(), click())
+        fixture.waitUntil("trim stored", 30_000) {
+            store.load(id).current.clips.first().span.length == initial.current.clips.first().span.length - 1 && ready()
+        }
+        onView(withText("Отменить")).perform(scrollTo(), click())
+        fixture.waitUntil("undo stored", 30_000) { store.load(id).current.clips == initial.current.clips && ready() }
+        tapTag("aspect-LANDSCAPE_16_9")
+        fixture.waitUntil("landscape ready", 30_000) { store.load(id).current.visualSettings.aspect == ProjectAspect.LANDSCAPE_16_9 && ready() }
+        val revision = store.load(id).current.id
+        tapTag("export")
+        awaitExportAndPreview(id, revision)
+        val saved = store.load(id).exports.last()
+        val output = File(fixture.context.filesDir, "completed-renders/${saved.fileName}")
+        assertTrue(output.isFile && output.length() > 0)
+        val metadata = MediaMetadataRetriever()
+        try {
+            metadata.setDataSource(output.path)
+            assertEquals("1920", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
+            assertEquals("1080", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT))
+            assertEquals("yes", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO))
+        } finally { metadata.release() }
+        assertEquals(originals.keys, store.load(id).assets.map { it.id }.toSet())
+        store.load(id).assets.forEach { assertArrayEquals(originals.getValue(it.id), assets.resolve(it).readBytes()) }
+        finishEditor()
+        fixture.click(R.id.manualMvpButton)
+        fixture.waitUntil("saved revision reopened", 30_000) { ready() }
+        assertEquals(revision, store.load(id).current.id)
+        assertTrue(store.load(id).exports.contains(saved))
+        intending(hasAction(Intent.ACTION_CHOOSER)).respondWith(Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null))
+        tapTag("share")
+        val chooser = androidx.test.espresso.intent.Intents.getIntents().last { it.action == Intent.ACTION_CHOOSER }
+        @Suppress("DEPRECATION")
+        val send = requireNotNull(chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT))
+        @Suppress("DEPRECATION")
+        val uri = requireNotNull(send.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
+        assertEquals(Intent.ACTION_SEND, send.action)
+        assertArrayEquals(output.readBytes(), fixture.context.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
     }
 
     @Test fun importFourFormatsTrimUndoReopenAndLandscapeExportShareOneRevision() {
@@ -65,26 +189,34 @@ class ManualMvpScreenTest {
             assertSurfacePixels()
             capture("editor-${aspect.name}-paused")
         }
-        assertFalse("Preview must never create an MP4", File(fixture.context.cacheDir, "manual-renders")
-            .walkTopDown().any { it.isFile })
+        val previewDirectory = File(fixture.context.cacheDir, "manual-renders")
+        val previewFiles = previewDirectory.walkTopDown().filter { it.isFile }.toList()
+        assertTrue("Preview must not create video or unknown files: ${previewFiles.map { it.relativeTo(previewDirectory) }}",
+            previewFiles.all { file ->
+                file.parentFile == File(previewDirectory, "preview-audio") &&
+                    ((file.name.startsWith("project-audio-") && file.extension == "wav") ||
+                        (file.name.startsWith("project-speech-") && file.extension == "pcm"))
+            })
         onView(withText(containsString("2. B ·"))).perform(scrollTo(), click())
-        fixture.waitUntil("selected B") { view<TextView>("selected-clip")?.text?.contains("B") == true && ready() }
+        // Rebuilding the native preview needs the same budget as aspect changes on SwiftShader.
+        fixture.waitUntil("selected B", 30_000) { view<TextView>("selected-clip")?.text?.contains("B") == true && ready() }
         onView(withText("Конец −1")).perform(scrollTo(), click())
-        fixture.waitUntil("trim persisted") { store.load(id).current.clips[1].span.length == 59 && ready() }
+        fixture.waitUntil("trim persisted", 30_000) { store.load(id).current.clips[1].span.length == 59 && ready() }
         onView(withText("Ниже")).perform(scrollTo(), click())
-        fixture.waitUntil("reorder persisted") { store.load(id).current.clips.map { it.id } == listOf("A1", "A2", "B") && ready() }
+        fixture.waitUntil("reorder persisted", 30_000) { store.load(id).current.clips.map { it.id } == listOf("A1", "A2", "B") && ready() }
         onView(withText("Отменить")).perform(scrollTo(), click())
-        fixture.waitUntil("undo persisted") { store.load(id).current.clips.map { it.id } == listOf("A1", "B", "A2") && ready() }
+        fixture.waitUntil("undo persisted", 30_000) { store.load(id).current.clips.map { it.id } == listOf("A1", "B", "A2") && ready() }
         assertEquals(59, store.load(id).current.clips[1].span.length)
         tapTag("aspect-LANDSCAPE_16_9")
         fixture.waitUntil("landscape ready", 30_000) { store.load(id).current.visualSettings.aspect == ProjectAspect.LANDSCAPE_16_9 && ready() }
         val revision = store.load(id).current.id
         tapTag("export")
         capture("editor-exporting")
-        fixture.waitUntil("export published", 180_000) { store.load(id).exports.any { it.revisionId == revision } && ready() }
+        awaitExportAndPreview(id, revision)
         val saved = store.load(id).exports.last()
         val file = File(fixture.context.filesDir, "completed-renders/${saved.fileName}")
-        MediaMetadataRetriever().use { metadata ->
+        NativeResources().use { resources ->
+            val metadata = resources.own(MediaMetadataRetriever(), MediaMetadataRetriever::release)
             metadata.setDataSource(file.path)
             assertEquals("1920", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
             assertEquals("1080", metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT))
@@ -108,7 +240,7 @@ class ManualMvpScreenTest {
         assertEquals(Intent.ACTION_SEND, send.action)
         assertArrayEquals(file.readBytes(), fixture.context.contentResolver.openInputStream(sharedUri)!!.use { it.readBytes() })
         instrumentation.runOnMainSync { current()!!.recreate() }
-        fixture.waitUntil("reopened exact paused frame", 30_000) { ready() }
+        awaitPreviewWithDiagnostics(id, revision, "reopened exact paused frame", 30_000) { ready() }
         assertEquals(revision, store.load(id).current.id)
         assertTrue(view<Button>("aspect-LANDSCAPE_16_9")!!.isSelected)
         capture("editor-reopened")
@@ -179,10 +311,14 @@ class ManualMvpScreenTest {
         val bytes = source.readBytes()
         source.writeBytes(byteArrayOf(0))
         val previousScale = shell("settings get system font_scale").trim()
+        val previousSize = shell("wm size").trim()
+        val previousOverride = Regex("(?m)^Override size: ([0-9]+x[0-9]+)$")
+            .find(previousSize)?.groupValues?.get(1)
         try {
             shell("settings put system font_scale 2.0")
-            // This CI device uses density=1: 720 physical pixels would be a tablet width.
-            shell("wm size 320x640")
+            // Keep the same narrow dp viewport on both emulators and physical phones.
+            val density = fixture.context.resources.displayMetrics.density
+            shell("wm size ${(320 * density).roundToInt()}x${(640 * density).roundToInt()}")
             fixture.waitUntil("narrow large-font Main recreation and splash settled", 30_000) {
                 val main = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
                     .filterIsInstance<MainActivity>().singleOrNull() ?: return@waitUntil false
@@ -212,7 +348,8 @@ class ManualMvpScreenTest {
             try { finishEditor() }
             finally {
                 shell("settings put system font_scale ${previousScale.toFloatOrNull() ?: 1f}")
-                shell("wm size reset")
+                shell("wm size ${previousOverride ?: "reset"}")
+                assertEquals("Restore the runner display size", previousSize, shell("wm size").trim())
             }
         }
     }
@@ -220,6 +357,9 @@ class ManualMvpScreenTest {
     private fun openImported(fps: Int = 30) {
         fixture.launch()
         capture("main-entry")
+        importIntoEditor(fps)
+    }
+    private fun importIntoEditor(fps: Int = 30) {
         fixture.click(R.id.manualMvpButton)
         fixture.waitUntil("editor import ready") { view<Button>("import")?.isEnabled == true }
         if (fps == 60) {
@@ -236,6 +376,35 @@ class ManualMvpScreenTest {
         fixture.waitUntil("real imported paused preview", 45_000) { ready() }
     }
 
+    private fun awaitExportAndPreview(id: String, revision: Long) =
+        awaitPreviewWithDiagnostics(id, revision, "export published and preview restored", 180_000) {
+            store.load(id).exports.any { it.revisionId == revision } && ready()
+        }
+
+    private fun awaitPreviewWithDiagnostics(
+        id: String, revision: Long, description: String, timeoutMs: Long, condition: () -> Boolean
+    ) {
+        try {
+            fixture.waitUntil(description, timeoutMs, condition)
+        } catch (error: AssertionError) {
+            val exports = store.load(id).exports.filter { it.revisionId == revision }
+            val files = exports.map { File(fixture.context.filesDir, "completed-renders/${it.fileName}").isFile }
+            var editor = "editor absent"
+            instrumentation.runOnMainSync {
+                current()?.let { activity ->
+                    editor = "status=${field<TextView>(activity, "status")?.text}; " +
+                        "busy=${field<Boolean>(activity, "busy")}; exporting=${field<Boolean>(activity, "exporting")}; " +
+                        "previewText=${view<TextView>("preview-state")?.text}; playEnabled=${view<Button>("play")?.isEnabled}; " +
+                        "preview=${field<DraftPreviewController.State>(activity, "playbackState")}"
+                }
+            }
+            val workers = Thread.getAllStackTraces().entries.filter { it.key.name.startsWith("Veycad-preview-") }
+                .joinToString("\n") { (thread, stack) -> "${thread.name}:\n${stack.joinToString("\n")}" }
+            throw AssertionError("$description: revision=$revision; linked=${exports.size}; " +
+                "publishedFiles=$files; $editor; workers=$workers", error)
+        }
+    }
+
     private fun ready() = view<TextView>("preview-state")?.text == "Черновик · пауза" &&
         view<Button>("play")?.isEnabled == true
     /** Hold actual owner executors, not a renderer substitute or a production test-only hook. */
@@ -245,9 +414,9 @@ class ManualMvpScreenTest {
         val previous = requireNotNull(old)
         val borrowed = requireNotNull(field<Any>(previous, "binding"))
         val prepared = requireNotNull(field<PreparedHybridPreview>(borrowed, "prepared"))
-        val executor = if (exportQueued) requireNotNull(field<java.util.concurrent.ExecutorService>(previous, "jobs"))
-            else requireNotNull(field<java.util.concurrent.ExecutorService>(
-                requireNotNull(field<DraftPreviewController>(previous, "controller")), "worker"))
+        val player = requireNotNull(field<DraftPreviewController>(previous, "controller"))
+        val executor = requireNotNull(field<java.util.concurrent.ExecutorService>(player, "worker"))
+        val exports = store.list().single().exports
         val entered = java.util.concurrent.CountDownLatch(1)
         val release = java.util.concurrent.CountDownLatch(1)
         executor.execute {
@@ -261,12 +430,14 @@ class ManualMvpScreenTest {
                 }
             } finally { if (interrupted) Thread.currentThread().interrupt() }
         }
-        assertTrue("Old native/job boundary entered", entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue("Old GL owner boundary entered", entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
         try {
             if (exportQueued) {
                 tapTag("export")
-                fixture.waitUntil("native ack transferred prepared to queued export", 10_000) {
-                    field<Any>(previous, "binding") == null && field<Any>(previous, "controller") == null
+                // Export waits for display/audio retirement on this same GL owner.
+                fixture.waitUntil("export queued behind held GL owner", 10_000) {
+                    field<Any>(previous, "binding") == null && field<Any>(previous, "controller") === player &&
+                        field<Boolean>(previous, "exporting") == true
                 }
             }
             instrumentation.runOnMainSync { previous.recreate() }
@@ -290,6 +461,7 @@ class ManualMvpScreenTest {
         } finally { release.countDown() }
         fixture.waitUntil("one paused replacement after old cleanup", 30_000) { ready() }
         assertTrue("Old prepared closed after actual cleanup", runCatching { prepared.framePlan }.isFailure)
+        assertEquals("Lifecycle cancellation must not publish the queued export", exports, store.list().single().exports)
         fixture.waitUntil("one native preview owner", 10_000) {
             Thread.getAllStackTraces().keys.count { it.isAlive && it.name == "Veycad-preview-GL" } == 1
         }

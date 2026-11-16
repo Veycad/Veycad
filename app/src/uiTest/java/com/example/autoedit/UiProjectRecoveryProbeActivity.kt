@@ -46,9 +46,11 @@ internal class UiProjectRecoveryProbeActivity : AppCompatActivity() {
             val videoAsset = assets.importVideo(source, metadata.geometry.pixelAspectRatio)
             val style = MontageStyleCatalog.heartbeat
             val musicFile = BuiltInMusicCatalog.select(applicationContext, style.id).file
-            val duration = MediaMetadataRetriever().use { retriever ->
-                retriever.setDataSource(musicFile.path)
-                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() * 1_000
+            val duration = MediaMetadataRetriever().let { retriever ->
+                try {
+                    retriever.setDataSource(musicFile.path)
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong() * 1_000
+                } finally { retriever.release() }
             }
             val music = assets.import(musicFile, ProjectAsset.Kind.AUDIO, duration)
             val graph = ManualMvpBasicGraph.create(listOf(source), music.id)
@@ -97,7 +99,7 @@ internal class UiProjectRecoveryProbeActivity : AppCompatActivity() {
         check(inventory(store.directory(id)).toString() == before.toString())
         report("verdict.json", JSONObject().put("projectId", id).put("projectFiles", before)
             .put("scratchRemoved", scratch.length()).put("sourcesVerified", project.assets.size).put("projectUnchanged", true))
-        runOnUiThread { startActivity(Intent(this, ManualMvpActivity::class.java).putExtra("projectId", id)) }
+        runOnUiThread { startActivity(Intent(this, ManualMvpActivity::class.java).putExtra(ManualMvpActivity.EXTRA_PROJECT_ID, id)) }
     }
     private fun inventory(root: File) = JSONArray().apply {
         root.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(root).invariantSeparatorsPath }.forEach {

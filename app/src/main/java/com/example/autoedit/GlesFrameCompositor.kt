@@ -1195,8 +1195,7 @@ internal class GlesFrameCompositor(
     }
 
     private fun drawDirectUserText() {
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
-        GLES20.glViewport(0, 0, width, height)
+        bindOutput()
         // Retain the already rendered video: unlike drawPost, this draw must not clear it.
         GLES20.glUseProgram(postProgram)
         val position = GLES20.glGetAttribLocation(postProgram, "aPosition")

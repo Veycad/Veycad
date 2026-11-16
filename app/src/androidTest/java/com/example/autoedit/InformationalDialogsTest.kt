@@ -23,7 +23,7 @@ class InformationalDialogsTest {
         openSettings()
         ui.click(R.id.privacyButton)
         onView(withText("Конфиденциальность")).inRoot(isDialog()).check(matches(isDisplayed()))
-        onView(withText("Видео обрабатываются только на устройстве. Veykad не отправляет исходники, " +
+        onView(withText("Видео обрабатываются только на устройстве. Veycad не отправляет исходники, " +
             "кадры или готовые монтажи в интернет. Доступ к видео используется только для выбранных вами файлов."))
             .inRoot(isDialog()).check(matches(isDisplayed()))
         onView(withId(android.R.id.button1)).check(matches(withText("Понятно"))).perform(click())
@@ -55,7 +55,7 @@ class InformationalDialogsTest {
         onView(withId(R.id.versionButton)).check(matches(withText(containsString(BuildConfig.VERSION_NAME))))
         for (dismissByBack in listOf(false, true)) {
             ui.click(R.id.versionButton)
-            val title = "Veykad ${BuildConfig.VERSION_NAME}"
+            val title = "Veycad ${BuildConfig.VERSION_NAME}"
             onView(withText(title)).inRoot(isDialog()).check(matches(isDisplayed()))
             onView(withId(android.R.id.message)).inRoot(isDialog()).check(matches(withText(
                 "Сборка ${BuildConfig.VERSION_CODE}\nЛокальный движок автоматического монтажа")))

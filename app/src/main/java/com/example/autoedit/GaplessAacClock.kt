@@ -7,19 +7,21 @@ internal class GaplessAacClock(
     val sampleRate: Int,
     private val originUs: Long,
     private val paddingFrames: Int,
-    private val expectedFrames: Long
+    private val expectedFrames: Long,
+    private val codecOriginUs: Long = originUs
 ) {
     private var emittedFrames = 0L
 
-    init { require(sampleRate > 0 && originUs >= 0 && paddingFrames in 0..1023 && expectedFrames > 0) }
+    init { require(sampleRate > 0 && originUs >= 0 && codecOriginUs >= 0 && paddingFrames in 0..1023 && expectedFrames > 0) }
 
     fun accept(codecPtsUs: Long, frames: Int): Long {
         require(frames > 0)
         val expectedUs = Math.addExact(originUs, AudioExportPlan.presentationTimeUs(emittedFrames, sampleRate))
-        val laggedUs = Math.addExact(originUs,
+        val expectedCodecUs = Math.addExact(codecOriginUs, AudioExportPlan.presentationTimeUs(emittedFrames, sampleRate))
+        val laggedUs = Math.addExact(codecOriginUs,
             AudioExportPlan.presentationTimeUs(Math.addExact(emittedFrames, paddingFrames.toLong()), sampleRate))
         fun near(value: Long) = codecPtsUs >= value - 2 && codecPtsUs <= value + 2
-        check(near(expectedUs) || emittedFrames > 0 && near(laggedUs)) {
+        check(near(expectedCodecUs) || emittedFrames > 0 && near(laggedUs)) {
             "Gapless AAC output clock mismatch: codec=$codecPtsUs pcm=$expectedUs padding=$paddingFrames"
         }
         emittedFrames = Math.addExact(emittedFrames, frames.toLong())

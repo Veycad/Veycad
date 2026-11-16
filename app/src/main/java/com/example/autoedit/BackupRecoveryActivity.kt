@@ -4,9 +4,12 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
@@ -77,12 +80,16 @@ class BackupRecoveryActivity : AppCompatActivity() {
         }.apply { visibility = View.GONE }
         button(R.string.backup_done, "backup-done") { leave() }
         val scroll = ScrollView(this).apply { addView(column); setBackgroundColor(getColor(R.color.background)) }
-        setContentView(scroll)
-        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+        // Insets outside the scroller keep its requested rectangles above system bars.
+        val viewport = FrameLayout(this).apply {
+            addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        }
+        setContentView(viewport)
+        ViewCompat.setOnApplyWindowInsetsListener(viewport) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom); insets
         }
-        ViewCompat.requestApplyInsets(scroll)
+        ViewCompat.requestApplyInsets(viewport)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = leave()
         })
@@ -124,10 +131,11 @@ class BackupRecoveryActivity : AppCompatActivity() {
         try {
             jobs.execute {
                 val result = runCatching {
-                        val backup = HybridProjectBackup(filesDir)
-                        if (restoring) backup.restore(requireNotNull(contentResolver.openInputStream(uri)))
-                        else backup.export(requireNotNull(projectId), requireNotNull(contentResolver.openOutputStream(uri, "w")))
+                    val backup = HybridProjectBackup(filesDir)
+                    if (restoring) backup.restore(requireNotNull(contentResolver.openInputStream(uri)))
+                    else backup.export(requireNotNull(projectId)) { requireNotNull(contentResolver.openOutputStream(uri, "w")) }
                 }
+                val incompleteBackup = result.isFailure && !restoring && !discardIncompleteBackup(uri)
                 runOnUiThread {
                     busy = false
                     if (!started || isDestroyed) releaseManual()
@@ -140,14 +148,24 @@ class BackupRecoveryActivity : AppCompatActivity() {
                         if (receipt.cleanupIncomplete) status.append("\n" + getString(R.string.backup_cleanup_warning))
                         if (restoring) setResult(RESULT_OK, Intent().putExtra(EXTRA_PROJECT_ID, receipt.projectId))
                         else { backupUri = uri; share.visibility = View.VISIBLE }
-                    }, onFailure = { status.text = getString(R.string.backup_failed, it.message ?: it.javaClass.simpleName) })
+                    }, onFailure = { showFailure(restoring, it, incompleteBackup) })
                     updateControls()
                 }
             }
         } catch (error: Throwable) {
             busy = false; updateControls()
-            status.text = getString(R.string.backup_failed, error.message ?: error.javaClass.simpleName)
+            showFailure(restoring, error, incompleteBackup = !restoring)
         }
+    }
+
+    private fun discardIncompleteBackup(uri: Uri): Boolean = runCatching {
+        DocumentsContract.isDocumentUri(this, uri) && DocumentsContract.deleteDocument(contentResolver, uri)
+    }.onFailure { Log.w("Veycad", "Incomplete backup could not be removed", it) }.getOrDefault(false)
+
+    private fun showFailure(restoring: Boolean, error: Throwable, incompleteBackup: Boolean) {
+        Log.w("Veycad", if (restoring) "Project restore failed" else "Project backup failed", error)
+        status.setText(if (restoring) R.string.backup_restore_failed else R.string.backup_save_failed)
+        if (incompleteBackup) status.append("\n" + getString(R.string.backup_incomplete_file))
     }
 
     companion object { const val EXTRA_PROJECT_ID = "projectId" }

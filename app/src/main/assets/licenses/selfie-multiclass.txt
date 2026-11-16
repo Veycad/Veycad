@@ -1,0 +1,16 @@
+MediaPipe Selfie Multiclass Segmentation model (256 x 256)
+
+Model author: Adel Ahmadyan, Google
+Model date: May 10, 2023
+License: Apache License, Version 2.0 (see apache-2.0.txt in this directory)
+
+The model card identifies the author, date and license:
+https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf
+
+Model source:
+https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite
+
+Bundled file: assets/models/selfie_multiclass_256x256.tflite
+SHA-256: c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0
+
+This notice describes this model only, not all third-party components of the app.

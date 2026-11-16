@@ -130,7 +130,7 @@ function Collect-UiPreviewEvidence {
 }
 
 function Invoke-UiPhase {
-    param([string]$Name, [string]$SelectionArgument, [string[]]$Expected)
+    param([string]$Name, [string]$SelectionArgument, [string[]]$Expected, [string]$Selection = $uiPermissionClass)
     $uiArchive = Join-Path $uiProjectRoot "build/reports/ui-tests/runs/$uiRunId/$Name"
     New-Item -ItemType Directory -Path $uiArchive -Force | Out-Null
     $uiLatestXml = Join-Path $uiProjectRoot "build/reports/ui-tests/$Name.xml"
@@ -141,12 +141,32 @@ function Invoke-UiPhase {
         # Fresh evidence for this run; later per-test resets must retain it for collection.
         Invoke-UiAdb @('shell', 'run-as', $uiPackage, 'rm', '-rf', '--', 'files/source-audio-native-evidence') | Out-Null
     }
-    $uiResult = Invoke-UiNative -Executable $uiAdb -EchoOutput -Arguments @(
-        '-s', $Serial, 'shell', 'am', 'instrument', '-w', '-r',
-        '-e', 'listener', 'com.veycad.app.UiXmlRunListener',
-        '-e', $SelectionArgument, $uiPermissionClass,
-        "$uiPackage.test/androidx.test.runner.AndroidJUnitRunner"
-    )
+    $uiLogger = $null
+    if ($Name -eq 'screens') {
+        # The emulator's log buffer can wrap before this phase reaches its final report.
+        $uiLogOptions = @{
+            FilePath = $uiAdb; ArgumentList = @('-s', $Serial, 'logcat', '-v', 'threadtime')
+            RedirectStandardOutput = Join-Path $uiArchive 'logcat-live.txt'
+            RedirectStandardError = Join-Path $uiArchive 'logcat-live-stderr.txt'
+            PassThru = $true
+        }
+        if ($uiWindows) { $uiLogOptions.WindowStyle = 'Hidden' }
+        try { $uiLogger = Start-Process @uiLogOptions }
+        catch { Write-Warning "Continuous logcat unavailable: $($_.Exception.Message)" }
+    }
+    try {
+        $uiResult = Invoke-UiNative -Executable $uiAdb -EchoOutput -Arguments @(
+            '-s', $Serial, 'shell', 'am', 'instrument', '-w', '-r',
+            '-e', 'listener', 'com.veycad.app.UiXmlRunListener',
+            '-e', $SelectionArgument, $Selection,
+            "$uiPackage.test/androidx.test.runner.AndroidJUnitRunner"
+        )
+    } finally {
+        if ($null -ne $uiLogger) {
+            Stop-Process -InputObject $uiLogger -ErrorAction SilentlyContinue
+            $uiLogger.Dispose()
+        }
+    }
     $uiResult.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'instrumentation.txt') -Encoding UTF8
     $uiLogcat = Invoke-UiNative -Executable $uiAdb -Arguments @('-s', $Serial, 'logcat', '-d', '-v', 'threadtime')
     $uiLogcat.Output | Set-Content -LiteralPath (Join-Path $uiArchive 'logcat.txt') -Encoding UTF8
@@ -337,7 +357,19 @@ try {
         Invoke-UiAdb @('shell', 'pm', 'clear-permission-flags', $uiPackage, 'android.permission.POST_NOTIFICATIONS', 'user-set', 'user-fixed') | Out-Null
     }
     if ($LegacySaveOnly) {
-        Invoke-UiPhase -Name 'legacy-save' -SelectionArgument 'class' -Expected $uiPermissionExpected
+        $uiLegacyAudioCases = @(
+            'com.veycad.app.ManualMvpScreenTest#importTrimUndoLandscapeExportAndReopenWorkWithoutWindowCapture',
+            'com.veycad.app.PreparedHybridExportDeviceTest#preparedManualPixelsAndEncodedTimingMatchKnownSplitSource',
+            'com.veycad.app.PreparedHybridExportDeviceTest#preparedSourceMixExportsSourceToneAndExcludesSelectedMusic',
+            'com.veycad.app.SourceAudioDeviceTest#actual_aac_markers_match_authored_video_frames_and_duration_at_30_and_60',
+            'com.veycad.app.SourceAudioDeviceTest#actual_nonintegral_movie_tick_lengths_trim_to_exact_pcm_samples_at_30_and_60',
+            'com.veycad.app.SourceAudioDeviceTest#cancellation_after_decode_and_aac_begin_cleans_owned_files_then_reexports'
+        )
+        $uiLegacyAudioExpected = @($uiExpected | Where-Object { $_ -in $uiLegacyAudioCases })
+        if ($uiLegacyAudioExpected.Count -ne $uiLegacyAudioCases.Count) { throw 'Legacy AAC regression cases are missing from discovery.' }
+        Invoke-UiPhase -Name 'legacy-save' -SelectionArgument 'class' `
+            -Selection (($uiPermissionClass, ($uiLegacyAudioCases -join ',')) -join ',') `
+            -Expected (@($uiPermissionExpected) + @($uiLegacyAudioExpected))
     } else {
         Invoke-UiPhase -Name 'permissions' -SelectionArgument 'class' -Expected $uiPermissionExpected
         Invoke-UiPhase -Name 'screens' -SelectionArgument 'notClass' -Expected $uiOrdinaryExpected
