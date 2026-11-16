@@ -104,16 +104,15 @@ class MulticlassMatteProvider : ContentProvider() {
                     source, times, dimensions.first, dimensions.second, requireExactPts = targets == null
                 ) { timeUs, frame ->
                         checkCancelled()
-                        // MPImage.close owns/recycles its bitmap. The decoder lends this frame
-                        // to every target reached by one output PTS, so inference needs its own copy.
-                        val image = BitmapImageBuilder(
-                            frame.copy(Bitmap.Config.ARGB_8888, false)
-                        ).build()
-                        try {
-                            if (frameCache != null && frameBuffer != null) {
-                                writeFrameCache(frame, timeUs, frameCache, frameBuffer)
-                            }
-                            if (segmenter != null) {
+                        if (frameCache != null && frameBuffer != null) {
+                            writeFrameCache(frame, timeUs, frameCache, frameBuffer)
+                        }
+                        if (segmenter != null) {
+                            // MPImage.close recycles its bitmap; inference must own a copy of the borrowed frame.
+                            val image = BitmapImageBuilder(
+                                frame.copy(Bitmap.Config.ARGB_8888, false)
+                            ).build()
+                            try {
                                 val masks = segmenter.segmentForVideo(image, timeUs / 1_000L)
                                     .confidenceMasks().orElseThrow()
                                 require(masks.size >= CLASS_COUNT)
@@ -132,11 +131,11 @@ class MulticlassMatteProvider : ContentProvider() {
                                     stream.writeByte((personMask[pixel] * 255f + .5f).toInt())
                                 }
                                 masks.forEach { it.close() }
+                            } finally {
+                                image.close()
                             }
-                            checkCancelled()
-                        } finally {
-                            image.close()
                         }
+                        checkCancelled()
                 }
                 Log.i(TAG, "${if (segmenter == null) "Frame decode" else "Exact matte"} completed in " +
                     "${(System.nanoTime() - startedNs) / 1_000_000L} ms; " +
